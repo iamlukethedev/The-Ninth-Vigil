@@ -858,7 +858,7 @@ export function resolveLighting(name, cfg = {}) {
 
   if (biome.sunless) {
     // Interiors: a single cold shaft from above stands in for "outside", giving
-    // the cascades something to draw and the floor a cool counterpoint to fire.
+    // the floor a cool counterpoint to fire.
     if (biome.skylight) {
       const s = biome.skylight;
       out.sun = {
@@ -868,7 +868,15 @@ export function resolveLighting(name, cfg = {}) {
         kelvin: s.kelvin,
         coolBias: s.coolBias ?? 0,
         saturation: s.saturation ?? 1,
-        shadow: true,
+        /* COLOUR ONLY, NEVER SHADOW. This key is a fiction — there is no sky
+         * over a crypt — but the ceiling above it is real geometry at ~7.3 m.
+         * Casting cascades from it projected metres-long hard-edged black
+         * wedges across the play area that buried the hero and every enemy.
+         * Interiors are shadowed by their PRACTICALS, which are motivated by
+         * a visible fixture and sit inside the room with the action.
+         * Turning this off also returns four directional shadow samplers to
+         * every lit material. Do not set this true. */
+        shadow: false,
         // A ceiling shaft is placed by the level, not by the solar ephemeris —
         // Sky must not drag it around.
         authored: true,

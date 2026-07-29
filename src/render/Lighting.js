@@ -202,12 +202,22 @@ export class Lighting {
     this._pending = [];
     this._skipMaterials = new WeakSet();
 
-    /** Sun state. `dir` is the direction light TRAVELS (sun -> ground). */
+    /**
+     * Sun state. `dir` is the direction light TRAVELS (sun -> ground).
+     *
+     * `shadow` gates the cascades independently of `enabled`, because a sunless
+     * interior still wants the key's COLOUR — the cold counterpoint to
+     * firelight — while having nothing overhead that may legitimately cast.
+     * A crypt's ceiling sits at ~7.3 m and, lit by a fictional 64-degree
+     * skylight, threw metres-long hard-edged black wedges across the whole
+     * play area and buried the hero. See `_applySunToLights`.
+     */
     this.sun = {
       dir: new THREE.Vector3(-0.45, -0.82, -0.35).normalize(),
       color: new THREE.Color(1, 1, 1),
       intensity: 0,
       enabled: false,
+      shadow: true,
       ownedBySky: false,
     };
 
@@ -574,7 +584,7 @@ export class Lighting {
 
   /**
    * Drive the key light directly.
-   * @param {object} o {dir?, elevation?, azimuth?, color?, kelvin?, intensity?, coolBias?, saturation?}
+   * @param {object} o {dir?, elevation?, azimuth?, color?, kelvin?, intensity?, coolBias?, saturation?, shadow?}
    */
   setSun(o = {}, emit = true) {
     const s = this.sun;
@@ -593,6 +603,7 @@ export class Lighting {
     if (o.color !== undefined && o.color !== null) s.color.set(o.color);
     else if (o.kelvin !== undefined) kelvinColor(o.kelvin, s.color, o.saturation ?? 1, o.coolBias ?? 0);
     if (o.intensity !== undefined) s.intensity = Math.max(0, o.intensity);
+    if (o.shadow !== undefined) s.shadow = o.shadow !== false;
     s.enabled = s.intensity > 0.0005;
 
     this._applySunToLights();
@@ -637,6 +648,7 @@ export class Lighting {
           saturation: p.sun.saturation,
           coolBias: p.sun.coolBias,
           intensity: p.sun.intensity,
+          shadow: p.sun.shadow,
         });
       } else {
         this.sun.intensity = 0;
@@ -793,7 +805,7 @@ export class Lighting {
     this._frustum.setFromProjectionMatrix(_projScreen);
 
     /* --- cascaded shadows --- */
-    if (this.csm && this.sun.enabled) {
+    if (this.csm && this.sun.enabled && this.sun.shadow !== false) {
       try {
         this.csm.update();
         for (let i = 0; i < this.csm.lights.length; i++) {
@@ -1140,21 +1152,29 @@ uniform float sanctumRimGain;  // per-material gain
     });
   }
 
+  /**
+   * `castShadow` is gated on `sun.shadow` as well as `sun.enabled`. Dropping it
+   * for sunless interiors also drops four directional shadow samplers out of
+   * every lit material, which is most of the margin under the hard 16-unit
+   * fragment limit this project sits against.
+   */
   _applySunToLights() {
     const s = this.sun;
+    const cast = s.enabled && s.shadow !== false;
     if (this.csm) {
       this.csm.lightDirection.copy(s.dir);
       for (const l of this.csm.lights) {
         l.color.copy(s.color);
         l.intensity = s.intensity;
         l.visible = s.enabled;
-        l.castShadow = s.enabled;
+        l.castShadow = cast;
       }
     }
     if (this.keyLight) {
       this.keyLight.color.copy(s.color);
       this.keyLight.intensity = s.intensity;
       this.keyLight.visible = s.enabled;
+      this.keyLight.castShadow = cast;
     }
   }
 
