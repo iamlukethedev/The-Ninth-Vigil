@@ -1,0 +1,6 @@
+node_modules/
+dist/
+shots/_debug/
+shots/_sheet.png
+*.tmp.mjs
+.DS_Store
