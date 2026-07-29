@@ -92,7 +92,7 @@ vec3 linearToSrgb( vec3 c ) {
 /**
  * Filmic grade maths shared by GradePass and the merged CompositePass.
  *
- * THE VALUE RESPONSE OF THE WHOLE GAME LIVES HERE. Three stages matter and each
+ * THE VALUE RESPONSE OF THE WHOLE GAME LIVES HERE. Five stages matter and each
  * of them was, at some point, the reason a frame looked wrong:
  *
  *  1. `uBlackSoft` — the pedestal. A hard `(c - blackPoint)` subtraction sends
@@ -103,7 +103,26 @@ vec3 linearToSrgb( vec3 c ) {
  *     underneath it: the darkest decade keeps a gradient, and only pixels that
  *     were genuinely zero stay zero.
  *
- *  2. `uShadowLift` / `uShadowChroma` — shadow reconstruction. The lift is
+ *     The remnant is now spliced in through `softFloor` rather than a `max()`.
+ *     `soft*x + (1-soft)*max(x-bp,0)` is algebraically the same curve as the old
+ *     `max(x-bp,0) + min(x,bp)*soft`, and both have a SLOPE DISCONTINUITY at
+ *     `bp`: on `boss` the slope jumped 0.39 -> 1.63 at exactly one value, so any
+ *     surface whose shading crossed it grew a hard contour line at that value —
+ *     the "single black shape with a hard outline". The quadratic knee is C1 and
+ *     is exactly the old curve outside +-45 % of the pedestal.
+ *
+ *  2. `contrastToe` — contrast about a low pivot. `pivot*(x/pivot)^g` with g>1
+ *     drives the bottom decade's slope toward ZERO: at x=0.01 with pivot 0.42
+ *     and g=1.34 the local slope is 0.38, and the LUT applies a second power law
+ *     (g=1.28 in scene-linear) on top, so the composite bottom-end exponent was
+ *     1.7. Measured on frozen `boss`, that turned inputs 0.000-0.040 into a
+ *     PLATEAU at 0.27/255 — every unlit surface in the frame resolved to the
+ *     same single code value, which is what welded dark objects to their dim
+ *     surroundings. The exponent is therefore relaxed to 1 below a knee, so
+ *     near-black keeps unity slope and stays *separable* while everything from
+ *     the low mids up is bit-identical to the old curve.
+ *
+ *  3. `uShadowLift` / `uShadowChroma` — shadow reconstruction. The lift is
  *     multiplicative (`x * (1 + A·e^(-l/w))`) so black maps to black and the
  *     curve is monotone and C1; it converges to unity by ~4w so mid-tones are
  *     untouched. On its own it would multiply the shadow's *chroma* too, which
@@ -112,7 +131,20 @@ vec3 linearToSrgb( vec3 c ) {
  *     window first pulls the hue toward `uSlate`, a luma-neutral cold grey.
  *     Result: shadows are cold, desaturated, and *readable*.
  *
- *  3. `uShoulder` — the highlight knee. `min(c,k) + (1-k)(1-e^(-(c-k)/(1-k)))`.
+ *  4. `uToeGamma` / `uToeKnee` — the film toe, and the only stage here that
+ *     exists purely to keep code values alive at the very bottom. A gain cannot
+ *     do this job: the lift above multiplies, so it scales the bottom decade
+ *     without changing its *exponent*, and an exponent over 1 sends the
+ *     separation between two near-black surfaces to zero no matter what gain
+ *     follows it. So the toe is a gamma, applied in LUMA only (the shadow's hue
+ *     and chroma have already been authored by stage 3 and must not move),
+ *     blended out to a no-op by `uToeKnee` with a smoothstep — whose derivative
+ *     is zero at both ends, which is what makes the splice C1 at the knee and
+ *     leaves the curve above it untouched. `pow` of zero is zero, so genuinely
+ *     occluded pixels still reach 0; what changes is that a pixel one code value
+ *     above them no longer joins them.
+ *
+ *  5. `uShoulder` — the highlight knee. `min(c,k) + (1-k)(1-e^(-(c-k)/(1-k)))`.
  *     Value and slope are continuous at `k`, monotone, asymptotic to 1, so a
  *     pixel at 3.0 and a pixel at 1.2 are still different pixels instead of
  *     both being flat white. That difference is the falloff around a flame.
@@ -129,18 +161,49 @@ uniform float uLutStrength;
 uniform float uBlackPoint;
 uniform float uWhitePoint;
 uniform float uBlackSoft;
+uniform float uBlackKnee;
 uniform float uContrast;
 uniform float uPivot;
+uniform float uContrastToe;
 uniform float uShadowLift;
 uniform float uShadowKnee;
 uniform float uShadowChroma;
 uniform vec3  uSlate;
+uniform float uToeKnee;
+uniform float uToeGamma;
 uniform float uSaturation;
 uniform float uHighlightDesat;
 uniform vec3  uShadowTint;
 uniform vec3  uHighlightTint;
 uniform float uTintAmount;
 uniform float uShoulder;
+
+/**
+ * max( x, 0 ) with a C1 quadratic knee of half-width k.
+ *
+ * Exactly 0 at and below -k, exactly x at and above +k, value and slope
+ * continuous at both, and it never overshoots either branch. Used wherever a
+ * hard clip would otherwise put a kink in the transfer curve — a kink in the
+ * curve is a visible contour in the image.
+ */
+vec3 softFloor( vec3 x, float k ) {
+  float w = max( k, 1e-5 );
+  vec3 q = clamp( ( x + w ) / ( 2.0 * w ), vec3( 0.0 ), vec3( 1.0 ) );
+  return max( x, w * q * q );
+}
+
+/**
+ * pivot * (x/pivot)^g, with the exponent relaxed to 1 below the knee (measured
+ * in pivot-normalised units). Identical to the plain power law at and above the
+ * knee — smoothstep's derivative vanishes there — and unity slope as x -> 0, so
+ * the bottom decade is compressed by the *gain* of the chain and not by a
+ * runaway exponent. Zero maps to zero.
+ */
+vec3 contrastToe( vec3 x, float pivot, float g, float knee ) {
+  vec3 u = max( x, vec3( 0.0 ) ) / pivot;
+  vec3 q = mix( vec3( 1.0 ), vec3( g ), smoothstep( vec3( 0.0 ), vec3( max( knee, 1e-4 ) ), u ) );
+  return pivot * pow( max( u, vec3( 1e-9 ) ), q );
+}
 
 // Input and output are display-referred (sRGB encoded) values.
 vec3 sanctumGrade( vec3 c ) {
@@ -153,20 +216,32 @@ vec3 sanctumGrade( vec3 c ) {
     c = mix( c, graded, uLutStrength );
   }
 
-  // --- pedestal + white point, with a soft floor instead of a hard clip ---
+  // --- pedestal + white point, with a C1 soft floor instead of a hard clip ---
   float sc = 1.0 / max( uWhitePoint - uBlackPoint, 1e-3 );
   vec3 x = c * sc;
   float bp = uBlackPoint * sc;
-  c = max( x - vec3( bp ), vec3( 0.0 ) ) + min( x, vec3( bp ) ) * uBlackSoft;
+  c = uBlackSoft * x + ( 1.0 - uBlackSoft ) * softFloor( x - vec3( bp ), bp * uBlackKnee );
 
   // --- contrast around a low pivot so mid-tones stay heavy ---
-  c = uPivot * pow( max( c / uPivot, vec3( 1e-4 ) ), vec3( uContrast ) );
+  c = contrastToe( c, uPivot, uContrast, uContrastToe );
 
   // --- shadow reconstruction: cold desaturated slate, never crushed black ---
   float l = luma( c );
   float sw = exp( -l / max( uShadowKnee, 1e-3 ) );
   c = mix( c, l * uSlate, uShadowChroma * sw );
   c *= 1.0 + uShadowLift * sw;
+
+  /* --- film toe: near-black keeps code values instead of collapsing ---------
+   * Luma-only, so the slate pull above still owns the shadow's colour. The
+   * ratio is clamped because a pixel at 1e-9 would otherwise ask for a gain of
+   * 10^2: black stays black, and the clamp only ever binds below 1/1000 of a
+   * code value. */
+  if ( uToeGamma < 0.999 ) {
+    float T = max( uToeKnee, 1e-4 );
+    float lt = max( luma( c ), 1e-7 );
+    float q = mix( uToeGamma, 1.0, smoothstep( 0.0, T, lt ) );
+    c *= min( 24.0, T * pow( lt / T, q ) / lt );
+  }
 
   // --- shadow / highlight split tone ---
   l = luma( c );

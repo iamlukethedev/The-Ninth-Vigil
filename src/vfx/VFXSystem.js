@@ -410,26 +410,82 @@ export class VFXSystem {
   /** Emit the shared spec into the alpha (form-lit) batch. */
   soft() { this.softBatch.emit(this.s, this.now); }
 
-  /** One-beat point light. Instant onset, exponential decay. */
+  /**
+   * One-beat point light. Instant onset, exponential decay.
+   *
+   * ### Why the intensity is clamped against the floor distance
+   *
+   * These are the other half of the "clipped white disc" defect, and hiding the
+   * additive meshes does not make them go away because they are not meshes. A
+   * PointLight at `decay = 2` puts `I / d²` of irradiance on the nearest
+   * surface, and a Lambert floor turns that into `irradiance * albedo / PI` of
+   * scene-linear radiance. Recipes ask for I = 15-126 (fireburst asks for
+   * 90 * scale) from 0.6-1.6 m above the floor, which is 35-350 irradiance and
+   * 3-33 linear off a stone albedo — 4x to 40x over the value ACES maps to 0.85.
+   * The result is a fully-clipped elliptical pool of white floor with no texture
+   * left in it. Measured on the frozen night frame at 1600x900: zeroing the
+   * three flash lights took clipped-white area from 0.305 % to 0.266 %, i.e.
+   * they carried 0.039 pp of it on their own. With the clamp below in place the
+   * same test moves the frame by 0.0005 pp — they now light the floor without
+   * writing a clipped pixel into it.
+   *
+   * So the clamp is expressed where the defect is — on the irradiance that
+   * reaches the floor, not on the raw candela. The floor still gets to be the
+   * brightest thing in frame at ~0.85 output, which is exactly the read the
+   * recipe wanted ("the scene carries the brightness of the hit"); it just stops
+   * carrying it 40x past the clip point.
+   *
+   * Concurrent flashes within 1.5 m share the budget, because three of them at
+   * the ceiling sum to three times the ceiling on the same patch of floor.
+   */
   flash(x, y, z, colour, intensity, radius, dur) {
     let best = null;
     for (let i = 0; i < this._flashes.length; i++) {
       const f = this._flashes[i];
       if (!f.active) { best = f; break; }
-      // steal the one closest to finishing
+      // Steal the one closest to finishing.
       if (!best || f.t / Math.max(f.dur, 1e-4) > best.t / Math.max(best.dur, 1e-4)) best = f;
     }
     if (!best) return;
-    if (best.active && best.peak > intensity * 1.6) return;  // don't downgrade
+    if (best.active && best.peak > intensity * 1.6) return;  // Don't downgrade.
+
+    /*
+     * Lift the light off the surface it is lighting.
+     *
+     * The clamp below is `I <= eCap * h²`, so a flash sitting 0.1 m off the floor
+     * gets almost no budget and lights a 20 cm dot — physically right, and a
+     * useless read. A point source that close to a plane is simply the wrong
+     * model for a flash: the light of an impact pools over about a metre. At
+     * 0.55 m the budget is 2.9 cd, which puts the floor directly below at 0.91
+     * linear and still at 0.10 a metre out — a soft pool with a falling-off
+     * edge, which is what the recipe is asking for.
+     */
+    const gy = this.groundYAt(x, z);
+    const lift = Math.max(y, gy + 0.55);
+
+    /* Irradiance that lands one Lambert bounce below the exposure-derived
+       radiance ceiling: L = E * albedo / PI, albedo 0.30, and a flash-lit floor
+       is allowed 1.15x a sprite core because it IS the light source's read. */
+    const eCap = (Math.PI / 0.30) * this.maxRadiance * 1.15;
+    const h = Math.max(0.3, lift - gy);
+    let share = 1;
+    for (let i = 0; i < this._flashes.length; i++) {
+      const f = this._flashes[i];
+      if (f === best || !f.active || f.light.intensity <= 1e-3) continue;
+      const dx = f.light.position.x - x, dy = f.light.position.y - lift, dz = f.light.position.z - z;
+      if (dx * dx + dy * dy + dz * dz < 2.25) share += 1;
+    }
+    const peak = Math.min(intensity, (eCap * h * h) / share);
+
     best.active = true;
     best.t = 0;
     best.dur = Math.max(0.05, dur);
-    best.peak = intensity;
-    best.light.position.set(x, y, z);
+    best.peak = peak;
+    best.light.position.set(x, lift, z);
     best.light.distance = Math.max(1, radius);
     if (colour) best.light.color.copy(colour);
-    best.light.intensity = intensity;
-    best.light.visible = true;   // already true; kept for clarity
+    best.light.intensity = peak;
+    best.light.visible = true;   // Already true; kept for clarity.
   }
 
   /** Register a heat source for the screen-space refraction pass. */
@@ -974,6 +1030,24 @@ export class VFXSystem {
     this.groundFX.flush(this.now);
     this.add.flush(this.now);
     this.softBatch.flush(this.now);
+
+    /*
+     * Screen-region radiance budget, AFTER flush so it sees this frame's spawns.
+     *
+     * `_syncRadianceCeiling` bounds what one additive sprite may write; nothing
+     * bounded what N of them sum to, and a `fireburst` emits 14-20 blast puffs
+     * from one point. Measured on the frozen `night` frame: five additive
+     * sprites over the worst pixel summing to 2.07 scene-linear against a 0.838
+     * bloom threshold. This holds the sum in every 10 px tile at the ceiling
+     * instead. Only the additive batch needs it — an alpha-blended puff
+     * composites toward its own colour and cannot run away.
+     */
+    this.add.applyCrowdCap(
+      this.engine.camera,
+      this._size.x || this.engine.width || 1600,
+      this._size.y || this.engine.height || 900,
+      this.maxRadiance
+    );
   }
 
   /** Depth prepass, fog, key light and projection scale — once per frame. */

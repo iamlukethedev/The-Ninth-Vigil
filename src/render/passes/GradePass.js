@@ -75,6 +75,11 @@ export const LOOKS = {
       // what puts a real specular on wet stone and armour.
       blackPoint: 0.014, whitePoint: 0.84, blackSoft: 0.30, contrast: 1.30, pivot: 0.42,
       shadowLift: 2.30, shadowKnee: 0.070, shadowChroma: 0.76,
+      // The mildest toe of any look, because the crypt's 0.014 pedestal is the
+      // one that was not crushing much: measured, the fixed bake alone already
+      // brings a 0.02 input to 2.1/255 here where `hell` reaches 1.3. The toe
+      // takes it to 3.1/255 and leaves everything from 0.16 up untouched.
+      toeKnee: 0.100, toeGamma: 0.85,
       saturation: 0.54, highlightDesat: 0.44, tintAmount: 0.26, shoulder: 0.64,
       shadowTint: [0.90, 0.965, 1.10], highlightTint: [1.08, 1.0, 0.91],
     },
@@ -109,6 +114,12 @@ export const LOOKS = {
       // the rock between the braziers must still read.
       blackPoint: 0.085, whitePoint: 0.70, blackSoft: 0.24, contrast: 1.34, pivot: 0.42,
       shadowLift: 1.55, shadowKnee: 0.055, shadowChroma: 0.78,
+      // The heaviest pedestal of any interior look (0.085 = 22/255 of input), so
+      // it is the look that most needs a toe under it: basalt between the
+      // braziers has to read as rock, not as the same hole as the shadow. This
+      // is the look the merged-black measurement was taken on — see the header
+      // of buildLookLUT for the before/after ramp.
+      toeKnee: 0.140, toeGamma: 0.78,
       saturation: 0.48, highlightDesat: 0.34, tintAmount: 0.24, shoulder: 0.64,
       shadowTint: [0.92, 0.95, 1.10], highlightTint: [1.10, 0.99, 0.87],
     },
@@ -159,6 +170,10 @@ export const LOOKS = {
       // down hard because this is the one look measuring a colour *cast*.
       blackPoint: 0.138, whitePoint: 0.50, blackSoft: 0.10, contrast: 1.52, pivot: 0.40,
       shadowLift: 1.00, shadowKnee: 0.070, shadowChroma: 0.82,
+      // Pedestal 0.138 with soft 0.10 and the only look with no shadow lift at
+      // all: measured, it put EVERY input under 0.04 at 0.00/255 and 0.08 at
+      // 0.02/255 — the hardest crush of the five. It gets the strongest toe.
+      toeKnee: 0.160, toeGamma: 0.70,
       saturation: 0.56, highlightDesat: 0.58, tintAmount: 0.18, shoulder: 0.78,
       shadowTint: [0.94, 0.975, 1.07], highlightTint: [1.02, 1.01, 0.99],
     },
@@ -195,6 +210,11 @@ export const LOOKS = {
       // brazier pools actually reach white.
       blackPoint: 0.028, whitePoint: 0.72, blackSoft: 0.26, contrast: 1.38, pivot: 0.44,
       shadowLift: 1.85, shadowKnee: 0.058, shadowChroma: 0.76,
+      // Cobbles between the brazier pools are the whole subject of this framing,
+      // and they live exactly in the band the toe covers: measured, the old
+      // curve held every input below 0.04 at 0.16/255 flat, so the cobbles and
+      // the gaps between them carried the same value.
+      toeKnee: 0.110, toeGamma: 0.84,
       saturation: 0.60, highlightDesat: 0.42, tintAmount: 0.24, shoulder: 0.74,
       shadowTint: [0.92, 0.96, 1.11], highlightTint: [1.08, 1.01, 0.91],
     },
@@ -241,6 +261,12 @@ export const LOOKS = {
       // slate so a dim cold key reads as moonlight rather than a blue filter.
       blackPoint: 0.075, whitePoint: 0.67, blackSoft: 0.13, contrast: 1.65, pivot: 0.38,
       shadowLift: 1.90, shadowKnee: 0.065, shadowChroma: 0.70,
+      // The highest contrast (1.65) over the second-heaviest pedestal, which
+      // measured 0.01/255 out of a 0.04 input — a moonlit rock and the ground it
+      // stands on were the same number. Second-strongest toe of the five; the
+      // knee stays under moor's because a night frame has the most area sitting
+      // in the band and is the one most at risk of coming up milky.
+      toeKnee: 0.150, toeGamma: 0.72,
       // A cooler luma-neutral for the shadow pull. Moonlit shadow is bluer than
       // crypt shadow, and this is the only place in the grade where that colour
       // can be stated without also multiplying the chroma of near-black pixels.
@@ -265,6 +291,77 @@ function linearToSrgb(c) {
 function smoothstep(a, b, x) {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a || 1e-6)));
   return t * t * (3 - 2 * t);
+}
+
+/* ------------------------------------------------------------------ *
+ *  BOTTOM-END DISCIPLINE IN THE BAKE
+ *
+ *  The three constants below all fix the same class of bug, and between them
+ *  they were the whole of the "dark objects weld into one solid black shape"
+ *  failure. Measured on a frozen `?shot=boss` frame, the grey-ramp response of
+ *  the old bake plus the old live stage was:
+ *
+ *    in  0.000  0.005  0.010  0.020  0.040  0.080  0.160   (display-referred)
+ *    out  0.27   0.27   0.27   0.27   0.28   0.92  11.67   (/255)
+ *
+ *  A PLATEAU three code values wide covering the bottom 4 % of the input range,
+ *  then a near-vertical rise. Every unlit surface in the frame therefore
+ *  resolved to the same single value regardless of how much light it actually
+ *  received, which is exactly "one solid black shape", and the rise immediately
+ *  above the plateau is what drew a hard outline around it. Three separate
+ *  operators in this function each independently flattened the bottom:
+ *
+ *    - the CDL `offset`, a NEGATIVE number applied in SCENE-LINEAR units and
+ *      then clipped with max(0,...). `hell` subtracts 0.003 linear, and
+ *      display 0.036 sRGB *is* 0.0028 linear — so the clip alone deleted
+ *      everything under 9/255 of input;
+ *    - the `contrast` power law about a pivot of 0.15, whose slope at 1/50th of
+ *      the pivot is 0.28 and keeps falling;
+ *    - the additive `toe`, which lands a flat +0.010 on a channel at v=0. Any
+ *      constant added at the bottom of a curve is a plateau by construction:
+ *      the constant swamps the signal and every input below it maps to the same
+ *      output.
+ *
+ *  None of the three is *wrong* as art direction — deep blacks, heavy mids and
+ *  a coloured shadow are the whole look. They were wrong as *arithmetic*: each
+ *  destroyed information rather than compressing it, and no downstream stage can
+ *  recover a plateau. So the subtraction keeps a fraction of what it takes, the
+ *  power law relaxes to unity slope at the bottom, and the lift is ramped in
+ *  from zero. All three still map 0 to exactly 0.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Fraction of the sub-offset scene-linear signal that survives the CDL's black
+ * subtraction instead of clipping to zero. Above the offset the curve is
+ * unchanged but for a constant `floor * offset` (0.001 linear at most — under
+ * 1/40th of a code value at mid grey), so this buys back the bottom decade
+ * without touching the look.
+ */
+const CDL_SOFT_FLOOR = 0.35;
+
+/**
+ * Knee of the linear-space contrast toe, in pivot-normalised units. 0.03 of a
+ * 0.15 pivot is 0.0045 scene-linear ~ 15/255 display, i.e. the relaxation is
+ * confined to the deep shadows and the low mids up are untouched.
+ */
+const LUT_CONTRAST_TOE = 0.03;
+
+/**
+ * Display-referred value over which the look's additive `toe` fades in. Below
+ * this the shadow's colour comes from the multiplicative `shadowTint` split
+ * (which cannot plateau), above it the authored lift is at full strength.
+ */
+const TOE_ANCHOR = 0.030;
+
+/**
+ * `pivot * (v/pivot)^g` with the exponent relaxed to 1 below `knee`. Identical
+ * to the plain power law at and above the knee, unity slope as v -> 0, and
+ * 0 -> 0. The GLSL twin lives in GLSL_GRADE — change both together.
+ */
+function contrastToe(v, pivot, g, knee) {
+  const u = Math.max(0, v) / pivot;
+  const q = 1 + (g - 1) * smoothstep(0, knee, u);
+  return pivot * Math.pow(u, q);
 }
 
 /**
@@ -295,14 +392,18 @@ export function buildLookLUT(name, size = 32) {
         // --- white balance ---
         for (let k = 0; k < 3; k++) c[k] *= L.wb[k];
 
-        // --- ASC CDL: slope / offset / power ---
+        // --- ASC CDL: slope / offset / power, with a soft black floor ---
         for (let k = 0; k < 3; k++) {
-          c[k] = Math.pow(Math.max(0, c[k] * L.slope[k] + L.offset[k]), L.power[k]);
+          const off = L.offset[k];
+          const x = Math.max(0, c[k] * L.slope[k] + Math.max(0, off));
+          const sub = Math.max(0, -off);
+          const v = CDL_SOFT_FLOOR * x + (1 - CDL_SOFT_FLOOR) * Math.max(x - sub, 0);
+          c[k] = Math.pow(v, L.power[k]);
         }
 
         // --- contrast about a low pivot: mid-tones stay heavy ---
         for (let k = 0; k < 3; k++) {
-          c[k] = L.pivot * Math.pow(Math.max(c[k], 1e-5) / L.pivot, L.contrast);
+          c[k] = contrastToe(c[k], L.pivot, L.contrast, LUT_CONTRAST_TOE);
         }
 
         let l = c[0] * LW[0] + c[1] * LW[1] + c[2] * LW[2];
@@ -350,7 +451,7 @@ export function buildLookLUT(name, size = 32) {
         for (let k = 0; k < 3; k++) {
           let v = linearToSrgb(Math.max(0, c[k]));
           const t = 1 - v;
-          v += L.toe[k] * t * t * t * t;
+          v += L.toe[k] * t * t * t * t * smoothstep(0, TOE_ANCHOR, v);
           const sh = L.shoulder[k];
           v = (v * (1 + sh)) / (1 + sh * v);
           c[k] = Math.min(1, Math.max(0, v));
@@ -415,12 +516,16 @@ export function gradeUniforms() {
     uBlackPoint: { value: 0.010 },
     uWhitePoint: { value: 0.80 },
     uBlackSoft: { value: 0.34 },
+    uBlackKnee: { value: 0.45 },
     uContrast: { value: 1.15 },
     uPivot: { value: 0.42 },
+    uContrastToe: { value: 0.10 },
     uShadowLift: { value: 1.9 },
     uShadowKnee: { value: 0.055 },
     uShadowChroma: { value: 0.72 },
     uSlate: { value: new THREE.Color(SLATE[0], SLATE[1], SLATE[2]) },
+    uToeKnee: { value: 0.09 },
+    uToeGamma: { value: 0.85 },
     uSaturation: { value: 0.56 },
     uHighlightDesat: { value: 0.40 },
     uShadowTint: { value: new THREE.Color(0.88, 0.955, 1.13) },
@@ -444,11 +549,15 @@ export function syncGradeUniforms(u, params, lutCache) {
   u.uBlackPoint.value = params.blackPoint;
   u.uWhitePoint.value = params.whitePoint;
   u.uBlackSoft.value = params.blackSoft ?? 0.34;
+  u.uBlackKnee.value = params.blackKnee ?? 0.45;
   u.uContrast.value = params.gradeContrast;
   u.uPivot.value = params.gradePivot;
+  u.uContrastToe.value = params.contrastToe ?? 0.10;
   u.uShadowLift.value = params.shadowLift ?? 1.9;
   u.uShadowKnee.value = params.shadowKnee ?? 0.055;
   u.uShadowChroma.value = params.shadowChroma ?? 0.72;
+  u.uToeKnee.value = params.toeKnee ?? 0.09;
+  u.uToeGamma.value = params.toeGamma ?? 1.0;
   u.uSaturation.value = params.saturation;
   u.uHighlightDesat.value = params.highlightDesat;
   u.uTintAmount.value = params.tintAmount;

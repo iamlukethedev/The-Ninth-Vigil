@@ -705,6 +705,11 @@ export class ProbeVolume {
  * Value structure discipline: ambient is always a hemisphere + IBL term, never
  * a flat fill, and interiors keep the sky term near black so torches carry the
  * whole image.
+ *
+ * ...with ONE structural exception, `wallFill`, documented on the interior
+ * presets below. A hemisphere light is the wrong SHAPE for a room, and once the
+ * fictional interior "skylight" stopped casting cascades there was nothing left
+ * that could reach a vertical wall at all. See the comment on `crypt.wallFill`.
  */
 export const BIOME_LIGHTING = {};
 
@@ -736,7 +741,28 @@ BIOME_LIGHTING.crypt = {
   // with a real cool bias so exposed rock reads as wet slate. It was 9500 K at
   // 0.95 with the saturation pulled down to 0.72, which is a *grey* key, not a
   // cold one — grey plus firelight is sepia.
-  skylight: { kelvin: 10500, intensity: 1.22, elevation: 64, azimuth: 205, coolBias: 0.32, saturation: 0.95 },
+  //
+  // ELEVATION AND AZIMUTH ARE A REDISTRIBUTION, NOT A BRIGHTNESS CHANGE. See
+  // `Lighting._aimUnshadowedKey` for the bug that hid this: the interior key was
+  // never actually aimed, so it travelled straight down and handed its whole
+  // 1.22 to up-facing floor while every near-vertical surface got dot(N, L) = 0.
+  // Once it IS aimed, the authored azimuth 205 turns out to be a pure BACKLIGHT
+  // for this game's fixed isometric camera (which sits at +z looking toward -z),
+  // so camera-facing faces stayed at zero anyway. Measured on the frozen `boss`
+  // frame, sweeping azimuth with the aim fixed: 208 gave the rock 7.0/255, 270
+  // gave 8.7, 330 gave 11.2 and 0 gave 11.3. 330 is the peak that still keeps
+  // the key ~30 degrees off the camera axis, so faces have a lit side and a dark
+  // side instead of the formless flat-frontal read that azimuth 0 would give.
+  //
+  // Elevation then trades floor for wall: a key at elevation E gives an up-facing
+  // floor sin(E) and a vertical wall at most cos(E). At 64 degrees that split is
+  // 0.90 / 0.44 — nine tenths of the key into the one surface that was never the
+  // problem. Dropping to 42 degrees makes it 0.67 / 0.74, and the intensity is
+  // raised in exactly the ratio that holds the floor still:
+  //     1.22 * sin(64) = 1.0965  ->  1.64 * sin(42) = 1.0965.
+  // So the floor keeps the value the art direction chose for it to four figures,
+  // and a vertical face goes from 0 to 1.64 * cos(42) = 1.22.
+  skylight: { kelvin: 10500, intensity: 1.64, elevation: 42, azimuth: 330, coolBias: 0.32, saturation: 0.95 },
   // Ground bounce was 0x17100b — warm umber. Inside a crypt the floor bounce is
   // whatever the floor is, and the floor is cold damp stone.
   hemi: { sky: 0x33506f, ground: 0x14171d, intensity: 0.56 },
@@ -757,6 +783,59 @@ BIOME_LIGHTING.crypt = {
   // monochrome read: the *air* went orange, not just the lit stone.
   probeIntensity: 0.70,
   bounce: 0.040,
+  /* WALL BOUNCE — the term that makes an interior's VERTICAL surfaces exist.
+   *
+   * A HemisphereLight is an open-sky model: its irradiance is maximal at
+   * normal.y = +1 and falls to the ground colour at normal.y = -1, so a wall
+   * gets the 50/50 midpoint of sky and ground. That is right outdoors and
+   * exactly backwards indoors, where a wall's indirect light comes from the
+   * OTHER WALLS and the floor, i.e. horizontally, and the one direction that
+   * sees nothing at all is straight up into a ceiling.
+   *
+   * It only became visible once the sunless "skylight" preset above stopped
+   * casting shadows. Measured on the frozen `boss` frame, the 6.2 m
+   * `dungeon:rock` mass at the arena centre received, on a camera-facing
+   * vertical face:
+   *   • skylight key .............. 0.000  (elevation 57 deg from azimuth 208,
+   *                                 so L is (-0.26, 0.84, -0.48) and every
+   *                                 camera-facing vertical normal has
+   *                                 dot(N, L) <= 0 — it is fully backlit),
+   *   • scene rim ................. 0.000  (driver sits at z = -35.8, behind
+   *                                 the arena, so it is backlit too),
+   *   • hemisphere ................ 0.0068 irradiance luma (0.40 x the 50/50
+   *                                 mix of sky 0.0273 and ground 0.0069),
+   *   • env IBL ................... 0.0078 (0.30 x horizon 0x3a2620),
+   *   • probe grid ................ 0.061,
+   *   ------------------------------------
+   *   total ....................... 0.076 irradiance luma, which against the
+   *   material's ~0.16 albedo is 0.0038 of reflected radiance. The rock
+   *   measured 0.0094 mean scene-linear luma, and 0.0034 of that — 38 % — was
+   *   Sky's atmospheric in-scatter. The SILHOUETTE WAS MADE OF FOG.
+   *
+   * So this is a genuine missing indirect term, not a grade problem, and the
+   * honest fix is to add the shape the rig was missing rather than to lift
+   * everything. `Lighting._injectProbe` weights it by (1 - |world normal.y|):
+   * full value on a vertical face, ZERO on floors and ceilings. That matters
+   * for two reasons — the arena floor is most of the frame and is already
+   * carried by the key, so it must not move; and down-facing normals stay at
+   * true black, which is what keeps the histogram bottom-weighted instead of
+   * milky. It is added to `irradiance` before `RE_IndirectDiffuse`, so aoMap
+   * still multiplies it and the term lands as SURFACE (crevices stay dark)
+   * rather than as a flat wash.
+   *
+   * Colour is the cold half of the rig, per the note above: damp slate, in the
+   * same family as `hemi.sky`, so the torches keep sole ownership of warmth.
+   *
+   * Intensity is small ON PURPOSE. Re-aiming the key is what actually fixed the
+   * defect; this term only has to catch the faces the key cannot reach, which at
+   * azimuth 330 are the ones pointing toward -z and +x. Measured, it moves the
+   * rock about 1/255 and takes another half point off the sub-5/255 fraction —
+   * worth having because those are precisely the void pixels, but it is not
+   * carrying the frame and must not try to. 0.85 x the colour's linear luma of
+   * 0.355 is 0.30 of irradiance on a fully vertical face, roughly 28 % of what
+   * the re-aimed key delivers there, which is a believable wall-bounce ratio for
+   * dry stone and nowhere near enough to lift a black. */
+  wallFill: { color: 0x9fb0c4, intensity: 0.85 },
   maxFar: 66,
   fog: { color: 0x0a0f16, near: 11, far: 64 },
 };
@@ -777,7 +856,16 @@ BIOME_LIGHTING.hell = {
   // frame" instant fail wearing an orange coat. Basalt lit from a burning sky
   // is a COOL grey with warm rim: 3900 K, cooled, desaturated, and dimmer, so
   // the ember practicals are what actually carry the warmth.
-  skylight: { kelvin: 3900, intensity: 0.88, elevation: 57, azimuth: 208, coolBias: 0.24, saturation: 0.44 },
+  // Re-aimed on the same reasoning as `crypt.skylight` above — read that comment
+  // for the derivation. The floor-preserving intensity for this preset is
+  //     0.88 * sin(57) = 0.7380  ->  1.32 * sin(34) = 0.7381,
+  // and a vertical face goes from 0 to 1.32 * cos(34) = 1.09. Measured on the
+  // frozen `boss` frame the two rock masses went 7.0/255 -> 20.6/255 with the
+  // fraction of their pixels below 5/255 falling from 24.2 % to 5.0 %, while the
+  // scene-linear frame mean moved 0.0317 -> 0.0344 (+8 %). The braziers still
+  // own every warm highlight; this only decides which SURFACES the cold key
+  // lands on, not how much of it there is.
+  skylight: { kelvin: 3900, intensity: 1.32, elevation: 34, azimuth: 330, coolBias: 0.24, saturation: 0.44 },
   hemi: { sky: 0x342a3d, ground: 0x141318, intensity: 0.40 },
   env: { zenith: 0x1b1622, horizon: 0x3a2620, ground: 0x100e12, haze: 0.55, sunStrength: 0 },
   envIntensity: 0.30,
@@ -786,6 +874,14 @@ BIOME_LIGHTING.hell = {
   rim: { color: 0x7a52d8, intensity: 0.92, elevation: 18, azimuth: 158 },
   probeIntensity: 0.78,
   bounce: 0.042,
+  /* Wall bounce — see the long note on `crypt.wallFill` for the derivation and
+   * the measured before/after; the hell arena is where the defect was found.
+   *
+   * Slate-VIOLET rather than the crypt's blue-grey: the only two saturated
+   * things allowed in this frame are the ember practicals and the 0x7a52d8
+   * rim, so the fill leans toward the rim's hue and lets the braziers stay the
+   * sole warm source. Basalt bounced off basalt is nearly neutral anyway. */
+  wallFill: { color: 0xa79cb8, intensity: 0.85 },
   maxFar: 74,
   fog: { color: 0x131019, near: 13, far: 78 },
 };
@@ -851,6 +947,14 @@ export function resolveLighting(name, cfg = {}) {
     rim: { ...biome.rim },
     probeIntensity: biome.probeIntensity,
     bounce: biome.bounce,
+    /* Interior-only, and deliberately gated on BOTH flags. `sunless` says the
+     * biome has no real key, `interior` says the scenario is actually enclosed;
+     * an exterior scenario that happened to borrow an interior biome preset
+     * would otherwise get a wall fill it does not need, because outdoors a
+     * vertical face genuinely does see the sky and the env IBL already pays
+     * for it (envIntensity 0.70 outdoors versus 0.30 in hell). Null means the
+     * uniform stays black and the term costs one mul in the shader. */
+    wallFill: (biome.sunless && env.interior && biome.wallFill) ? { ...biome.wallFill } : null,
     maxFar: biome.maxFar,
     fog: biome.fog ? { ...biome.fog } : null,
     sun: null,

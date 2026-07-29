@@ -421,8 +421,29 @@ export class RenderPipeline {
       // Fraction of the sub-pedestal signal that survives instead of clipping
       // to zero. This is what buys back shadow *detail* — see GLSL_GRADE.
       blackSoft: 0.34,
+      /*
+       * Half-width of the pedestal's C1 knee, as a fraction of the pedestal.
+       *
+       * The pedestal is `soft*x + (1-soft)*max(x - blackPoint, 0)`, so its slope
+       * steps from `soft` to 1 at exactly one value: measured on `boss`, from
+       * 0.39 to 1.63 at input 0.085. A step in the transfer curve's *slope* is a
+       * contour line in the image wherever a surface's shading crosses it, which
+       * is what drew the hard outline around the welded black shape. At 0.45 the
+       * splice spans input 0.047-0.123 there and the curve is bit-identical to
+       * the old one outside it. 0 restores the hard clip.
+       */
+      blackKnee: 0.45,
       gradeContrast: 1.15,
       gradePivot: 0.42,
+      /*
+       * Knee of the contrast toe, in pivot-normalised units — below it the
+       * contrast exponent relaxes to 1 so the bottom decade keeps unity slope.
+       * 0.10 of a 0.42 pivot is 0.042 display-referred (11/255), i.e. deep
+       * shadow only; the low mids up are untouched. See GLSL_GRADE for why an
+       * exponent over 1 at the bottom of the curve is what welds two dark
+       * surfaces into one shape. 0 restores the plain power law.
+       */
+      contrastToe: 0.10,
       // Shadow reconstruction: multiplicative lift inside an exp() window,
       // preceded by a pull toward luma-neutral cold grey so the lift raises
       // value without raising chroma.
@@ -430,6 +451,17 @@ export class RenderPipeline {
       shadowKnee: 0.055,
       shadowChroma: 0.72,
       slate: SLATE.slice(),
+      /*
+       * Film toe. Below `toeKnee` (display-referred, post-crush) the luma is
+       * raised by a gamma of `toeGamma`, faded to a no-op at the knee. This is
+       * the one stage that exists to keep code values ALIVE at the bottom: a
+       * gain cannot do it, because the lift above is multiplicative and so
+       * preserves the bottom's exponent, and an exponent over 1 sends the
+       * separation between two near-black surfaces to zero regardless of gain.
+       * Authored per look (see LOOKS.post in passes/GradePass.js); 1.0 = off.
+       */
+      toeKnee: 0.09,
+      toeGamma: 0.85,
       saturation: 0.56,
       highlightDesat: 0.40,
       tintAmount: 0.28,
@@ -1139,6 +1171,8 @@ export class RenderPipeline {
     this.params.shadowKnee = post.shadowKnee ?? 0.055;
     this.params.shadowChroma = post.shadowChroma ?? 0.72;
     this.params.slate = (post.slate ?? SLATE).slice();
+    this.params.toeKnee = post.toeKnee ?? 0.09;
+    this.params.toeGamma = post.toeGamma ?? 0.85;
     this.params.saturation = post.saturation;
     this.params.highlightDesat = post.highlightDesat;
     this.params.tintAmount = post.tintAmount;
@@ -1177,6 +1211,8 @@ export class RenderPipeline {
       if (s.lift !== undefined) p.shadowLift = s.lift;
       if (s.knee !== undefined) p.shadowKnee = s.knee;
       if (s.soft !== undefined) p.blackSoft = s.soft;
+      if (s.toeGamma !== undefined) p.toeGamma = s.toeGamma;
+      if (s.toeKnee !== undefined) p.toeKnee = s.toeKnee;
       p.bloomStrength = s.bloom;
       p.volWeight = s.vol;
       p.exposureKey = s.key ?? 0.160;

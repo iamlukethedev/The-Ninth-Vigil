@@ -743,8 +743,17 @@ function hudCSS() {
   text-align:center; font-size:2.30vh; color:#f6ecd2; opacity:0;
   text-shadow:0 1px 0 #000,0 2px 3px rgba(0,0,0,.95),0 0 1.2vh rgba(0,0,0,.95); }
 #sanctum-hud .sRdy{ inset:9%; border-radius:14%; opacity:0; }
+/* The keybind tab is riveted ONTO the socket's lower bevel rather than hung in
+   the gap beneath it. Hung, it started at 3.0vh off the bottom edge and the xp
+   bar occupies 1.5–3.75vh, so the later sibling painted over the tab's bottom
+   0.75vh — a third of its height, taking the lower halves of the letters and
+   the whole bottom bevel with it. Captured proof: laneF_keys9x.png, where LMB
+   and RMB are sliced through the baseline. Seating it on the socket is the fix
+   that costs nothing elsewhere: dropping the xp bar instead would push the
+   level medallion (4.4vh tall, hung 1.2vh proud of the trough) off the bottom
+   edge, and raising the whole bar would close the gap to the buff row. */
 #sanctum-hud .sKb{
-  left:50%; bottom:-2.2vh; transform:translateX(-50%);
+  left:50%; bottom:-0.9vh; transform:translateX(-50%);
   min-width:3.3vh; height:2.0vh; padding:0 .48vh;
   display:flex; align-items:center; justify-content:center;
   background-size:100% 100%; font-size:1.02vh; letter-spacing:.14em; color:#dcc9a0;
@@ -812,11 +821,12 @@ function hudCSS() {
   position:absolute; left:50%; top:7.4vh; transform:translateX(-50%);
   display:flex; flex-direction:column; align-items:center; gap:.55vh;
 }
-/* The boss block (banner + segmented bar + phase line + hp readout) reaches
-   ~10.4vh down from the top edge, so the toast column has to stand off when it
-   is up or the encounter banner prints through the phase line. panels/Combat.js
-   publishes the state as this class. */
-#sanctum-hud.hasBoss .toasts{ top:13.4vh; }
+/* The boss block (cartouche + forged bar + phase line) reaches ~11.3vh down
+   from the top edge, so the toast column has to stand off when it is up or the
+   encounter banner prints through the phase line. panels/Combat.js publishes
+   the state as this class; the offset is that reach plus the same ~2.7vh of air
+   the column had before the bar was rebuilt taller. */
+#sanctum-hud.hasBoss .toasts{ top:14.0vh; }
 #sanctum-hud .toast{ opacity:0; }
 #sanctum-hud .tIn{
   min-width:26vh; padding:.62vh 3.4vh; background-size:100% 100%;

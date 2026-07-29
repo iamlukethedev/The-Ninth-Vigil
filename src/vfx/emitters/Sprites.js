@@ -209,6 +209,7 @@ attribute vec4 iC1;       // (r,g,b, opacity) at death
 attribute vec4 iDyn;      // (drag, gravity, stretch, seed)
 attribute vec4 iShape;    // (shape, soft, align, sizeCurve)
 attribute vec2 iSway;     // (amplitude m, frequency Hz) — turbulent drift
+attribute float iAtten;   // crowd attenuation — see SpriteBatch#applyCrowdCap.
 
 varying vec2 vP;
 varying vec4 vCol;
@@ -316,7 +317,10 @@ void main() {
   // mid-opacity when its life runs out.
   float env = smoothstep( 0.0, 0.055, u ) * ( 1.0 - smoothstep( 0.80, 1.0, u ) );
 
-  vCol = vec4( mix( iC0.rgb, iC1.rgb, u ), mix( iC0.a, iC1.a, u ) * env * energy );
+  // iAtten is the per-particle share of the screen-region radiance budget. It
+  // multiplies opacity rather than colour so the hue and the shape's internal
+  // falloff are untouched — a crowded stack gets dimmer, never whiter.
+  vCol = vec4( mix( iC0.rgb, iC1.rgb, u ), mix( iC0.a, iC1.a, u ) * env * energy * iAtten );
   vViewZ = mv.z;
   vU = u;
   vSeed = iDyn.w;
@@ -351,6 +355,7 @@ uniform vec3 uFogColor;
 uniform float uFogMix;     // how much fog affects this batch
 uniform float uAdditive;   // 1 = additive blend (fog attenuates instead of tints)
 uniform float uMaxRad;     // scene-linear ceiling for one additive sprite
+uniform float uCoreGamma;  // additive-only alpha gamma — see the note below
 
 varying vec2 vP;
 varying vec4 vCol;
@@ -481,6 +486,29 @@ void main() {
   vec2 qe = abs( p );
   a *= ( 1.0 - smoothstep( 0.70, 1.0, qe.x ) ) * ( 1.0 - smoothstep( 0.70, 1.0, qe.y ) );
 
+  /*
+   * ---- additive core gamma: move the read from area into the centre ----
+   *
+   * Measured on the frozen night frame: the worst clipped pixel had FIVE
+   * additive sprites over it — four fireburst blast puffs at 0.405 peak plus
+   * its shock ring at 0.45 — summing to 2.07 scene-linear, 2.5x the 0.838
+   * bloom threshold. Every one of those five was individually legal.
+   *
+   * The reason they summed so flatly is the alpha *profile*. SMOKE resolves to
+   * pow(1-r, 1.55) inside its plateau, which is still at 34% of peak at half
+   * radius, so four of them centred within ~12 px add four broad slabs and the
+   * result is a wide region at a uniform value — a white coin. Raising the
+   * profile to a power > 1 keeps the peak at 1.0 (so a lone sprite is exactly
+   * as bright as it was) and pulls the shoulder down: at gamma 1.5, half-radius
+   * energy drops from 34% to 20%, so overlaps ramp toward a centre instead of
+   * stacking into a plateau, and the shape keeps visible internal structure
+   * after the tonemap.
+   *
+   * Additive only. The alpha batch is smoke and dust, where a broad shoulder is
+   * exactly the mass the frame needs, and it cannot sum past its own colour.
+   */
+  if ( uAdditive > 0.5 && uCoreGamma > 1.001 ) a = pow( a, uCoreGamma );
+
   if ( a <= 0.0 ) discard;
 
   /* ---- soft particles: fade where the sprite meets solid geometry ---- */
@@ -555,8 +583,45 @@ void main() {
 
 const FLOATS = {
   iPos: 3, iVel: 3, iSize: 3, iLife: 2, iRot: 2, iSway: 2,
-  iC0: 4, iC1: 4, iDyn: 4, iShape: 4,
+  iC0: 4, iC1: 4, iDyn: 4, iShape: 4, iAtten: 1,
 };
+
+/* ------------------------------------------------- crowd-cap shape tables */
+
+/*
+ * Peak of `a * tint` for each shape, i.e. the most one fragment of that shape
+ * can multiply its authored colour by. Read straight off the fragment shader
+ * above: GLOW/SMOKE/RING/STAR/SPLAT/WISP resolve to 1.0 at their centre, while
+ * SPARK, FLAME, SHARD, CHIP and DROP brighten their own cores with a tint (up
+ * to 1.85 for DROP's specular dot) and MOTE is deliberately capped at 0.62.
+ *
+ * The crowd cap has to know this or it under-counts exactly the hottest shapes.
+ */
+const SHAPE_PEAK = [1.0, 1.35, 1.0, 1.50, 1.45, 1.22, 1.85, 1.0, 1.0, 1.0, 1.22, 0.62, 1.0];
+
+/*
+ * Half-peak radius of each shape as a fraction of the quad half-width — the
+ * radius inside which the shape still carries >= 50 % of its peak, which is the
+ * only region where two sprites can genuinely stack into a clipped core.
+ *
+ * Solved from the shader: GLOW's pow(f,2.1)*(0.55+0.45 f^5) halves by r=0.17,
+ * MOTE's pow(f,3.4) by r=0.19, SMOKE's pow(f,1.55) by r=0.36. RING and SHAFT
+ * put their energy off-centre (an annulus at r=0.72, a column) so they get the
+ * whole footprint; the velocity-stretched shapes get a middling value because
+ * their screen footprint is a streak this model does not try to follow.
+ */
+const SHAPE_HOT = [0.20, 0.45, 0.38, 0.42, 0.35, 0.40, 0.40, 0.88, 0.30, 0.45, 0.80, 0.22, 0.40];
+
+/** Widest footprint, in grid tiles, that the crowd splat walks one tile at a
+    time. Past this it strides, which bounds the pass at O(sprites). */
+const MAX_SPAN = 14;
+
+/** GLSL smoothstep, so the crowd pass reproduces VERT's life envelope exactly. */
+function smoothstep01(e0, e1, x) {
+  const t = (x - e0) / (e1 - e0);
+  const c = t < 0 ? 0 : t > 1 ? 1 : t;
+  return c * c * (3 - 2 * c);
+}
 
 export class SpriteBatch {
   /**
@@ -603,6 +668,35 @@ export class SpriteBatch {
     this._exp = new Float32Array(this.capacity);
     this._exp.fill(-1e9);
 
+    /* --- crowd cap scratch. Allocated once; see applyCrowdCap. --- */
+    this.crowdCap = this.blend === 'add';   // Only additive can sum past 1.
+    /*
+     * Grid rows across the frame height, so the tile is a constant fraction of
+     * the frame and the cap behaves identically at any resolution or DPR: 90
+     * rows is a 10 px tile at 900p.
+     *
+     * The tile size is the one number that matters here. Too coarse and a spray
+     * of 1 px embers spread across the tile is counted as if all of them landed
+     * on the same pixel — measured at a 40 px tile, `combat` reported a 12.5
+     * scene-linear "stack" that was really 30 separate sub-pixel sparks, and
+     * capping it would have dimmed a spark shower that never clipped. Too fine
+     * and the splat loop gets expensive. 10 px sits just under the smallest hot
+     * footprint a sprite gets after the sub-pixel floor (uMinPx 2.4 -> ~1.2 px
+     * radius) and comfortably under a blast puff's (~4-5 px).
+     */
+    this.crowdRows = 90;
+    this.crowdHeadroom = 1.15;        // A real stack may sit 15 % over one sprite.
+    this._cwGrid = null;
+    this._cwGw = 0;
+    this._cwGh = 0;
+    this._cwCx = new Float32Array(this.capacity);
+    this._cwCy = new Float32Array(this.capacity);
+    this._cwR = new Float32Array(this.capacity);
+    this._cwPk = new Float32Array(this.capacity);
+    this._cwIdx = new Int32Array(this.capacity);
+    /** live particles the last cap pass touched, and how hard it had to pull. */
+    this.crowdStats = { live: 0, capped: 0, worst: 0, minAtten: 1 };
+
     const additive = this.blend === 'add';
     this.uniforms = {
       uTime: { value: 0 },
@@ -625,6 +719,8 @@ export class SpriteBatch {
          ACES maps to ~0.85 at the VFX reference exposure gain of 1.85x;
          VFXSystem re-derives it from the pipeline's live gain every frame. */
       uMaxRad: { value: 0.84 },
+      /* 1.0 disables the additive core gamma. See the note in FRAG. */
+      uCoreGamma: { value: additive ? 1.5 : 1.0 },
     };
 
     this.material = new THREE.ShaderMaterial({
@@ -692,6 +788,10 @@ export class SpriteBatch {
     a = this.arrays.iShape;
     a[o] = s.shape; a[o + 1] = s.soft; a[o + 2] = s.align; a[o + 3] = s.sizeCurve;
 
+    /* Full share until the crowd pass has looked at it, so a spawn is never
+       dark for a frame on a batch that has the cap switched off. */
+    this.arrays.iAtten[i] = 1;
+
     if (i < this._dirtyLo) this._dirtyLo = i;
     if (i > this._dirtyHi) this._dirtyHi = i;
     if (i + 1 > this._hi) this._hi = i + 1;
@@ -717,6 +817,207 @@ export class SpriteBatch {
     if (now > this._maxExp) { this._hi = 0; this._head = 0; }
     this.geometry.instanceCount = this._hi;
     this.uniforms.uTime.value = now;
+  }
+
+  /**
+   * Cap the ACCUMULATED additive radiance in every screen region.
+   *
+   * ### The bug this fixes
+   *
+   * `uMaxRad` bounds what ONE sprite may write. Additive blending then sums N
+   * of them with no shared budget, and the recipes deliberately author most
+   * layers well under the ceiling (so the per-fragment roll-off, whose knee is
+   * at 0.55 * uMaxRad, never even engages). Measured on the frozen `night`
+   * frame at 1600x900: the worst clipped pixel had five additive sprites over
+   * it summing to 2.07 scene-linear against a 0.838 bloom threshold and a ~1.0
+   * ACES clip point. `fireburst` alone emits 14-20 blast puffs from a single
+   * point, so a stack that deep is not an accident — it is what the recipe asks
+   * for, and the budget was simply never expressed per screen region.
+   *
+   * ### What this does
+   *
+   * Bin every live particle's *half-peak footprint* into a 10 px grid, sum the
+   * premultiplied peak radiance each one can put there, and give every particle
+   * the share of the budget that makes the busiest tile it touches land on the
+   * ceiling. Uniform scaling within a tile, so:
+   *
+   *  · a lone sprite (tile sum <= budget) is returned untouched — this is not a
+   *    global dimmer, and ordinary sparks, embers and trails never see it;
+   *  · a genuine stack has its AGGREGATE peak land at the ceiling, which is the
+   *    value ACES maps to ~0.85, so a fireball core reads as a hot centre with
+   *    a falling-off halo instead of a clipped plateau;
+   *  · hue is preserved, because every channel is scaled together;
+   *  · the ordering inside a stack is preserved, because the scale is uniform,
+   *    so the core is still brighter than its own halo.
+   *
+   * `crowdHeadroom` lets a real overlap sit 15 % over one sprite's ceiling. At
+   * the worst gain this project ships (3.30x in `inventory`) that is 0.58 * 3.30
+   * = 1.92 post-exposure, which ACES maps to 0.87 — over the bloom threshold, so
+   * overlaps still earn a halo, and nowhere near the clip point.
+   *
+   * Cost: one pass over the live range, no allocation, ~0.05 ms at 800 live
+   * particles. Deterministic: reads only particle state, the camera and the
+   * viewport.
+   *
+   * @param {THREE.Camera} camera
+   * @param {number} viewW viewport width in logical pixels
+   * @param {number} viewH viewport height in logical pixels
+   * @param {number} ceiling scene-linear ceiling one sprite may write (uMaxRad)
+   */
+  applyCrowdCap(camera, viewW, viewH, ceiling) {
+    const st = this.crowdStats;
+    st.live = 0; st.capped = 0; st.worst = 0; st.minAtten = 1;
+    const hi = this._hi;
+    if (!this.crowdCap || hi <= 0 || !camera || !(viewH > 0) || !(viewW > 0)) return;
+
+    const now = this._now;
+    const A = this.arrays;
+    const atten = A.iAtten;
+    const tile = Math.max(4, viewH / Math.max(8, this.crowdRows));
+    const gw = Math.max(1, Math.ceil(viewW / tile));
+    const gh = Math.max(1, Math.ceil(viewH / tile));
+    if (!this._cwGrid || this._cwGw !== gw || this._cwGh !== gh) {
+      this._cwGrid = new Float32Array(gw * gh);
+      this._cwGw = gw; this._cwGh = gh;
+    }
+    const grid = this._cwGrid;
+    grid.fill(0);
+
+    // `matrixWorldInverse` is whatever the last render left, so a moving camera
+    // bins one frame late. At a 10 px tile and this camera's pan speed that is
+    // a third of a tile, which only ever misattributes a stack to the tile next
+    // door; reading it instead of recomputing keeps this pass free of side
+    // effects on shared state.
+    const e = camera.matrixWorldInverse.elements;
+    const p = camera.projectionMatrix.elements;
+    const halfW = viewW * 0.5;
+    const halfH = viewH * 0.5;
+    const minPx = this.uniforms.uMinPx.value;
+    const pxScale = this.uniforms.uPxScale.value;
+
+    const cx = this._cwCx, cy = this._cwCy, rr = this._cwR, pk = this._cwPk, idx = this._cwIdx;
+    let n = 0;
+
+    for (let i = 0; i < hi; i++) {
+      const t0 = A.iLife[i * 2];
+      const life = A.iLife[i * 2 + 1];
+      const age = now - t0;
+      if (age < 0) continue;
+      const u = age / (life > 1e-4 ? life : 1e-4);
+      if (u >= 1) continue;
+
+      /* --- position: the same closed form the vertex shader integrates --- */
+      const k = A.iDyn[i * 4];
+      const f = k > 1e-3 ? (1 - Math.exp(-k * age)) / k : age;
+      const o3 = i * 3;
+      let wx = A.iPos[o3] + A.iVel[o3] * f;
+      let wy = A.iPos[o3 + 1] + A.iVel[o3 + 1] * f - 0.5 * A.iDyn[i * 4 + 1] * age * age;
+      let wz = A.iPos[o3 + 2] + A.iVel[o3 + 2] * f;
+      const swayA = A.iSway[i * 2];
+      if (swayA > 1e-4) {
+        const ph = A.iDyn[i * 4 + 3] * 6.2831853;
+        const sa = swayA * u;
+        const w = A.iSway[i * 2 + 1] * age;
+        wx += Math.sin(w + ph) * sa;
+        wz += Math.cos(w * 0.83 + ph * 1.7) * sa;
+        wy += Math.sin(w * 0.53 + ph * 0.7) * sa * 0.35;
+      }
+
+      /* --- project --- */
+      const ex = e[0] * wx + e[4] * wy + e[8] * wz + e[12];
+      const ey = e[1] * wx + e[5] * wy + e[9] * wz + e[13];
+      const ez = e[2] * wx + e[6] * wy + e[10] * wz + e[14];
+      const cw = p[3] * ex + p[7] * ey + p[11] * ez + p[15];
+      if (cw <= 1e-4) continue;
+      const depth = -ez;
+      if (depth <= 0.05) continue;
+      const sx = halfW + ((p[0] * ex + p[4] * ey + p[8] * ez + p[12]) / cw) * halfW;
+      const sy = halfH - ((p[1] * ex + p[5] * ey + p[9] * ez + p[13]) / cw) * halfH;
+
+      /* --- size, with the shader's sub-pixel floor and its energy payback --- */
+      const curve = A.iShape[i * 4 + 3];
+      const su = Math.abs(curve - 1) < 1e-3 ? u : Math.pow(u, curve);
+      const sz0 = A.iSize[o3], sz1 = A.iSize[o3 + 1];
+      const sz = sz0 + (sz1 - sz0) * su;
+      const minWorld = minPx * pxScale * depth;
+      const szC = sz > minWorld ? sz : minWorld;
+      const energy = szC > sz + 1e-5 ? Math.pow(sz / szC, 1.5) : 1;
+
+      /* --- peak premultiplied radiance, matching VERT's vCol --- */
+      const o4 = i * 4;
+      const env = smoothstep01(0, 0.055, u) * (1 - smoothstep01(0.80, 1.0, u));
+      if (env <= 0) continue;
+      const alpha = (A.iC0[o4 + 3] + (A.iC1[o4 + 3] - A.iC0[o4 + 3]) * u) * env * energy;
+      if (alpha <= 1e-4) continue;
+      const cr = A.iC0[o4] + (A.iC1[o4] - A.iC0[o4]) * u;
+      const cg = A.iC0[o4 + 1] + (A.iC1[o4 + 1] - A.iC0[o4 + 1]) * u;
+      const cb = A.iC0[o4 + 2] + (A.iC1[o4 + 2] - A.iC0[o4 + 2]) * u;
+      const sh = A.iShape[o4] | 0;
+      const peak = Math.max(cr, cg, cb) * alpha * (SHAPE_PEAK[sh] ?? 1);
+      if (peak <= 1e-4) continue;
+
+      /* --- half-peak footprint in pixels ---
+         SHAPE_HOT was solved on the un-sharpened profile, so with the additive
+         core gamma on this over-estimates the footprint slightly. That is the
+         safe direction: the cap sees a little more coincidence than there is. */
+      const rpx = Math.max(0.6, (szC * 0.5) / (pxScale * depth) * (SHAPE_HOT[sh] ?? 0.4));
+
+      cx[n] = sx; cy[n] = sy; rr[n] = rpx; pk[n] = peak; idx[n] = i;
+      n++;
+
+      /* Splat the footprint. A sprite wider than MAX_SPAN tiles is walked with a
+         stride so this stays O(sprites) rather than O(area); that under-samples
+         a very large ring's contribution to its neighbours, which only ever
+         under-caps, and a shape that large is one thin layer anyway. */
+      const t0x = Math.max(0, Math.floor((sx - rpx) / tile));
+      const t1x = Math.min(gw - 1, Math.floor((sx + rpx) / tile));
+      const t0y = Math.max(0, Math.floor((sy - rpx) / tile));
+      const t1y = Math.min(gh - 1, Math.floor((sy + rpx) / tile));
+      const stride = Math.max(1, Math.ceil((t1x - t0x + 1) / MAX_SPAN), Math.ceil((t1y - t0y + 1) / MAX_SPAN));
+      for (let ty = t0y; ty <= t1y; ty += stride) {
+        const row = ty * gw;
+        for (let tx = t0x; tx <= t1x; tx += stride) grid[row + tx] += peak;
+      }
+    }
+
+    st.live = n;
+    if (!n) return;
+
+    const budget = Math.max(1e-3, ceiling * this.crowdHeadroom);
+    for (let j = 0; j < n; j++) {
+      const sx = cx[j], sy = cy[j], rpx = rr[j];
+      const t0x = Math.max(0, Math.floor((sx - rpx) / tile));
+      const t1x = Math.min(gw - 1, Math.floor((sx + rpx) / tile));
+      const t0y = Math.max(0, Math.floor((sy - rpx) / tile));
+      const t1y = Math.min(gh - 1, Math.floor((sy + rpx) / tile));
+      const stride = Math.max(1, Math.ceil((t1x - t0x + 1) / MAX_SPAN), Math.ceil((t1y - t0y + 1) / MAX_SPAN));
+      let worst = pk[j];
+      for (let ty = t0y; ty <= t1y; ty += stride) {
+        const row = ty * gw;
+        for (let tx = t0x; tx <= t1x; tx += stride) {
+          const v = grid[row + tx];
+          if (v > worst) worst = v;
+        }
+      }
+      let a = 1;
+      if (worst > budget) {
+        // Exponential shoulder rather than a hard ratio: a stack that is only
+        // just over budget is barely touched, so nothing pops as a particle
+        // crosses a tile boundary, and the pull is C1-continuous at the knee.
+        a = budget / worst;
+        a = a + (1 - a) * Math.exp(-(worst / budget - 1) * 2.2);
+        st.capped++;
+        if (worst > st.worst) st.worst = worst;
+        if (a < st.minAtten) st.minAtten = a;
+      }
+      atten[idx[j]] = a;
+    }
+
+    /* One full-range upload: every live slot's share can change every frame. */
+    const attr = this.attrs.iAtten;
+    attr.clearUpdateRanges();
+    attr.addUpdateRange(0, hi);
+    attr.needsUpdate = true;
   }
 
   /** Shift every stored spawn time so `uTime` never loses float precision. */
