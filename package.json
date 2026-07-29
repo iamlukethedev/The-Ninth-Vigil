@@ -1,0 +1,25 @@
+{
+  "name": "sanctum",
+  "version": "1.0.0",
+  "description": "SANCTUM — a Diablo 4-class isometric action RPG in Three.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5190",
+    "build": "vite build",
+    "preview": "vite preview --port 5188 --strictPort",
+    "shot": "node tools/shot.mjs",
+    "shots": "node tools/shot.mjs --all --w=1920 --h=1080",
+    "sheet": "node tools/sheet.mjs --analyze",
+    "debug": "node tools/debug.mjs",
+    "check": "node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze"
+  },
+  "keywords": ["threejs", "arpg", "webgl"],
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0",
+    "vite": "^8.1.5"
+  }
+}
