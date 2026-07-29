@@ -59,6 +59,47 @@ function pathRound(p, x, y, w, h, r) {
   p.closePath();
 }
 
+/**
+ * Boss-bar geometry, published because it is read from TWO places that must
+ * agree to the pixel: the raster in `Ornament.bossTrough`, and the stylesheet
+ * in panels/Combat.js that lays the liquid and the phase stones over it. When
+ * those two drifted apart the fill sat proud of its own channel, which is the
+ * single most obvious way to make a bar look unfinished.
+ *
+ * Vertical values are fractions of the element HEIGHT, horizontal ones of its
+ * WIDTH, and `aspect` is the width-to-height ratio the raster is authored at —
+ * the element must be given the same ratio or the forged end caps stretch.
+ */
+export const BOSS_GEO = {
+  /** authored raster size, and therefore the element's required aspect */
+  rasterW: 1500,
+  rasterH: 66,
+  get aspect() { return this.rasterW / this.rasterH; },
+  /** the beam's own top/bottom inset — the caps and gates stand proud of it */
+  beamT: 0.13,
+  /** thickness of the beam's rails around the channel */
+  band: 0.115,
+  /** the channel interior: what the liquid element is clipped to */
+  clipX: 0.0607,
+  clipY: 0.245,
+  /** phase gates, as health fractions along the channel */
+  gates: [0.25, 0.5, 0.75],
+  /** width of one gate boss, as a fraction of the element HEIGHT */
+  gateW: 0.58,
+  /** radius of the stone socket in a gate, as a fraction of element HEIGHT */
+  stoneR: 0.155,
+};
+
+/** Centre of a phase gate as a fraction of the bar element's width. */
+export const bossGateX = (g) => BOSS_GEO.clipX + g * (1 - BOSS_GEO.clipX * 2);
+
+/**
+ * Box for the stone overlay, as a fraction of the bar element's HEIGHT.
+ * `phaseStone` draws its cabochon at 0.30 of its own raster, so the overlay has
+ * to be scaled up by the reciprocal for the stone to land in the socket.
+ */
+export const BOSS_STONE_H = (BOSS_GEO.stoneR * 2) / 0.60;
+
 /** Heraldic shield outline (used for slot silhouettes + rank badges). */
 function pathShield(ctx, x, y, w, h) {
   ctx.beginPath();
@@ -205,6 +246,455 @@ export class Ornament {
       bo.addColorStop(1, rgba(colour, 0.22));
       ctx.fillStyle = bo; ctx.fillRect(0, H * 0.72, w, H * 0.28);
       this.a.layer(ctx, 'grain', { seed: 12, mode: 'overlay', alpha: 0.22, scale: 0.6 });
+    });
+  }
+
+  /* =================================================== boss encounter bar */
+
+  /**
+   * The boss bar's forged trough.
+   *
+   * This is deliberately NOT `barFrame`. `barFrame` is chrome for a 9-px xp
+   * strip and a 7-px nameplate bar: one iron band, a gold hairline and two
+   * rivets, which is all those read at. The encounter bar is the largest single
+   * piece of furniture in a fight and it was getting the same treatment, so next
+   * to the orbs — which have glass, a cast bezel, flutes and a crown — it read
+   * as a coloured strip laid over the frame rather than as part of the same
+   * object. Captured proof: shots/_debug/laneF_bar_before.png.
+   *
+   * So it is built as an actual object, in the order a smith would: a beam,
+   * caps forged onto its ends, a channel sunk into its face, a gilt fillet
+   * around the channel, notches filed along the lip and phase bosses riveted
+   * across it. Every one of those is a silhouette break, and silhouette breaks
+   * are what stop a long horizontal object reading as a rectangle.
+   *
+   * The interior is transparent: the liquid element behind shows through, and
+   * only the recess's own occlusion is painted over it.
+   */
+  bossTrough(w, h, o = {}) {
+    const gates = o.gates ?? BOSS_GEO.gates;
+    const ticks = o.ticks ?? 20;
+    const key = `bosstr:${o.tag ?? 'a'}:${gates.join('_')}:${ticks}:${o.metal ?? 'iron'}`;
+    return this.a.uri(key, w, h, (ctx, W, H) => {
+      const bodyT = H * BOSS_GEO.beamT;
+      const bodyH = H * (1 - BOSS_GEO.beamT * 2);
+      const band = H * BOSS_GEO.band;
+      const cham = bodyH * 0.34;
+      const tx = W * BOSS_GEO.clipX;
+      const ty = H * BOSS_GEO.clipY;
+      const th = H * (1 - BOSS_GEO.clipY * 2);
+      const BODY = { x: 0, y: bodyT, w: W, h: bodyH };
+      const TROUGH = { x: tx, y: ty, w: W - tx * 2, h: th };
+
+      const outer = new Path2D();
+      pathCham(outer, 1, bodyT, W - 2, bodyH, cham);
+      const inner = new Path2D();
+      pathCham(inner, tx, ty, W - tx * 2, th, Math.max(1.5, th * 0.30));
+
+      /* ---- 1. the beam. Lit per RUN, not per corner: a rail 23 times longer
+         than it is tall has its whole top edge turned into a key at the upper
+         left, and a corner-to-corner falloff would light 60 px of it and leave
+         the other 1400 at base value. */
+      const bandPath = new Path2D();
+      bandPath.addPath(outer); bandPath.addPath(inner);
+      ctx.save();
+      ctx.clip(bandPath, 'evenodd');
+      this.a.material(ctx, 0, bodyT, W, bodyH, o.metal ?? 'iron', { seed: 44, scale: 0.26 });
+      this.a.runLight(ctx, band * 0.94, BODY, {
+        hi: 0.70, lo: 0.80, crest: 0.34, tail: 0.28, loBand: band * 1.20,
+      });
+      /* The tonal ramp the run lighting cannot supply. `runLight` shades each
+         RUN against its own edge, which is correct for the chamfers but leaves
+         the rails at the material's own mid value along their whole length — and
+         a 675-px object sitting at one mid grey in a frame with a mean of 0.12
+         reads as a pale strip laid on top of the game rather than as iron in it.
+         This is the object's overall stand in the key: lit crown, shaded belly. */
+      const tone = ctx.createLinearGradient(0, bodyT, 0, bodyT + bodyH);
+      tone.addColorStop(0, 'rgba(255,244,214,0.13)');
+      tone.addColorStop(0.30, 'rgba(0,0,0,0.06)');
+      tone.addColorStop(0.68, 'rgba(0,0,0,0.26)');
+      tone.addColorStop(1, 'rgba(0,0,0,0.52)');
+      ctx.fillStyle = tone;
+      ctx.fillRect(0, bodyT, W, bodyH);
+      ctx.restore();
+
+      /* ---- 2. rims and the raised outer chamfer */
+      ctx.lineWidth = Math.max(2, H * 0.036);
+      ctx.strokeStyle = 'rgba(3,4,6,0.95)';
+      ctx.stroke(outer);
+      this.a.edgeBevel(ctx, outer, BODY, {
+        width: Math.max(1.5, band * 0.34), offset: band * 0.16, hiA: 0.70, loA: 0.72,
+      });
+      this.a.edgeBevel(ctx, outer, BODY, { width: 1.0, offset: 0.6, hiA: 0.78, loA: 0.30 });
+
+      /* ---- 3. the channel: occlusion under the top lip, a clean middle so the
+         liquid keeps its own value, and a darker foot. A flat wash over the
+         whole recess would cancel the fill's gloss and put us back where we
+         started. */
+      ctx.save();
+      ctx.clip(inner);
+      const oc = ctx.createLinearGradient(0, ty, 0, ty + th);
+      oc.addColorStop(0, 'rgba(0,0,0,0.78)');
+      oc.addColorStop(0.17, 'rgba(0,0,0,0.28)');
+      oc.addColorStop(0.36, 'rgba(0,0,0,0.05)');
+      oc.addColorStop(0.78, 'rgba(0,0,0,0.07)');
+      oc.addColorStop(1, 'rgba(0,0,0,0.50)');
+      ctx.fillStyle = oc;
+      ctx.fillRect(0, ty, W, th);
+      /* the ends of a sunk channel are in shade from the cap that closes them */
+      for (const dir of [1, -1]) {
+        const x0 = dir > 0 ? tx : W - tx;
+        const eg = ctx.createLinearGradient(x0, 0, x0 + dir * th * 1.6, 0);
+        eg.addColorStop(0, 'rgba(0,0,0,0.62)');
+        eg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = eg;
+        ctx.fillRect(Math.min(x0, x0 + dir * th * 1.6), ty, th * 1.6, th);
+      }
+      ctx.restore();
+      this.a.edgeBevel(ctx, inner, TROUGH, {
+        mode: 'inset',
+        loW: Math.max(1.8, band * 0.66), loOff: Math.max(1, band * 0.28), loA: 0.94,
+        hiW: Math.max(0.9, band * 0.22), hiOff: Math.max(0.5, band * 0.10), hiA: 0.52,
+      });
+
+      /* ---- 4. gilt fillet around the channel */
+      const gk = band * 0.44;
+      const fillet = new Path2D();
+      pathCham(fillet, tx - gk, ty - gk, W - (tx - gk) * 2, th + gk * 2, Math.max(1, th * 0.30));
+      this.a.goldStroke(ctx, BODY, Math.max(1.5, band * 0.30), fillet,
+        { specW: 0.40, specA: 0.98, wear: 0.48, seed: 17 });
+
+      /* ---- 5. notches filed along both lips. These are the "segment ticks":
+         they give the eye a scale to read the remaining fraction against, which
+         a smooth bar cannot do. Every fifth one is deeper. */
+      ctx.save();
+      ctx.clip(inner);
+      for (let i = 1; i < ticks; i++) {
+        const x = Math.round(tx + (W - tx * 2) * (i / ticks)) + 0.5;
+        const big = i % 5 === 0;
+        const len = th * (big ? 0.40 : 0.22);
+        ctx.beginPath();
+        ctx.moveTo(x, ty); ctx.lineTo(x, ty + len);
+        ctx.lineWidth = big ? 2.0 : 1.2;
+        ctx.strokeStyle = 'rgba(0,0,0,0.60)';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 1.3, ty); ctx.lineTo(x + 1.3, ty + len);
+        ctx.lineWidth = big ? 1.2 : 0.8;
+        ctx.strokeStyle = 'rgba(238,216,166,0.22)';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, ty + th); ctx.lineTo(x, ty + th - len * 0.60);
+        ctx.lineWidth = big ? 1.6 : 1.0;
+        ctx.strokeStyle = 'rgba(0,0,0,0.46)';
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      /* ---- 6. phase bosses, riveted across the beam at each gate */
+      for (const g of gates) this._bossGate(ctx, tx + (W - tx * 2) * g, H);
+
+      /* ---- 7. the forged end caps */
+      for (const dir of [1, -1]) this._bossCap(ctx, dir > 0 ? 0 : W, dir, H);
+    });
+  }
+
+  /**
+   * One phase gate: a lozenge boss forged across the beam with a socket sunk
+   * into it. The socket is drawn EMPTY here — the stone that fills it while the
+   * gate is still sealed is `phaseStone`, laid over the top as its own element,
+   * because whether a gate has broken is state and this raster is not.
+   *
+   * A gate has to break the bar's silhouette to read as inlaid rather than as a
+   * dot printed on it, so the lozenge stands proud of the beam top and bottom.
+   */
+  _bossGate(ctx, cx, H) {
+    const hw = H * BOSS_GEO.gateW * 0.5;
+    const hh = H * 0.455;
+    const cy = H * 0.5;
+    const p = new Path2D();
+    p.moveTo(cx, cy - hh);
+    p.lineTo(cx + hw, cy - hh * 0.40);
+    p.lineTo(cx + hw, cy + hh * 0.40);
+    p.lineTo(cx, cy + hh);
+    p.lineTo(cx - hw, cy + hh * 0.40);
+    p.lineTo(cx - hw, cy - hh * 0.40);
+    p.closePath();
+    const BOX = { x: cx - hw, y: cy - hh, w: hw * 2, h: hh * 2 };
+    ctx.save();
+    ctx.clip(p);
+    /* TWO FACETS meeting at a vertical crest, authored as an explicit ramp
+       rather than a tiled material. The boss is ~15 device px wide by the time
+       the bar is on screen, and at that size a 256-px material tile resolves to
+       one flat tone — the previous pass read as a grey blob with a hole in it.
+       A chisel's own cross-section is the only thing that survives the scale. */
+    const fx = ctx.createLinearGradient(cx - hw, 0, cx + hw, 0);
+    fx.addColorStop(0, '#161b21');
+    fx.addColorStop(0.16, '#39424c');
+    fx.addColorStop(0.44, '#8e98a5');
+    fx.addColorStop(0.52, '#a2acb8');
+    fx.addColorStop(0.62, '#3d454f');
+    fx.addColorStop(1, '#0b0e12');
+    ctx.fillStyle = fx;
+    ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
+    const fy = ctx.createLinearGradient(0, cy - hh, 0, cy + hh);
+    fy.addColorStop(0, 'rgba(255,248,226,0.24)');
+    fy.addColorStop(0.34, 'rgba(0,0,0,0)');
+    fy.addColorStop(1, 'rgba(0,0,0,0.66)');
+    ctx.fillStyle = fy;
+    ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
+    ctx.restore();
+    ctx.lineWidth = Math.max(1.6, H * 0.034);
+    ctx.strokeStyle = 'rgba(2,3,5,0.96)';
+    ctx.stroke(p);
+    this.a.edgeBevel(ctx, p, BOX, {
+      width: Math.max(1.2, hw * 0.26), offset: hw * 0.12, hiA: 0.78, loA: 0.80,
+    });
+    /* the socket: a drilled seat with its own inset bevel and a black floor */
+    const sr = H * BOSS_GEO.stoneR;
+    const sock = new Path2D();
+    sock.arc(cx, cy, sr, 0, TAU);
+    ctx.save();
+    ctx.clip(sock);
+    const sg = ctx.createRadialGradient(cx - sr * 0.3, cy - sr * 0.36, sr * 0.05, cx, cy, sr);
+    sg.addColorStop(0, '#141922');
+    sg.addColorStop(0.6, '#080a0e');
+    sg.addColorStop(1, '#030406');
+    ctx.fillStyle = sg;
+    ctx.fillRect(cx - sr, cy - sr, sr * 2, sr * 2);
+    ctx.restore();
+    this.a.edgeBevel(ctx, sock, { x: cx - sr, y: cy - sr, w: sr * 2, h: sr * 2 }, {
+      mode: 'inset',
+      loW: Math.max(1, sr * 0.52), loA: 0.96,
+      hiW: Math.max(0.7, sr * 0.26), hiA: 0.58,
+    });
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.90)';
+    ctx.stroke(sock);
+  }
+
+  /**
+   * A forged terminal on one end of the beam. `dir` is +1 for the left cap and
+   * -1 for the right, so the same spearhead profile is mirrored rather than
+   * authored twice and allowed to drift.
+   */
+  _bossCap(ctx, x0, dir, H) {
+    const cw = H * 1.24;
+    const cy = H * 0.5;
+    const X = (k) => x0 + dir * cw * k;
+    /* A spearhead, not a paddle: one real point, shoulders swept back off it,
+       and a shorter bevelled run into the beam. Kept to a single convex
+       silhouette on purpose — an earlier profile pinched a waist behind the
+       shoulders, and at 25 device px the two extra vertices read as a notch cut
+       out of the cap rather than as forging. */
+    const p = new Path2D();
+    p.moveTo(X(0.00), cy);
+    p.lineTo(X(0.30), H * 0.055);
+    p.lineTo(X(0.80), H * 0.175);
+    p.lineTo(X(1.00), H * 0.42);
+    p.lineTo(X(1.00), H * 0.58);
+    p.lineTo(X(0.80), H * 0.825);
+    p.lineTo(X(0.30), H * 0.945);
+    p.closePath();
+    const BOX = { x: Math.min(x0, X(1)), y: 0, w: cw, h: H };
+    ctx.save();
+    ctx.clip(p);
+    this.a.material(ctx, BOX.x, 0, cw, H, 'iron', { seed: 63, scale: 0.10 });
+    this.a.runLight(ctx, H * 0.24, BOX, { hi: 0.62, lo: 0.80, crest: 0.36, tail: 0.28 });
+    /* the cap is forged thicker than the beam, so its belly falls further */
+    const tone = ctx.createLinearGradient(0, 0, 0, H);
+    tone.addColorStop(0, 'rgba(255,246,220,0.16)');
+    tone.addColorStop(0.34, 'rgba(0,0,0,0.06)');
+    tone.addColorStop(0.72, 'rgba(0,0,0,0.30)');
+    tone.addColorStop(1, 'rgba(0,0,0,0.58)');
+    ctx.fillStyle = tone;
+    ctx.fillRect(BOX.x, 0, cw, H);
+    ctx.restore();
+    ctx.lineWidth = Math.max(1.6, H * 0.034);
+    ctx.strokeStyle = 'rgba(3,4,6,0.96)';
+    ctx.stroke(p);
+    this.a.edgeBevel(ctx, p, BOX, {
+      width: Math.max(1.4, H * 0.050), offset: H * 0.020, hiA: 0.74, loA: 0.78,
+    });
+    this.a.edgeBevel(ctx, p, BOX, { width: 1.0, offset: 0.6, hiA: 0.82, loA: 0.30 });
+    /* a gilt keel down the cap's spine, then the rivet that holds it on */
+    const keel = new Path2D();
+    keel.moveTo(X(0.16), cy);
+    keel.lineTo(X(0.94), cy);
+    this.a.goldStroke(ctx, BOX, Math.max(1.2, H * 0.034), keel, { specW: 0.42, wear: 0.44, seed: 29 });
+    this.a.rivet(ctx, X(0.52), cy, Math.max(1.6, H * 0.098), 7);
+  }
+
+  /**
+   * The stone in a phase socket, shown only while that gate is still sealed.
+   *
+   * A real cabochon in a gold collet, plus the coloured bounce the surrounding
+   * steel would pick up from it — the bounce is what makes the stone read as
+   * set INTO the boss rather than stuck on it, and it costs one gradient.
+   */
+  phaseStone(size, colour = '#d8452c') {
+    return this.a.uri(`bossstone:${colour}`, size, size, (ctx, S) => {
+      const c = S * 0.5;
+      const r = S * 0.30;
+      const halo = ctx.createRadialGradient(c, c, r * 0.90, c, c, r * 1.66);
+      halo.addColorStop(0, rgba(colour, 0.46));
+      halo.addColorStop(1, rgba(colour, 0));
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(c, c, r * 1.66, 0, TAU); ctx.fill();
+      this.a.gem(ctx, c, c, r, colour);
+    });
+  }
+
+  /**
+   * The name plate: a cast cartouche with pointed ends, a gilt border and a
+   * field sunk below it for the lettering.
+   *
+   * It replaces a leather ribbon that rendered as a pale sand-coloured band —
+   * the single lightest object in the boss frame, and near enough featureless
+   * at the size it is actually seen. A dark cast field is both truer to the
+   * reference and the only surface gilded lettering has any contrast against.
+   */
+  bossCartouche(w, h, o = {}) {
+    return this.a.uri(`bosscart:${o.tag ?? 'a'}`, w, h, (ctx, W, H) => {
+      const tip = H * 0.72;
+      const BOX = { x: 0, y: 0, w: W, h: H };
+      const p = new Path2D();
+      p.moveTo(0, H * 0.5);
+      p.lineTo(tip * 0.72, H * 0.10);
+      p.lineTo(W - tip * 0.72, H * 0.10);
+      p.lineTo(W, H * 0.5);
+      p.lineTo(W - tip * 0.72, H * 0.90);
+      p.lineTo(tip * 0.72, H * 0.90);
+      p.closePath();
+
+      ctx.save();
+      ctx.clip(p);
+      this.a.material(ctx, 0, 0, W, H, 'iron', { seed: 71, scale: 0.22 });
+      this.a.runLight(ctx, H * 0.20, BOX, { hi: 0.62, lo: 0.72, crest: 0.34, tail: 0.30 });
+      /* the plate is darkened toward its middle so the type has a field to sit
+         on that is quieter than the rails around it */
+      const vg = ctx.createRadialGradient(W * 0.42, H * 0.40, H * 0.10, W * 0.5, H * 0.5, W * 0.56);
+      vg.addColorStop(0, 'rgba(0,0,0,0.30)');
+      vg.addColorStop(0.55, 'rgba(0,0,0,0.52)');
+      vg.addColorStop(1, 'rgba(0,0,0,0.20)');
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+
+      ctx.lineWidth = Math.max(2, H * 0.030);
+      ctx.strokeStyle = 'rgba(3,4,6,0.95)';
+      ctx.stroke(p);
+      this.a.edgeBevel(ctx, p, BOX, {
+        width: Math.max(1.8, H * 0.075), offset: H * 0.026, hiA: 0.96, loA: 0.70,
+      });
+      this.a.edgeBevel(ctx, p, BOX, { width: 1.2, offset: 0.6, hiA: 1.0, loA: 0.28 });
+
+      /* the sunk field, then the gilt border that frames it */
+      const k = H * 0.19;
+      const fld = new Path2D();
+      fld.moveTo(k * 0.7, H * 0.5);
+      fld.lineTo(tip * 0.72 + k * 0.5, H * 0.10 + k);
+      fld.lineTo(W - tip * 0.72 - k * 0.5, H * 0.10 + k);
+      fld.lineTo(W - k * 0.7, H * 0.5);
+      fld.lineTo(W - tip * 0.72 - k * 0.5, H * 0.90 - k);
+      fld.lineTo(tip * 0.72 + k * 0.5, H * 0.90 - k);
+      fld.closePath();
+      ctx.save();
+      ctx.clip(fld);
+      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      this.a.edgeBevel(ctx, fld, BOX, {
+        mode: 'inset',
+        loW: Math.max(1.4, H * 0.055), loOff: Math.max(0.8, H * 0.022), loA: 0.92,
+        hiW: Math.max(0.8, H * 0.020), hiOff: 0.6, hiA: 0.50,
+      });
+      this.a.goldStroke(ctx, BOX, Math.max(1.4, H * 0.038), fld,
+        { specW: 0.42, specA: 1.0, wear: 0.46, seed: 41 });
+
+      /* bosses in the two points, where a real plate would be pinned */
+      const rr = Math.max(1.6, H * 0.085);
+      this.a.rivet(ctx, tip * 0.40, H * 0.5, rr, 11);
+      this.a.rivet(ctx, W - tip * 0.40, H * 0.5, rr, 13);
+    });
+  }
+
+  /**
+   * Liquid for the encounter bar. Same contract as `barFill` — a purely
+   * vertical section, so width-animating the element cannot stretch anything —
+   * but authored with the range a 30-px trough can actually show: a hot crown
+   * under the meniscus, the body colour through the middle, and a foot that
+   * goes nearly black where the channel occludes it.
+   */
+  bossFill(h, colour, o = {}) {
+    const W = 24;
+    return this.a.uri(`bossfill:${colour}:${o.tag ?? 'a'}`, W, h, (ctx, w, H) => {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, lighten(colour, 0.66));
+      g.addColorStop(0.10, lighten(colour, 0.42));
+      g.addColorStop(0.30, lighten(colour, 0.12));
+      g.addColorStop(0.52, colour);
+      g.addColorStop(0.78, darken(colour, 0.46));
+      g.addColorStop(1, darken(colour, 0.76));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, H);
+      /* the meniscus: a hard specular line, not a soft wash — this is the cue
+         that reads as a wet surface rather than a printed gradient */
+      ctx.fillStyle = 'rgba(255,250,236,0.86)';
+      ctx.fillRect(0, Math.max(1, H * 0.12), w, Math.max(1, H * 0.075));
+      ctx.fillStyle = 'rgba(255,246,226,0.34)';
+      ctx.fillRect(0, Math.max(1, H * 0.205), w, Math.max(1, H * 0.055));
+      /* bounce off the channel floor, in the liquid's own hue */
+      const bo = ctx.createLinearGradient(0, H * 0.68, 0, H);
+      bo.addColorStop(0, 'rgba(255,255,255,0)');
+      bo.addColorStop(1, rgba(colour, 0.30));
+      ctx.fillStyle = bo;
+      ctx.fillRect(0, H * 0.68, w, H * 0.32);
+      this.a.layer(ctx, 'grain', { seed: 12, mode: 'overlay', alpha: 0.26, scale: 0.5 });
+    });
+  }
+
+  /**
+   * The hot leading edge of the fill — the front where the liquid is being
+   * burned back.
+   *
+   * It is a separate raster pinned to the fill's right edge rather than part of
+   * `bossFill` because the fill is width-animated: any horizontal feature baked
+   * into that texture would slide and stretch with the health fraction. Pinned,
+   * it stays a fixed number of pixels wide at every value.
+   *
+   * Kept narrow on purpose. The frame it lives in has a mean of 0.12 and the
+   * brief is a boss bar, not a light source.
+   */
+  bossEdge(h, colour = '#ff9a54', o = {}) {
+    const W = 40;
+    return this.a.uri(`bossedge:${colour}:${o.tag ?? 'a'}`, W, h, (ctx, w, H) => {
+      /* along the bar: nothing at the left, the whole heat inside the last
+         third, and a hard pin on the face itself */
+      const g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, rgba(colour, 0));
+      g.addColorStop(0.52, rgba(colour, 0.18));
+      g.addColorStop(0.84, rgba(colour, 0.62));
+      g.addColorStop(1, rgba(colour, 0.96));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, H);
+      /* across the bar: the front is hottest at the meniscus and cools into the
+         shaded foot, exactly as the liquid behind it does */
+      const v = ctx.createLinearGradient(0, 0, 0, H);
+      v.addColorStop(0, 'rgba(0,0,0,0.34)');
+      v.addColorStop(0.22, 'rgba(0,0,0,0)');
+      v.addColorStop(0.68, 'rgba(0,0,0,0.10)');
+      v.addColorStop(1, 'rgba(0,0,0,0.52)');
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = v;
+      ctx.fillRect(0, 0, w, H);
+      ctx.globalCompositeOperation = 'source-over';
+      /* the face: near-white where the front is thinnest */
+      const f = ctx.createLinearGradient(w - Math.max(2, w * 0.10), 0, w, 0);
+      f.addColorStop(0, 'rgba(255,246,224,0)');
+      f.addColorStop(1, 'rgba(255,248,228,0.92)');
+      ctx.fillStyle = f;
+      ctx.fillRect(w - Math.max(2, w * 0.10), H * 0.10, Math.max(2, w * 0.10), H * 0.78);
     });
   }
 

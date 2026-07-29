@@ -1771,11 +1771,65 @@ export class Loot {
     return _col;
   }
 
+  /**
+   * Per-drop share of the additive budget, written onto every live drop.
+   *
+   * ### Why a heap of loot clips when one drop does not
+   *
+   * `_radianceCeiling` bounds what ONE additive loot layer may write. Nothing
+   * bounded what N of them sum to, and loot arrives in heaps: a boss dies and
+   * MAX_DROPS items land inside a couple of metres, every one of them stamping
+   * a shaft, a ground pool and (legendary+) a mote cloud onto overlapping
+   * pixels. Ten mythic pools at `poolI` 0.44 of the ceiling sum to 4.4x it, and
+   * the heap goes white in the middle while each drop is individually legal —
+   * the "loot glints cluster" read.
+   *
+   * The share divides one drop's worth of budget among the drops close enough
+   * to share pixels, so:
+   *
+   *  · a lone drop of any rarity is returned EXACTLY as authored (share 1) —
+   *    this is not a rarity dimmer, and a single legendary still gets its full
+   *    shaft, which is the whole point of the drop;
+   *  · a heap of k coincident drops sums to ~1.15 drops' worth instead of k,
+   *    so the cluster still reads brighter than one item and stays under ACES;
+   *  · the weight is per-tier, so a mythic in a pile of commons keeps nearly
+   *    all of its budget and the eye still goes to the right item.
+   *
+   * Distance is 2D because these are all ground-plane reads, and the weight
+   * falls off smoothly so an item rolling to a stop does not step the
+   * brightness of its neighbours.
+   */
+  _writeGlowShares() {
+    const drops = this.drops;
+    for (let i = 0; i < drops.length; i++) {
+      const d = drops[i];
+      const t = GLOW_TIERS[clamp(d.rank | 0, 0, GLOW_TIERS.length - 1)];
+      /* This drop's own additive weight, and the weight it is competing with. */
+      const own = Math.max(t.beamI + t.poolI, 1e-3);
+      let crowd = own;
+      for (let j = 0; j < drops.length; j++) {
+        if (j === i) continue;
+        const o = drops[j];
+        const dx = o.x - d.x, dz = o.z - d.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        /* Pools are 0.26-0.70 m across, so 1.3 m is where two of them stop
+           sharing pixels at this camera. */
+        if (dist >= 1.3) continue;
+        const ot = GLOW_TIERS[clamp(o.rank | 0, 0, GLOW_TIERS.length - 1)];
+        crowd += smooth(1.3, 0.25, dist) * (ot.beamI + ot.poolI);
+      }
+      /* 1.15: a real cluster is allowed to read 15 % over a lone drop, because
+         a pile of loot SHOULD be brighter than one item — just not k times. */
+      d.glowShare = Math.min(1, (own * 1.15) / crowd);
+    }
+  }
+
   _writeLayers(elapsed, hx, hz) {
     const cap = this._radianceCeiling();
     this.beamMat.uniforms.uMaxRad.value = cap;
     this.poolMat.uniforms.uMaxRad.value = cap;
     this.moteMat.uniforms.uMaxRad.value = cap;
+    this._writeGlowShares();
 
     let n = 0;
     for (const d of this.drops) {
@@ -1784,6 +1838,7 @@ export class Loot {
       const t = GLOW_TIERS[clamp(d.rank | 0, 0, GLOW_TIERS.length - 1)];
       const gy = d.groundY;
       const age = clamp01((elapsed - d.bornAt) * 2.2);
+      const share = d.glowShare ?? 1;
 
       /* Beam — a narrow vertical shaft, and only from legendary up. A common's
          tier is all zeros, which collapses the quad to zero area: present in the
@@ -1792,14 +1847,14 @@ export class Loot {
       const w = t.beamW;
       _mtx.compose(_v.set(d.x, gy + 0.01, d.z), _q.identity(), _v2.set(w, h, w));
       this.beams.setMatrixAt(n, _mtx);
-      this.beams.setColorAt(n, this._tintAt(r.beam, cap * t.beamI * (0.6 + age * 0.4)));
+      this.beams.setColorAt(n, this._tintAt(r.beam, cap * share * t.beamI * (0.6 + age * 0.4)));
 
       /* Ground pool — a small rarity smudge under the item, breathing slowly. */
       const pr = t.poolR * (0.55 + age * 0.45);
       _mtx.compose(_v.set(d.x, gy + 0.022, d.z), _q.identity(), _v2.set(pr, 1, pr));
       this.pools.setMatrixAt(n, _mtx);
       const breathe = 0.82 + 0.18 * Math.sin(elapsed * 1.9 + d.phase);
-      this.pools.setColorAt(n, this._tintAt(r.beam, cap * t.poolI * breathe * age));
+      this.pools.setColorAt(n, this._tintAt(r.beam, cap * share * t.poolI * breathe * age));
       this._poolRing[n] = t.ring * age;
 
       /* contact occlusion — nothing floats */
@@ -1834,8 +1889,12 @@ export class Loot {
       const r = rarityInfo(d.rarity);
       /* A mote is 1-2 px, so it needs to sit near the ceiling to read at all —
          but it must not exceed it, or a drifting spark clips to a white dot and
-         the frame gains a field of hot pixels the bloom then smears. */
-      this._tintAt(r.beam, cap * 0.95);
+         the frame gains a field of hot pixels the bloom then smears. Motes keep
+         more of their brightness in a heap than the ground layers do (the 0.35
+         floor) because they are sparse in screen space: two motes from adjacent
+         drops rarely land on the same pixel, and dimming them to a heap's share
+         would delete the sparkle that sells a legendary. */
+      this._tintAt(r.beam, cap * 0.95 * Math.max(0.35, d.glowShare ?? 1));
       const count = Math.min(MOTES_PER_ITEM + (d.rank - 3) * 8, MAX_MOTES - k);
       for (let i = 0; i < count; i++) {
         const s = i * 0.6180339887;

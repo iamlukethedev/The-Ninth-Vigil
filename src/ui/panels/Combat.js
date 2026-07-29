@@ -20,8 +20,9 @@
  */
 
 import * as THREE from 'three';
-import { dmgStyleOf, PAL, RARITY } from '../UITheme.js';
+import { dmgStyleOf, PAL, RARITY, FONT_DISPLAY } from '../UITheme.js';
 import { mk, sty, txt, fmt, clamp, clamp01, approach } from './Widgets.js';
+import { BOSS_GEO, BOSS_STONE_H, bossGateX } from './Ornament.js';
 
 const _v = new THREE.Vector3();
 
@@ -40,6 +41,27 @@ const MAX_DMG_ROWS = 5;
  * numbers vanish for no observed reason.
  */
 const DMG_HUD_OBSTACLES = ['.bossBar', '.toasts'];
+
+/**
+ * The encounter bar's layout, in vh. One number drives it: the trough's height.
+ * Its width follows from the raster's authored aspect, because the forged end
+ * caps are round objects and giving the element any other ratio turns them into
+ * ovals. Everything else is sized against those two so the block scales as one
+ * piece at any resolution.
+ */
+const BOSS_BAR_VH = 3.30;
+const BOSS_BAR_W_VH = BOSS_BAR_VH * BOSS_GEO.aspect;
+const BOSS_CART_ASPECT = 10;
+const BOSS_CART_VH = 4.40;
+const BOSS_CART_W_VH = BOSS_CART_VH * BOSS_CART_ASPECT;
+/** Cap height of the gilded name raster. See CombatLayer._setBossName. */
+const BOSS_TITLE_VH = 2.86;
+/**
+ * Widest the name raster may be drawn. The cartouche's two points and the rank
+ * badge in the left one are not usable width, and a long epithet that ran into
+ * them would look like a layout accident rather than a name plate.
+ */
+const BOSS_TITLE_MAX_VH = BOSS_CART_W_VH - 11.0;
 
 /** Champion epithets — deterministic per enemy seed, never Math.random. */
 const FORE = ['Gnash', 'Vor', 'Mal', 'Khar', 'Zul', 'Bhaal', 'Ur', 'Grim', 'Sar', 'Thul', 'Vex', 'Mor'];
@@ -145,26 +167,90 @@ export class CombatLayer {
       this.plates.push({ el: e, icon, name, lvl, fill, ghost, frame, ghostV: 1, owner: null });
     }
 
-    /* ---- boss bar ---- */
+    /* ---- boss bar ----
+     *
+     * Rebuilt as a physical object rather than a coloured strip. It used to be
+     * `barFrame` — the same 9-px chrome the xp bar and the nameplates use — with
+     * a flat fill in it and a leather ribbon above, and next to the orbs in the
+     * bottom corners (glass, cast bezel, flutes, a crown) it did not read as
+     * belonging to the same game. Captured proof: laneF_bar_before.png.
+     *
+     * The pieces, and why each one is a separate element:
+     *   .bbName   cast cartouche; the name inside it is a GILDED RASTER, not
+     *             CSS text, so the display line has real leaf specular
+     *   .bbClip   the channel, sized from BOSS_GEO so it lands exactly in the
+     *             frame's own recess
+     *   .bbFill   liquid, width-animated; .bbEdge is pinned to its right edge
+     *             so the hot front cannot stretch with the health fraction
+     *   .bbFrame  the forged trough, painted OVER the liquid — that is what
+     *             puts the channel's inner shadow and the filed notches on top
+     *             of the fill instead of under it
+     *   .bbStone  one per phase gate, switched off as each gate breaks
+     */
     const bb = mk('div', 'bossBar hide', root);
-    this.boss = { root: bb, ghostV: 1 };
+    this.boss = { root: bb, ghostV: 1, nameKey: '', pips: [] };
+
     const nameWrap = mk('div', 'bbName', bb);
-    nameWrap.style.backgroundImage = `url("${this.orn.ribbon(1200, 76, { tag: 'boss', tint: '#3a0f0a' })}")`;
+    nameWrap.style.backgroundImage = `url("${this.orn.bossCartouche(900, 90, { tag: 'boss' })}")`;
     this.boss.icon = mk('div', 'bbIcon', nameWrap);
     this.boss.icon.style.backgroundImage = `url("${this.orn.rankIcon(96, 'boss')}")`;
-    this.boss.name = txt('div', 'bbTitle disp', 'SANCTUM WARDEN', nameWrap);
+    this.boss.name = mk('div', 'bbTitle gilt', nameWrap);
+
     const bar = mk('div', 'bbBar', bb);
     const clip = mk('div', 'bbClip', bar);
     this.boss.ghost = mk('div', 'bbGhost', clip);
     this.boss.fill = mk('div', 'bbFill', clip);
-    this.boss.ghost.style.backgroundImage = `url("${this.orn.barFill(46, '#e8d8b0', { tag: 'bghost' })}")`;
-    this.boss.fill.style.backgroundImage = `url("${this.orn.barFill(46, '#9c1a18', { tag: 'boss' })}")`;
+    this.boss.ghost.style.backgroundImage = `url("${this.orn.bossFill(68, '#e8d8b0', { tag: 'bghost' })}")`;
+    this.boss.fill.style.backgroundImage = `url("${this.orn.bossFill(68, '#9c1a18', { tag: 'boss' })}")`;
+    this.boss.edge = mk('div', 'bbEdge', this.boss.fill);
+    this.boss.edge.style.backgroundImage = `url("${this.orn.bossEdge(68, '#ff8438', { tag: 'boss' })}")`;
+
     const frame = mk('div', 'bbFrame', bar);
-    frame.style.backgroundImage = `url("${this.orn.barFrame(1400, 46, { tag: 'boss', segs: 4, band: 9, cham: 12 })}")`;
+    frame.style.backgroundImage =
+      `url("${this.orn.bossTrough(BOSS_GEO.rasterW, BOSS_GEO.rasterH, { tag: 'boss' })}")`;
+
+    const stone = this.orn.phaseStone(56, '#e0502c');
+    for (const g of BOSS_GEO.gates) {
+      const s = mk('div', 'bbStone', bar);
+      s.style.backgroundImage = `url("${stone}")`;
+      s.style.left = `${(bossGateX(g) * 100).toFixed(3)}%`;
+      this.boss.pips.push({ el: s, gate: g });
+    }
+
+    this.boss.hpTxt = txt('div', 'bbHp num', '', bar);
     this.boss.sub = txt('div', 'bbSub eng', 'PHASE II · LEVEL 20', bb);
-    this.boss.hpTxt = txt('div', 'bbHp num', '', bb);
+    this._setBossName('SANCTUM WARDEN');
 
     this._injectCSS();
+  }
+
+  /**
+   * Set the encounter name as struck gold leaf rather than as CSS text.
+   *
+   * The same decision the panel titles took, and for the same reason: the
+   * project forbids external font files, so there is no display woff2 to reach
+   * for. `UIAtlas.titleURI` composes the line out of the OS inscriptional-serif
+   * stack with the tracking, weight and initial-scale step set explicitly, then
+   * gilds it as metal — a dark cut sunk under every stroke, worn leaf, tarnish
+   * and planishing through it, a raking crest and a star glint on the versal.
+   * A coloured `text-shadow` cannot produce specular, and specular is the whole
+   * difference between a boss name and a caption.
+   *
+   * Height is the only layout input; the width follows the raster's own aspect
+   * so the letterforms are never stretched, and if a long epithet would overrun
+   * the plate the WHOLE thing is scaled down rather than condensed.
+   */
+  _setBossName(text) {
+    const t = this.atlas.titleURI(text, {
+      font: FONT_DISPLAY, em: 34, step: 1.46, ls: 0.26, weight: 600, seed: 37,
+    });
+    let h = BOSS_TITLE_VH;
+    let w = h * (t.w / t.h);
+    if (w > BOSS_TITLE_MAX_VH) { h *= BOSS_TITLE_MAX_VH / w; w = BOSS_TITLE_MAX_VH; }
+    const el = this.boss.name;
+    el.style.backgroundImage = `url("${t.uri}")`;
+    el.style.height = `${h.toFixed(3)}vh`;
+    el.style.width = `${w.toFixed(3)}vh`;
   }
 
   setVisible(on) {
@@ -438,13 +524,28 @@ export class CombatLayer {
       bb.ghostV = f < bb.ghostV ? approach(bb.ghostV, f, 1.6, dt) : f;
       bb.fill.style.width = `${(f * 100).toFixed(2)}%`;
       bb.ghost.style.width = `${(bb.ghostV * 100).toFixed(2)}%`;
-      bb.name.textContent = String(bossEn.name ?? 'Warden').toUpperCase();
+      /* the name is a rasterised gold-leaf line, so it is only re-struck when
+         the encounter actually changes — not every frame */
+      const nm = String(bossEn.name ?? 'Warden').toUpperCase();
+      if (nm !== bb.nameKey) { bb.nameKey = nm; this._setBossName(nm); }
       const phase = f > 0.75 ? 'I' : f > 0.5 ? 'II' : f > 0.25 ? 'III' : 'IV';
       bb.sub.textContent = `PHASE ${phase}  ·  LEVEL ${bossEn.level ?? 20}`;
       bb.hpTxt.textContent = `${fmt(bossEn.hp)} / ${fmt(bossEn.maxHp)}`;
+      /* A gate's stone is struck out the moment health falls past it, leaving
+         the empty socket that is already cut into the frame. That states how
+         much of the fight is left without needing a legend, and it is the only
+         part of this block that is state rather than chrome. */
+      for (const p of bb.pips) p.el.style.opacity = f > p.gate ? '1' : '0';
       /* the bar breathes very slightly with the fight */
-      const k = 0.86 + 0.14 * Math.abs(Math.sin(elapsed * 0.9));
+      const k = 0.90 + 0.10 * Math.abs(Math.sin(elapsed * 0.9));
       bb.fill.style.filter = `brightness(${k.toFixed(3)})`;
+      /* The leading edge flares while the damage ghost is still catching up —
+         i.e. for the moment after a hit lands — and idles at a low value the
+         rest of the time. A permanently hot front would be a light source in a
+         frame whose whole point is that it is dark. */
+      const heat = clamp01((bb.ghostV - f) * 6);
+      bb.edge.style.opacity =
+        clamp01(0.68 + 0.14 * Math.abs(Math.sin(elapsed * 1.7)) + 0.26 * heat).toFixed(3);
     } else {
       bb.root.classList.add('hide');
     }
@@ -664,30 +765,53 @@ export class CombatLayer {
 #sanctum-hud .npFrame{ position:absolute; inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.85)); }
 
-/* ---- boss bar ---- */
-#sanctum-hud .bossBar{ position:absolute; left:50%; top:2.6vh; transform:translateX(-50%);
-  width:74vh; display:flex; flex-direction:column; align-items:center; }
-#sanctum-hud .bbName{ position:relative; width:52vh; height:4.0vh; background-size:100% 100%;
+/* ---- boss bar ----
+   Every box here is derived from BOSS_BAR_VH and BOSS_GEO rather than typed in,
+   because the channel insets have to line up with the recess painted into the
+   frame raster. Hand-kept copies of those four numbers drift the first time
+   either side is tuned, and a fill sitting proud of its own channel is the most
+   obvious way to make a bar look unfinished. */
+#sanctum-hud .bossBar{ position:absolute; left:50%; top:2.4vh; transform:translateX(-50%);
+  width:${BOSS_BAR_W_VH.toFixed(3)}vh; display:flex; flex-direction:column; align-items:center; }
+#sanctum-hud .bbName{ position:relative; z-index:2;
+  width:${BOSS_CART_W_VH.toFixed(3)}vh; height:${BOSS_CART_VH.toFixed(3)}vh;
+  background-size:100% 100%;
   display:flex; align-items:center; justify-content:center;
-  filter:drop-shadow(0 .5vh 1.2vh rgba(0,0,0,.85)); }
-#sanctum-hud .bbTitle{ font-size:1.86vh; letter-spacing:.34em; color:#f2c48e;
-  text-shadow:0 -1px 0 #000,0 1px 0 rgba(255,220,160,.16),0 0 2vh rgba(190,60,26,.55); }
-#sanctum-hud .bbIcon{ position:absolute; left:1.2vh; top:50%; transform:translateY(-50%);
-  width:2.6vh; height:2.6vh; background-size:100% 100%;
-  filter:drop-shadow(0 .2vh .5vh rgba(0,0,0,.9)); }
-#sanctum-hud .bbBar{ position:relative; width:74vh; height:2.4vh; margin-top:-.3vh; }
-#sanctum-hud .bbClip{ position:absolute; left:.5vh; right:.5vh; top:.5vh; bottom:.5vh;
-  overflow:hidden; }
+  filter:drop-shadow(0 .5vh 1.2vh rgba(0,0,0,.86)); }
+/* the gilded name raster — sized by JS from its own aspect, see _setBossName */
+#sanctum-hud .bbTitle{ filter:drop-shadow(0 .12vh .3vh rgba(0,0,0,.9)); }
+#sanctum-hud .bbIcon{ position:absolute; left:2.0vh; top:50%; transform:translateY(-50%);
+  width:2.5vh; height:2.5vh; background-size:100% 100%;
+  filter:drop-shadow(0 .2vh .5vh rgba(0,0,0,.92)); }
+/* The cartouche seats ON the beam's top edge, so the two read as one assembly
+   rather than as a caption floating above a bar — but only just. At a deeper
+   overlap the plate covered the upper halves of all three phase bosses (they
+   are all inside its span horizontally) and each of them read as a map pin. */
+#sanctum-hud .bbBar{ position:relative;
+  width:${BOSS_BAR_W_VH.toFixed(3)}vh; height:${BOSS_BAR_VH.toFixed(3)}vh; margin-top:-.52vh; }
+#sanctum-hud .bbClip{ position:absolute; overflow:hidden;
+  left:${(BOSS_GEO.clipX * 100).toFixed(3)}%; right:${(BOSS_GEO.clipX * 100).toFixed(3)}%;
+  top:${(BOSS_GEO.clipY * 100).toFixed(3)}%; bottom:${(BOSS_GEO.clipY * 100).toFixed(3)}%; }
 #sanctum-hud .bbFill,#sanctum-hud .bbGhost{ position:absolute; left:0; top:0; bottom:0;
   background-size:100% 100%; }
-#sanctum-hud .bbGhost{ opacity:.30; }
-#sanctum-hud .bbFill{ box-shadow:0 0 1.2vh rgba(200,50,26,.45); }
+#sanctum-hud .bbGhost{ opacity:.34; }
+#sanctum-hud .bbEdge{ position:absolute; right:0; top:0; bottom:0; width:1.30vh;
+  background-size:100% 100%; }
 #sanctum-hud .bbFrame{ position:absolute; inset:0; background-size:100% 100%;
-  filter:drop-shadow(0 .4vh 1vh rgba(0,0,0,.8)); }
-#sanctum-hud .bbSub{ margin-top:.42vh; font-size:.94vh; letter-spacing:.34em; color:#a08a6a;
-  text-shadow:0 1px 0 #000; }
-#sanctum-hud .bbHp{ position:absolute; right:0; top:5.0vh; font-size:1.06vh; color:#c8b48c;
-  letter-spacing:.06em; text-shadow:0 1px 0 #000; }
+  filter:drop-shadow(0 .45vh 1.1vh rgba(0,0,0,.82)); }
+#sanctum-hud .bbStone{ position:absolute; top:50%; transform:translate(-50%,-50%);
+  width:${(BOSS_STONE_H * BOSS_BAR_VH).toFixed(3)}vh;
+  height:${(BOSS_STONE_H * BOSS_BAR_VH).toFixed(3)}vh; background-size:100% 100%; }
+/* the readout lives IN the channel, in the last segment — the one stretch of
+   trough no phase boss crosses — so the number a player checks mid-fight is on
+   the object it describes instead of orbiting it */
+#sanctum-hud .bbHp{ position:absolute; left:0; top:0; bottom:0;
+  right:${(BOSS_GEO.clipX * 100 + 2.3).toFixed(3)}%;
+  display:flex; align-items:center; justify-content:flex-end;
+  font-size:1.14vh; letter-spacing:.09em; color:#f4e6c4;
+  text-shadow:0 -1px 0 rgba(0,0,0,.96),0 1px 2px rgba(0,0,0,.96),0 0 .8vh rgba(0,0,0,.94); }
+#sanctum-hud .bbSub{ margin-top:.58vh; font-size:.94vh; letter-spacing:.34em; color:#a89272;
+  text-shadow:0 1px 0 #000,0 0 .8vh rgba(0,0,0,.9); }
 `;
     document.head.appendChild(s);
   }

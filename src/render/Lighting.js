@@ -242,6 +242,11 @@ export class Lighting {
       sanctumProbeMin: { value: new THREE.Vector3() },
       sanctumProbeInvSize: { value: new THREE.Vector3(1, 1, 1) },
       sanctumProbeParams: { value: new THREE.Vector2(1, 4) },
+      /* Oriented interior wall bounce — see BIOME_LIGHTING.crypt.wallFill in
+       * LightRig for why a room needs a horizontally-weighted fill and a
+       * hemisphere cannot supply one. Black outside sunless interiors, so the
+       * term is one multiply-add that resolves to nothing for every exterior. */
+      sanctumWallFill: { value: new THREE.Color(0, 0, 0) },
     };
 
     // Wired in the constructor (not init) so modules that build materials during
@@ -666,6 +671,7 @@ export class Lighting {
 
       /* probes */
       if (this.probes) this._probeUniforms.sanctumProbeParams.value.set(p.probeIntensity, this.probes.scale);
+      this._applyWallFill(p);
 
       /* IBL */
       this._refreshEnvironment();
@@ -814,6 +820,10 @@ export class Lighting {
           l.target.updateMatrixWorld(true);
         }
       } catch (e) { console.error('[lighting:csm-update]', e); }
+    } else if (this.csm && this.sun.enabled) {
+      // Guarded like the branch above: this runs inside scene.onBeforeRender, so
+      // a throw here would skip the rim and probe sync for the rest of the frame.
+      try { this._aimUnshadowedKey(); } catch (e) { console.error('[lighting:key-aim]', e); }
     } else if (this.keyLight && this.sun.enabled) {
       this.keyLight.position.copy(this.focus).addScaledVector(this.sun.dir, -90);
       this.keyTarget.position.copy(this.focus);
@@ -903,6 +913,65 @@ export class Lighting {
     this._chunkBackup = null;
   }
 
+  /**
+   * Aim the cascade lights when they are NOT casting — i.e. sunless interiors.
+   *
+   * THIS IS THE ONE THAT MADE VERTICAL INTERIOR SURFACES READ AS VOID.
+   *
+   * `CSM.update()` is the only thing in the addon that ever writes
+   * `light.position` / `light.target.position`; `csm.lightDirection` is just an
+   * input it reads. `_syncForRender` skips `csm.update()` outright for sunless
+   * interiors — correct, because that call is what allocated four directional
+   * shadow cascades through the ceiling — and the `keyLight` branch below it is
+   * unreachable whenever CSM constructed successfully, because `keyLight` only
+   * exists in the CSM-unavailable fallback. So nothing aimed them.
+   *
+   * Measured on the frozen `boss` frame: all four cascade lights sat at the
+   * THREE.DirectionalLight defaults, position (0, 1, 0) and target (0, 0, 0),
+   * which is a key travelling STRAIGHT DOWN (0, -1, 0) while `sun.dir` said
+   * (0.256, -0.839, 0.481). A straight-down key makes dot(N, L) equal to N.y, so
+   * it handed the whole of its then-0.88 to the arena floor and EXACTLY ZERO to
+   * anything near-vertical. That is the whole defect: the floor looked lit, so
+   * the rig looked like it was working, while the 6.2 m rock faces got nothing
+   * from the only real light in the room and fell back on 0.076 of ambient
+   * irradiance. It also explains why the authored `azimuth` had no observable
+   * effect whatsoever — the value was never read by anything.
+   *
+   * A DirectionalLight shades from `normalize(target.position - position)` and
+   * nothing else, and that difference here is `sun.dir * 90` whatever `focus`
+   * happens to be — so the rendered result does not depend on the position at
+   * all and two runs of a capture stay byte-identical (verified: md5-equal). The
+   * position is anchored on `focus` anyway, purely so this matches the shadowed
+   * path above and a debug helper drawing the light lands somewhere sensible.
+   */
+  _aimUnshadowedKey() {
+    const lights = this.csm.lights;
+    for (let i = 0; i < lights.length; i++) {
+      const l = lights[i];
+      l.position.copy(this.focus).addScaledVector(this.sun.dir, -90);
+      l.target.position.copy(this.focus);
+      l.updateMatrixWorld(true);
+      l.target.updateMatrixWorld(true);
+    }
+  }
+
+  /**
+   * Push the resolved interior wall bounce into the shared uniform.
+   *
+   * `Color.setHex` runs the sRGB -> linear convert, so the authored hex is a HUE
+   * and `intensity` is the whole magnitude — same contract as the hemisphere,
+   * and the reason the presets can carry a readable slate rather than a value
+   * scaled to look right as a literal. The uniform object is shared by
+   * reference with every registered material, so writing `.value` here needs no
+   * recompile and cannot desync a material that registers later.
+   */
+  _applyWallFill(p) {
+    const f = p?.wallFill;
+    const c = this._probeUniforms.sanctumWallFill.value;
+    if (!f) { c.setRGB(0, 0, 0); return; }
+    c.set(f.color).multiplyScalar(f.intensity ?? 1);
+  }
+
   /** Add the irradiance-grid lookup to a compiled material. */
   _injectProbe(shader) {
     if (!shader.fragmentShader.includes(PROBE_HOOK)) return;
@@ -911,6 +980,7 @@ export class Lighting {
     shader.uniforms.sanctumProbeMin = u.sanctumProbeMin;
     shader.uniforms.sanctumProbeInvSize = u.sanctumProbeInvSize;
     shader.uniforms.sanctumProbeParams = u.sanctumProbeParams;
+    shader.uniforms.sanctumWallFill = u.sanctumWallFill;
 
     shader.fragmentShader =
       `#ifdef ${PROBE_DEFINE}
@@ -918,6 +988,7 @@ uniform highp sampler3D sanctumProbeVol;
 uniform vec3 sanctumProbeMin;
 uniform vec3 sanctumProbeInvSize;
 uniform vec2 sanctumProbeParams;
+uniform vec3 sanctumWallFill;
 #endif
 ` + shader.fragmentShader.replace(
         PROBE_HOOK,
@@ -930,6 +1001,26 @@ uniform vec2 sanctumProbeParams;
 		vec3 sctCl = clamp( sctUVW, vec3( 0.0 ), vec3( 1.0 ) );
 		float sctEdge = 1.0 - smoothstep( 0.0, 0.10, length( sctUVW - sctCl ) );
 		irradiance += texture( sanctumProbeVol, sctCl ).rgb * sanctumProbeParams.x * sanctumProbeParams.y * sctEdge;
+
+		/* ORIENTED INTERIOR WALL BOUNCE. \`geometryNormal\` is VIEW space, and
+		 * this term has to be keyed off world up, so rotate it back: for the
+		 * orthonormal view rotation, \`n * mat3( viewMatrix )\` is
+		 * \`transpose( R ) * n\`, which is the inverse. Same trick the world
+		 * position above uses, and it costs no new varying.
+		 *
+		 * The weight is 1 - |n.y|: full on a vertical wall, zero on a floor or
+		 * a ceiling. That is the shape a room has and a hemisphere does not,
+		 * and the zero at n.y = -1 is what keeps overhangs and undersides at
+		 * true black instead of turning the frame milky. Squaring is wrong
+		 * here — it would collapse the 45-degree bevels that make up most of
+		 * the rock silhouette, and those are exactly the faces at issue.
+		 *
+		 * Adding into \`irradiance\` (not into \`reflectedLight\`) is deliberate:
+		 * it keeps the term inside the aoMap multiply that follows in
+		 * \`aomap_fragment\`, so it reads as lit stone with cavities rather
+		 * than as a flat lift. */
+		vec3 sctWN = geometryNormal * mat3( viewMatrix );
+		irradiance += sanctumWallFill * ( 1.0 - min( abs( sctWN.y ), 1.0 ) );
 	}
 #endif`
       );
