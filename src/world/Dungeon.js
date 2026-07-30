@@ -1464,8 +1464,15 @@ export class Dungeon {
       layout.blockCircle(s.x, s.z, 0.52);
     }
 
-    /* 4. the shaft through the collapse: the level's only cold light, and the
-          reason the vault is a closed solid that casts shadow at all */
+    /* 4. the shaft through the collapse: the level's only cold light.
+     *
+     * `shadow: false` is deliberate and belongs with the note on `TIER` in
+     * `Lighting.js`: a shadowed spot slot flashes hard-edged wedges across the
+     * whole frame, so the tier allocates none. Saying it here as well keeps the
+     * brightest light in the level from silently starting to cast again if a
+     * tier ever gets a shadowed spot slot back. Nothing is lost — the shaft's
+     * silhouette is its cone and the volumetric pass, not a depth map.
+     */
     const gy = this._g(oc.x, oc.z);
     this._addTorch({
       kind: 'spot', type: 'shaft',
@@ -1473,7 +1480,7 @@ export class Dungeon {
       direction: [0.05, -1, 0.08],
       kelvin: 8800, coolBias: 0.30, saturation: 0.85,
       intensity: 620, radius: 24, angle: 0.30, penumbra: 0.80,
-      flicker: 0.14, priority: 2.4, shadow: true,
+      flicker: 0.14, priority: 2.4, shadow: false,
     });
   }
 

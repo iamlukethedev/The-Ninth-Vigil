@@ -1124,10 +1124,12 @@ export function defaultPracticals(name, cfg, rand) {
       kelvin: KELVIN.brazier + rand.range(-60, 60), intensity: rand.range(20, 25),
       radius: rand.range(14, 17), flicker: 0.85, priority: 1.4, glow: 1.3,
     }));
+    // Never a shadow caster — see the note on `TIER` in `Lighting.js`. Its cone
+    // and the volumetric pass carry the look.
     out.push({
       kind: 'spot', type: 'shaft', position: [-1.2, 9.4, -2.6], direction: [0.07, -1, 0.14],
       kelvin: 8600, coolBias: 0.2, intensity: 62, radius: 22, angle: 0.30, penumbra: 0.82,
-      flicker: 0.25, priority: 1.6,
+      flicker: 0.25, priority: 1.6, shadow: false,
     });
   } else if (biome === 'hell') {
     ring(6, 13.6, 1.35, (x, y, z) => ({
