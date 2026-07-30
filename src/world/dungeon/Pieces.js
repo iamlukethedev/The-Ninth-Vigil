@@ -45,14 +45,14 @@ const TAU = Math.PI * 2;
  * `shift` decorrelates the texture between variants of the same piece so an
  * instanced wall never shows the same stain twice in a row.
  */
-function finish(parts, shift = null) {
+function finish(parts, shift = null, uvScale = 1) {
   const g = mergeAll(parts);
   if (shift) {
     g.translate(shift[0], shift[1], shift[2]);
-    autoUV(g);
+    autoUV(g, uvScale);
     g.translate(-shift[0], -shift[1], -shift[2]);
   } else {
-    autoUV(g);
+    autoUV(g, uvScale);
   }
   g.computeBoundingSphere();
   g.computeBoundingBox();
@@ -787,22 +787,130 @@ export class Kit {
   }
 
   /** Rubble pile — the debris every wall top and collapsed bay sheds. */
+  /**
+   * Loose masonry rubble. The single most-repeated piece in the crypt — `closeup`,
+   * `combat` and `dungeon` are all mostly floor, and the floor is mostly this.
+   *
+   * WHY IT READ AS UNTEXTURED GREY BOXES. Three independent scale errors, all of
+   * them "authored for a wall, used on a 0.5 m lump":
+   *
+   *  1. UVs. `finish` projected at scale 1 (metres) and `dungeon:stone` repeats at
+   *     1/1.62, so a 0.6 m block covered 0.37 of a tile — about one ashlar brick,
+   *     and a brick face is by construction the flattest part of that generator.
+   *     Everything the texture has to offer (joints, pitting, spalling, grime) sits
+   *     at 0.05-0.3 m and was magnified past visibility. At uvScale 1.25 the tile is
+   *     1.30 m, so a 0.6 m block carries a 0.43 x 0.26 m ashlar with a joint or two
+   *     crossing it and its pitting at 2-4 cm. Held at 1.25 rather than pushed
+   *     further on purpose: tile a broken lump tightly enough and it stops being
+   *     masonry and becomes brick veneer. This costs nothing either way —
+   *     `_withTiling` clones share `Texture.source`.
+   *  2. Flat facets. `chamferBox` is 44 flat-shaded triangles — one quad per face,
+   *     one constant normal per face, therefore one constant shading term over the
+   *     whole 0.6 m facet no matter what light hits it. `rockChunk` is the same
+   *     story with bigger triangles. Neither was passed through `roughenVerts`,
+   *     which every other stone piece in the kit uses. Roughening at 2-4 % of the
+   *     piece size makes every quad non-planar (its two triangles get different
+   *     normals) and, critically, makes the CHAMFER STRIPS ragged — those clean
+   *     2 cm 45-degree strips catching the cold shaft light are the blue-white rims
+   *     in the crop, and they were the loudest thing in the frame.
+   *  3. Value, not hue. The whole pile draws in `stone`, which the crypt tints
+   *     0xccd3de — a cool blue-white, right for dressed limestone raked by a warm
+   *     torch and wrong for a shattered lump seen mostly on its up-faces, where the
+   *     only illuminant is a cold ambient probe. Splitting half the pile onto `dirt`
+   *     (0xbdb098, warm, granular rather than coursed) was tried and REVERTED: a bin
+   *     of nothing but small low chips shades to almost nothing, and the material
+   *     bisect then named `dungeon:dirt` as the owner of a 2816 px merged-black blob
+   *     that had not existed before. The debris stays one bin and the separation is
+   *     carried on VALUE instead, by the per-instance tint in Dungeon.js.
+   *
+   * AND THE HARD FLOOR LINE. A convex box on a flat slab crosses it along one clean
+   * analytic curve with nothing at a smaller scale anywhere near it, which is the
+   * rubric's "hard geometric intersection line" verbatim. Each piece now gets a
+   * flat spall plate lapped over its foot, wider than the piece and tipped a few
+   * degrees, so the contact is a broken chip-scale edge instead of a drawn line.
+   * ~44 triangles per plate.
+   */
   rubble(variant, size = 1) {
     return this._get(`rubble|${variant}|${size}`, () => {
       const r = this._rnd(variant * 1237 + size * 71);
-      const parts = [];
+      const dressed = [];
+      const chunk = [];
       const n = 5 + Math.floor(r() * 7);
       for (let k = 0; k < n; k++) {
         const s = (0.14 + r() * 0.42) * size;
         const a = r() * TAU, rad = r() * 0.75 * size;
+        const px = Math.cos(a) * rad, pz = Math.sin(a) * rad;
         // half the pile is dressed stone that fell, half is shattered chunk
-        const g = r() < 0.45
+        const isBlock = r() < 0.45;
+        const g = isBlock
           ? chamferBox(s * 1.5, s * 0.75, s * 1.1, 0.03)
           : rockChunk(s * 1.4, r, 0.4);
-        parts.push([g, trs(Math.cos(a) * rad, s * 0.30 + r() * 0.05, Math.sin(a) * rad,
+        /*
+         * Roughen the silhouette, but do NOT recompute the normals.
+         *
+         * Recomputing looked like the obvious partner to `roughenVerts` — stale
+         * normals mean the warp changes the outline and not the shading — and it was
+         * wrong at this range. `rockChunk` is an icosahedral lump of ~80 triangles,
+         * so each face is 10-20 cm across; giving every triangle its own geometric
+         * normal turned a 0.5 m lump into six or seven hard-edged plates, and the
+         * 3x crop of `closeup` came back reading as crumpled foil rather than stone.
+         * A `chamferBox` fares no better: per-triangle normals split each face along
+         * its diagonal. Surface at 3 m has to come from the map, which is what the
+         * retiling below is for; the geometry's job is only the outline.
+         */
+        roughenVerts(g, s * (isBlock ? 0.022 : 0.036), r);
+        const bin = isBlock ? dressed : chunk;
+        bin.push([g, trs(px, s * 0.30 + r() * 0.05, pz,
           (r() - 0.5) * 0.9, r() * TAU, (r() - 0.5) * 0.9)]);
+        /*
+         * The spall it crushed out from under itself, lapped over the contact so the
+         * piece meets the slab along a broken chip-scale edge instead of one clean
+         * analytic curve. `rockChunk` squashed flat rather than a thin chamferBox: a
+         * flattened box is a card with four straight edges of its own, so it would
+         * trade one hard intersection line for five.
+         *
+         * ONE plate, only on pieces over 0.24 m, at a third of their size, in the
+         * SAME bin as the piece it beds. All three of those are corrections. Two
+         * plates each at 0.6-1.0 of the piece size doubled a pile's part count and
+         * the 3x crop of `closeup` came back reading as a heap of overlapping cards
+         * — the contact detail had become the subject. Binning them separately (the
+         * plates on `dungeon:dirt`, the blocks on `dungeon:stone`) cost the frame
+         * 10 % of its mean, 0.278 -> 0.249, and tripled its merged solid black,
+         * 0.43 % -> 1.17 %: a bin holding nothing but ankle-high plates is a bin
+         * whose every vertex is a steep little facet turned away from a light 3 m
+         * up, and the material bisect named `dungeon:dirt` as the owner of a 2816 px
+         * black blob that had not existed before. One bin, one light response.
+         */
+        if (s < 0.24) continue;
+        const bs = s * (0.34 + r() * 0.24);
+        const ba = r() * TAU;
+        const bp = rockChunk(bs * 1.5, r, 0.42);
+        roughenVerts(bp, bs * 0.04, r);
+        bin.push([bp, trs(
+          px + Math.cos(ba) * s * (0.42 + r() * 0.3), bs * 0.14, pz + Math.sin(ba) * s * (0.42 + r() * 0.3),
+          (r() - 0.5) * 0.24, ba, (r() - 0.5) * 0.24, 1, 0.5 + r() * 0.16, 1)]);
       }
-      return { stone: finish(parts) };
+      const out = {};
+      /*
+       * ONE MATERIAL, RETILED. uvScale 1.25 gives a 1.30 m tile, so a 0.5 m lump
+       * carries a 0.43 x 0.26 m ashlar with a joint or two across it and pitting at
+       * 3-5 cm; the kit's default 3.1 m tile put a sixth of one brick on the same
+       * lump, which is the "untextured at character range" half of the defect.
+       *
+       * Splitting the shattered half onto `dirt` was the other thing I tried, on the
+       * argument that a broken lump wants a granular generator and a warm tint
+       * rather than the crypt's cool 0xccd3de ashlar. It measured worse and I backed
+       * it out: `dungeon:dirt` is the darkest surface in the room (0xbdb098 against
+       * the ashlar's 0xccd3de, and a generator with much deeper pores), so putting
+       * half of every pile on it cost `closeup` 0.03 of frame mean and turned the
+       * gaps between chunks into holes — the material bisect named `dungeon:dirt` as
+       * the owner of a 2816 px merged-black blob that did not exist before. Tiling
+       * and vertex normals are what make these read as stone; the tint was never the
+       * problem, and it is not worth 3 % of the frame's exposure to change it.
+       */
+      const all = dressed.concat(chunk);
+      if (all.length) out.stone = finish(all, null, 1.25);
+      return out;
     });
   }
 
@@ -1012,26 +1120,87 @@ export class Kit {
   }
 
   /** Basalt buttress for the arena perimeter — a tapered, roughened mass. */
-  buttress(variant, h = 6.2) {
-    return this._get(`butt|${variant}|${h}`, () => {
+  /**
+   * Corner buttress / mid-side pilaster.
+   *
+   * WHY THE `ruin` VARIANT EXISTS. The intact version is a 2.1 x 1.3 m pier of
+   * stacked courses run to the full 6.2 m wall height with a corbelled head — a
+   * near-solid rectangular prism 6.2 m tall. The six corner ones stand at the
+   * hexagon's circumradius, 28.3 m from the arena centre, which is outside the
+   * reach of every practical in the room (the fill braziers sit at radius 12 with
+   * radius-20 falloff, the cressets at radius 24 with radius-18). Nothing lights
+   * them, and their camera-facing faces are near-vertical, so each one reads as a
+   * plumb, featureless slab at the edge of the play area — measured at luma 0.013
+   * against a 0.15 background before this change.
+   *
+   * Material cannot fix that, and it was tried: `envMapIntensity` 1 -> 3.4,
+   * `aoMapIntensity` 1 -> 0.35 and even a six-times-overdriven red emissive each
+   * moved those pixels by under 0.001, because the frame's black shape there was
+   * this geometry's own CAST SHADOW rather than its surface (fixed in Arena.js,
+   * where the panels and piers stop casting). What surface work can do is make the
+   * pier stop being a 6 m plumb prism, which is also the honest answer for a room
+   * described as a ruin. The corner piers are therefore collapsed stumps: courses
+   * stop at 52-62 % of the wall
+   * height, every course steps back and jitters horizontally so the profile is a
+   * staircase rather than a plumb line, the corbelled head is replaced by two or
+   * three blocks that have fallen off it, and a scree skirt laps the base so the
+   * piece meets the paving in broken chip-scale edges instead of one straight line.
+   *
+   * `ruin: false` keeps the intact pier for the mid-side pilasters, which are the
+   * ones carrying the wall cressets at 3.35 m and are lit from 1.4 m away.
+   */
+  buttress(variant, h = 6.2, ruin = false) {
+    return this._get(`butt|${variant}|${h}|${ruin ? 1 : 0}`, () => {
       const r = this._rnd(variant * 8837 + 3);
       const parts = [];
+      // 0.52-0.62 of the wall: tall enough to still read as a pier carrying the
+      // corner, short enough that at 28 m it sits under the wall's own skyline.
+      const top = ruin ? h * (0.52 + r() * 0.10) : h;
       let y = 0;
-      while (y < h - 0.2) {
+      let lean = 0;
+      while (y < top - 0.2) {
         const bh = 0.55 + r() * 0.5;
         const t = y / h;
         const bw = 2.10 - t * 0.85 + (r() - 0.5) * 0.12;
         const bd = 1.30 - t * 0.55 + (r() - 0.5) * 0.10;
-        const g = chamferBox(bw, Math.min(bh, h - y), bd, 0.05 + r() * 0.04);
-        roughenVerts(g, 0.02, r);
-        parts.push([g, trs((r() - 0.5) * 0.05, y + bh * 0.5, (r() - 0.5) * 0.05,
-          0, (r() - 0.5) * 0.05, (r() - 0.5) * 0.014)]);
+        const g = chamferBox(bw, Math.min(bh, top - y), bd, 0.05 + r() * 0.04);
+        roughenVerts(g, ruin ? 0.05 : 0.02, r);
+        if (ruin) g.computeVertexNormals();
+        // A collapsing pier sheds courses sideways as it settles; the running
+        // offset is what turns a plumb prism into a stepped silhouette.
+        if (ruin) lean += (r() - 0.5) * 0.19;
+        parts.push([g, trs(lean + (r() - 0.5) * 0.05, y + bh * 0.5, (r() - 0.5) * 0.05,
+          0, (r() - 0.5) * (ruin ? 0.22 : 0.05), (r() - 0.5) * (ruin ? 0.05 : 0.014))]);
         y += bh;
       }
-      // corbelled head that carries the chain ring
-      parts.push([chamferBox(1.55, 0.26, 1.20, 0.06), trs(0, h + 0.08, 0.10)]);
-      parts.push([chamferBox(1.15, 0.20, 0.95, 0.05), trs(0, h + 0.30, 0.06)]);
-      return { rock: finish(parts) };
+      if (ruin) {
+        /* the head, in pieces on and around the stump */
+        for (let k = 0; k < 3; k++) {
+          const s = 0.5 + r() * 0.45;
+          const a = r() * TAU;
+          const g = chamferBox(s * 1.7, s * 0.8, s * 1.25, 0.05);
+          roughenVerts(g, s * 0.07, r).computeVertexNormals();
+          const onTop = k === 0;
+          const rad = onTop ? r() * 0.35 : 1.15 + r() * 1.1;
+          parts.push([g, trs(Math.cos(a) * rad + lean * (onTop ? 1 : 0.4),
+            onTop ? top + s * 0.34 : s * 0.36, Math.sin(a) * rad,
+            (r() - 0.5) * (onTop ? 0.3 : 0.55), a, (r() - 0.5) * (onTop ? 0.3 : 0.5))]);
+        }
+        /* scree skirt: kills the analytic base line, ~13 chunks at 44 tris each */
+        for (let k = 0; k < 13; k++) {
+          const a = r() * TAU;
+          const rad = 0.85 + Math.sqrt(r()) * 1.5;
+          const s = 0.18 + r() * 0.34;
+          const g = rockChunk(s, r, 0.45);
+          parts.push([g, trs(Math.cos(a) * rad + lean * 0.3, s * 0.16, Math.sin(a) * rad,
+            (r() - 0.5) * 0.5, r() * TAU, (r() - 0.5) * 0.5, 1, 0.5 + r() * 0.3, 1)]);
+        }
+      } else {
+        // corbelled head that carries the chain ring
+        parts.push([chamferBox(1.55, 0.26, 1.20, 0.06), trs(0, h + 0.08, 0.10)]);
+        parts.push([chamferBox(1.15, 0.20, 0.95, 0.05), trs(0, h + 0.30, 0.06)]);
+      }
+      return { crag: finish(parts, null, ruin ? 1.6 : 1) };
     });
   }
 
@@ -1082,7 +1251,7 @@ export class Kit {
           trs(-L * 0.5 + (L * (k + 0.5)) / nc, H - 0.58, 0.24)]);
       }
       parts.push([chamferBox(L, 0.30, 0.74, 0.09), trs(0, H - 0.15, 0.06)]);
-      return { rock: finish(parts, [variant * 2.9, variant * 1.4, 0]) };
+      return { crag: finish(parts, [variant * 2.9, variant * 1.4, 0]) };
     });
   }
 
@@ -1104,7 +1273,7 @@ export class Kit {
           0, r() * 0.1, (r() - 0.5) * 0.02)]);
       }
       parts.push([rockChunk(0.5 + r() * 0.2, r, 0.4), trs(0, 0.40 + h, 0, 0, r() * TAU, 0, 1, 0.5, 1)]);
-      return { rock: finish(parts) };
+      return { crag: finish(parts) };
     });
   }
 

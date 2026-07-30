@@ -1691,7 +1691,7 @@ export class Props {
      */
     let adopted = false;
     if (f.external && handle.lightAt) adopted = this._adoptLightNear(f.x, f.z, handle);
-    if (!adopted) this._addFixtureLights(variant, matrix, handle);
+    if (!adopted) this._addFixtureLights(variant, matrix, handle, f);
 
     if (!f.mounted && (def.footprint ?? 0) > 0) {
       handle.blobSlot = this._blob(f.x, gy, f.z, (def.footprint ?? 0.5) * 1.15);
@@ -1701,15 +1701,43 @@ export class Props {
     return handle;
   }
 
-  _addFixtureLights(variant, matrix, handle) {
+  _addFixtureLights(variant, matrix, handle, req) {
     const lighting = this.engine.get?.('lighting');
+    /*
+     * NO FIXTURE OF OURS CARRIES A SHADOW MAP INSIDE A DUNGEON.
+     *
+     * Five hell braziers ask for `shadow: true` from their recipe (the hellfire
+     * variant in props/Fixtures.js), and Lighting promotes the two most important
+     * of them into its shadow-capable point pool — measured live in the boss frame
+     * as `sanctum.point.sh.0/1`, sitting 4.5 m up inside the arena. Those two maps
+     * are what threw the hard-edged black band across the arena paving that the
+     * brief describes as an unlit rock; the caster was a wall panel, and the
+     * geometry half of the fix is in dungeon/Arena.js.
+     *
+     * This is the light half, and it is worth doing on its own because these maps
+     * are rendered once and then frozen: both lights ran with
+     * `shadow.autoUpdate = false` and `needsUpdate = false`, so the map dates from
+     * before the interior's ground settled — `Dungeon._setMode()` moves the floor
+     * after the build, which is what the `groundMoved` guard there exists for.
+     * A practical whose shadow cannot be refreshed can only ever be right by luck,
+     * and an interior lit by twenty-four of them does not need any of them to
+     * occlude: nothing in the room is more than 5 m from a second flame.
+     *
+     * Interiors only. A town campfire's frozen map is over ground that never
+     * moves, and those frames are graded around having it. Bodies keep their
+     * contact shadows either way — that is a screen-space decal pool.
+     */
+    const interior = this.biome === 'crypt' || this.biome === 'hell';
+    const mayShadow = !interior && req?.shadow !== false;
     for (const li of variant.lights) {
       _p.set(li.x, li.y, li.z).applyMatrix4(matrix);
       const desc = {
         position: [_p.x, _p.y, _p.z],
         intensity: li.intensity, radius: li.radius,
         type: li.type ?? 'torch', kelvin: li.kelvin,
-        flicker: li.flicker ?? 1, shadow: li.shadow ?? false,
+        flicker: li.flicker ?? 1, shadow: mayShadow && (li.shadow ?? false),
+        /* priority stays off the recipe's own `shadow` so dropping the map does
+           not re-rank the pool and swap which practicals survive the cut. */
         priority: li.priority ?? (li.shadow ? 1.3 : 1),
       };
       let h = null;
@@ -1843,6 +1871,10 @@ export class Props {
       rotY: opts.rotY ?? opts.yaw,
       mounted: opts.mounted ?? def.mounted ?? (py !== undefined && opts.absolute !== false),
       external: opts.external !== false,
+      /* the caller's light options matter for one thing: a requester that says
+         `shadow: false` (every dungeon fixture does) must not get a recipe light
+         with a shadow map anyway — see `_addFixtureLights`. */
+      shadow: opts.shadow,
       rand,
     };
     /*

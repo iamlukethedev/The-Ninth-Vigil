@@ -36,42 +36,94 @@ import { fbm3, smoothstep } from './RigKit.js';
 
 /**
  * `uv` = metres per texture repeat, applied when the geometry is built.
- * Keep these small — a 1.7 m skeleton whose bone grain repeats every 1.5 m is
- * exactly the "macro photograph" failure KNOWN_ISSUES.md calls out.
  *
- * `floor` = ALBEDO FLOOR, in scene-linear units, and it is a bug fix.
+ * MEASURED against the on-screen size, which is the only place the number means
+ * anything. At the gameplay camera (24-34 m, 1600x900) an enemy occupies 60-100
+ * px and its texture repeat covers 9-11 px — so every frequency the map carries,
+ * including the largest one a tiling texture can hold, was landing at 1-2 px and
+ * being averaged into a flat colour by mip selection. These are therefore ~1.7x
+ * their old values, which puts the new macro tier (2 cycles per repeat, see
+ * texgen's macroField) at 7-8 px on a 90 px figure: a value break-up the eye
+ * reads as weathering. They are NOT raised further, because at 0.42 m per repeat
+ * bone's trabecular tier already sits at 19 mm, and past roughly 25 mm a
+ * character starts to read as the "macro photograph" failure KNOWN_ISSUES.md
+ * calls out.
  *
- * The bestiary's dark recipes were crushed to black. Measured material colours
- * from the live `combat` scenario:
+ * `albedo` = target MEAN scene-linear diffuse albedo luma for the surface, and it
+ * replaces brightness-by-accident with brightness-on-purpose.
+ *
+ * Measured material colours from the live combat scenario are extremely dark —
  *
  *   cultist:cloth  [0.092, 0.059, 0.063]      skeleton:cloth [0.145, 0.108, 0.073]
  *   brute:cloth    [0.116, 0.084, 0.049]      hellhound:ember [0.252, 0.056, 0.011]
  *
- * and that colour is then multiplied by the albedo MAP (~0.4-0.6 mid) and again
- * by the per-vertex grime term (`grimeFn` darkens the lower body to 0.58), so a
- * cultist's robe arrives at the BRDF at roughly 0.025 linear. No amount of light
- * makes 0.025 albedo show cloth weave: the surface has nowhere to read, which is
- * exactly the critic's "solid black cone with no internal detail".
+ * — and that colour multiplies the albedo MAP (measured mean linear luma: bone
+ * 0.234, metal 0.135, cloth 0.019, charred flesh 0.005) and again the per-vertex
+ * grime term (mean 0.87), so a cultist's robe was arriving at the BRDF at 0.0018
+ * scene-linear. That is coal. The previous fix for it was a flat additive albedo
+ * floor of 0.06-0.10, which did stop the black cutouts but at 48x the surface's
+ * own value it also became the surface: it is the measured cause of the enemies
+ * reading as near-white featureless blobs (silhouette mean luma 0.71 with 30 % of
+ * pixels blown past 0.9, against the hero's 0.47 and 11 %).
  *
- * So every recipe declares a floor and the shader lifts the albedo into
- * [floor, 1] (`floor + c * (1 - floor)`) — black goes to `floor`, white stays
- * white, and the mid-tone structure the maps carry is preserved as a ratio. The
- * values sit in the 0.06-0.10 band: enough for cloth, bone and flesh to hold
- * material information under a torch, low enough that a robe is still the
- * darkest thing on the body.
+ * So instead each recipe now declares the albedo it wants and `make()` solves for
+ * the gain: `gain = albedo / (mapMean * tintLuma)`. A gain preserves 100 % of the
+ * map's relative contrast — including the macro tier — where an additive pedestal
+ * destroys it. Metal and brass declare none: on a metal the albedo map is specular
+ * F0 and iron's 0.56 linear is physics, not taste.
+ *
+ * THE NUMBERS ARE SET BY WHERE THE PIXEL LANDS, not by a reflectance table, and
+ * that is the point. Dry bone reflects about 0.55 in the real world; at this
+ * scenario's exposure an albedo of 0.55 renders at display luma 0.95, i.e. CLIPPED,
+ * and a clipped pixel cannot show structure no matter how good the map behind it
+ * is. Measured on the combat capture at albedo 0.098: bone silhouette mean 0.626
+ * with 13.4 % of its pixels past 0.9 — the skull was a blank white egg with a
+ * perfectly good 0.20-relative-contrast map underneath it. Every value here is
+ * therefore chosen so the surface sits in the 0.40-0.55 display band where the
+ * macro tier is actually visible, and the relative ordering is preserved: bone is
+ * still the palest thing on a skeleton at 0.061, burnt hound hide the darkest
+ * at 0.023.
+ *
+ * `floor` = ALBEDO FLOOR, in scene-linear units, still present but now a genuine
+ * safety net rather than the dominant term, and textured by the map instead of
+ * flat (see FRAG_EFFECTS). It is what keeps a robe in an unlit corner from
+ * resolving as a hole.
+ *
+ * It is also CAPPED at 28 % of the recipe's own `albedo` target, and that cap is
+ * doing real work. An absolute floor cannot be right for a library whose targets
+ * span 0.012 to 0.098: at charred hide's 0.012 the declared 0.022 floor was
+ * 65 % of the entire diffuse term, so the burnt hound was mostly pedestal again —
+ * the same failure as the original bug, three per cent of the way down the
+ * brightness range. As a fraction the floor is always a lift and never the
+ * surface, whatever the recipe is worth.
+ *
+ * `rim` = gain on Lighting's CHARACTER RIM, and these are ~40 % of what they were.
+ *
+ * The rim is a fresnel-weighted ADDITIVE band, so like the aura it carries no
+ * surface structure at all. On the hero, whose limbs are 20-30 px wide at the
+ * gameplay camera, the fresnel term only catches a genuine edge and the effect is
+ * the intended separation. On enemies it is not: a skeleton's femur is 4-8 px
+ * wide, a hellhound's leg 5 px, so the glancing-normal band covers the whole body
+ * and the term becomes a flat wash. A/B measured on the combat capture with the
+ * rim compiled out entirely: pack silhouette mean luma 0.576 -> 0.502 and
+ * blown-highlight share 0.177 -> 0.124, i.e. the rim alone was 13 % of an enemy's
+ * brightness and 30 % of its clipping. Cut rather than removed, because
+ * separation from the floor is a different critic axis and the enemies used to
+ * fail it: at these gains the measured enemy-to-floor luma separation is still
+ * 0.16-0.30 against tools/actors.mjs's 0.05 invisibility threshold.
  */
 export const RECIPES = {
-  bone:   { kind: 'bone',    uv: 0.24, seed: 611,  normalScale: 1.15, env: 0.75, rough: 1.0, floor: 0.070, rim: 0.85 },
-  boneOld:{ kind: 'bone',    uv: 0.28, seed: 977,  normalScale: 1.25, env: 0.55, rough: 1.0, tint: [0.78, 0.74, 0.66], floor: 0.070, rim: 0.85 },
-  flesh:  { kind: 'flesh',   uv: 0.26, seed: 233,  normalScale: 1.1,  env: 0.6,  floor: 0.080, rim: 1.05 },
-  rot:    { kind: 'flesh',   uv: 0.28, seed: 809,  normalScale: 1.25, env: 0.5,  tint: [0.70, 0.78, 0.62], floor: 0.080, rim: 1.05 },
-  charred:{ kind: 'flesh',   uv: 0.22, seed: 1471, normalScale: 1.35, env: 0.45, tint: [0.30, 0.26, 0.25], floor: 0.075, rim: 1.20 },
-  cloth:  { kind: 'cloth',   uv: 0.34, seed: 353,  normalScale: 1.0,  env: 0.45, floor: 0.095, rim: 1.30 },
-  hide:   { kind: 'leather', uv: 0.30, seed: 457,  normalScale: 1.1,  env: 0.55, floor: 0.085, rim: 1.15 },
-  metal:  { kind: 'metal',   uv: 0.26, seed: 733,  normalScale: 0.95, env: 1.15, floor: 0.060, rim: 1.20 },
-  brass:  { kind: 'gold',    uv: 0.20, seed: 1093, normalScale: 0.8,  env: 1.3,  floor: 0.060, rim: 1.05 },
-  basalt: { kind: 'stone',   uv: 0.36, seed: 1279, normalScale: 1.2,  env: 0.7,  tint: [0.55, 0.50, 0.52], floor: 0.075, rim: 1.10 },
-  ember:  { kind: 'ash',     uv: 0.18, seed: 1613, normalScale: 0.9,  env: 0.5,  floor: 0.065, rim: 0.90 },
+  bone:   { kind: 'bone',    uv: 0.42, seed: 611,  normalScale: 1.15, env: 0.75, rough: 1.0, floor: 0.024, albedo: 0.061, rim: 0.50 },
+  boneOld:{ kind: 'bone',    uv: 0.46, seed: 977,  normalScale: 1.25, env: 0.55, rough: 1.0, tint: [0.78, 0.74, 0.66], floor: 0.024, albedo: 0.052, rim: 0.50 },
+  flesh:  { kind: 'flesh',   uv: 0.42, seed: 233,  normalScale: 1.1,  env: 0.6,  floor: 0.026, albedo: 0.066, rim: 0.65 },
+  rot:    { kind: 'flesh',   uv: 0.44, seed: 809,  normalScale: 1.25, env: 0.5,  tint: [0.70, 0.78, 0.62], floor: 0.026, albedo: 0.044, rim: 0.65 },
+  charred:{ kind: 'flesh',   uv: 0.36, seed: 1471, normalScale: 1.35, env: 0.45, tint: [0.30, 0.26, 0.25], floor: 0.022, albedo: 0.012, rim: 0.80 },
+  cloth:  { kind: 'cloth',   uv: 0.50, seed: 353,  normalScale: 1.0,  env: 0.45, floor: 0.028, albedo: 0.072, rim: 0.85 },
+  hide:   { kind: 'leather', uv: 0.46, seed: 457,  normalScale: 1.1,  env: 0.55, floor: 0.026, albedo: 0.068, rim: 0.75 },
+  metal:  { kind: 'metal',   uv: 0.38, seed: 733,  normalScale: 0.95, env: 1.15, floor: 0.018, rim: 0.80 },
+  brass:  { kind: 'gold',    uv: 0.26, seed: 1093, normalScale: 0.8,  env: 1.3,  floor: 0.018, rim: 0.70 },
+  basalt: { kind: 'stone',   uv: 0.48, seed: 1279, normalScale: 1.2,  env: 0.7,  tint: [0.55, 0.50, 0.52], floor: 0.024, albedo: 0.058, rim: 0.72 },
+  ember:  { kind: 'ash',     uv: 0.26, seed: 1613, normalScale: 0.9,  env: 0.5,  floor: 0.022, albedo: 0.038, rim: 0.60 },
 };
 
 /**
@@ -122,6 +174,87 @@ export function grimeFn(o = {}) {
 }
 
 /* ------------------------------------------------------------------ *
+ * map measurement
+ * ------------------------------------------------------------------ */
+
+/** sRGB byte -> scene-linear, matching the hardware decode of an sRGB texture. */
+function srgbToLinear(v) {
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+const S2L = new Float32Array(256);
+for (let i = 0; i < 256; i++) S2L[i] = srgbToLinear(i / 255);
+
+/**
+ * Scene-linear luma statistics of a generated albedo map: `{ mean, hi }`, where
+ * `hi` is the 99th percentile.
+ *
+ * Both numbers are load-bearing:
+ *
+ *   `mean` — the textured pedestal in FRAG_EFFECTS divides the map's luma by the
+ *   map's own average, or a dark kind would get a dark pedestal and a pale kind a
+ *   blinding one. It is also the denominator of the VALUE-TRIM GAIN in make(),
+ *   which is what actually sets how bright an enemy reads.
+ *
+ *   `hi` — the gain's safety clamp. Normalising a MEAN says nothing about the
+ *   peak, and a kind with a long bright tail (metal's polished scratches sit ~6x
+ *   its mean) could be handed a gain that pushes its highlights past albedo 1.0,
+ *   which is unphysical and blows out into exactly the white blobs being fixed.
+ *
+ * Measured here rather than tabulated because the forge silently degrades map
+ * resolution once its VRAM share is spent (every enemy map in the `combat`
+ * scenario comes back at 256 px, not 1024), and because texgen is another lane's
+ * file: a hard-coded table would go stale the first time a kind is retuned.
+ * Deterministic — an average and a histogram over a generated buffer, no
+ * sampling, no clock. Stride 2 in each axis because the statistics over a quarter
+ * of the texels agree to three decimal places and cost a quarter as much.
+ */
+const STATS_FALLBACK = { mean: 0.06, hi: 0.30 };
+function mapStats(tex) {
+  try {
+    const im = tex?.image;
+    if (!im || !im.width || !im.height) return STATS_FALLBACK;
+    const w = im.width, h = im.height;
+    let data = im.data ?? null;
+    if (!data) {
+      // AssetForge's fast path backs albedo with an OffscreenCanvas; anything
+      // with an alpha channel comes back as a DataTexture and hits `im.data`.
+      const cv = typeof im.getContext === 'function' ? im : new OffscreenCanvas(w, h);
+      const g = cv.getContext('2d', { willReadFrequently: true });
+      if (cv !== im) g.drawImage(im, 0, 0);
+      data = g.getImageData(0, 0, w, h).data;
+    }
+    if (!data || data.length < w * h * 4) return STATS_FALLBACK;
+    // 128 linear-luma bins. Albedo maps live almost entirely below 0.6 linear, so
+    // the bin width of 0.0078 resolves the tail finely enough to place a
+    // percentile within a couple of per cent.
+    const BINS = 128;
+    const hist = new Uint32Array(BINS);
+    let sum = 0, n = 0;
+    for (let y = 0; y < h; y += 2) {
+      const row = y * w;
+      for (let x = 0; x < w; x += 2) {
+        const o = (row + x) * 4;
+        const l = 0.2126 * S2L[data[o]] + 0.7152 * S2L[data[o + 1]] + 0.0722 * S2L[data[o + 2]];
+        sum += l; n++;
+        hist[Math.min(BINS - 1, (l * BINS) | 0)]++;
+      }
+    }
+    if (!n) return STATS_FALLBACK;
+    let acc = 0, hi = 1;
+    const cut = n * 0.99;
+    for (let i = 0; i < BINS; i++) {
+      acc += hist[i];
+      if (acc >= cut) { hi = (i + 1) / BINS; break; }
+    }
+    // The floor of 0.004 stops a near-black kind from producing a normalisation
+    // factor big enough to turn its own pedestal into a highlight.
+    return { mean: Math.max(0.004, sum / n), hi: Math.max(0.008, hi) };
+  } catch (e) {
+    return STATS_FALLBACK;
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * shader injection
  * ------------------------------------------------------------------ */
 
@@ -148,6 +281,8 @@ float monFbm( vec3 p ) {
 const FRAG_HEAD = /* glsl */`
 varying vec3 vMonPos;
 varying float vMonMask;
+uniform float uMonAlbNorm;
+uniform float uMonAlbGain;
 uniform float uMonDissolve;
 uniform vec3  uMonDissEdge;
 uniform vec2  uMonDissRange;
@@ -184,10 +319,51 @@ const FRAG_EFFECTS = /* glsl */`
 
     /* ALBEDO FLOOR — see RECIPES.floor. Lifts the crushed end of the albedo
        range into [floor, 1] so cloth weave, bone grain and rotting flesh have
-       somewhere to read, while white stays white and every mid-tone keeps its
-       ratio to its neighbours. Applied FIRST, before the emissive-mask cavity
-       darkening below, so glowing eye sockets are still cut out of it. */
-    diffuseColor.rgb = uMonAlbFloor + diffuseColor.rgb * ( 1.0 - uMonAlbFloor );
+       somewhere to read, while white stays white. Applied FIRST, before the
+       emissive-mask cavity darkening below, so glowing eye sockets are still cut
+       out of it.
+
+       THE PEDESTAL IS TEXTURED, and that is a bug fix, not a refinement. As a
+       flat add it was measured to be the single largest term in an enemy's
+       albedo and therefore the direct cause of "near-white featureless blobs".
+       Worked example from the live combat frame: the cultist's robe arrives
+       here at map 0.019 * tint 0.11 * vertex grime 0.87 = 0.0018 scene-linear,
+       and the flat floor added 0.087 — forty-eight times the surface's own
+       value. Every scrap of structure the map carried was therefore diluted to
+       0.0018/0.0888 = 2 % of the pixel, so the robe rendered as one flat lifted
+       grey no matter how good the weave underneath was. Switching the floor off
+       entirely at runtime dropped the enemy silhouette mean luma from 0.71 to
+       0.40 and the blown-highlight share from 0.30 to 0.12: it was not a subtle
+       lift, it WAS the surface.
+
+       So the pedestal is now modulated by the albedo map's own luma, normalised
+       by that map's measured mean (uMonAlbNorm = 1/mean, computed once per
+       recipe in MonsterMaterials.mid()). The MEAN lift is unchanged, so nothing
+       goes back to being a black cutout, but the lift now carries 100 % of the
+       map's relative contrast instead of 2 % of it — including the new macro
+       tier, which is the only tier that survives being drawn 60 px tall. The
+       clamp keeps the darkest pedestal at 0.30x (a fold is dark, not a hole) and
+       the brightest at 2.3x (a bleached crown, not a light source).
+
+       Re-fetching the albedo map costs no sampler: it is the same uniform and the
+       same texture unit, and this project sits close enough to the 16-sampler
+       limit that a second sampler would turn the scene white. */
+    float monStruct = 1.0;
+    #ifdef USE_MAP
+      float monMapL = dot( texture2D( map, vMapUv ).rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+      monStruct = clamp( monMapL * uMonAlbNorm, 0.30, 2.30 );
+    #endif
+    /* VALUE-TRIM GAIN — see RECIPES.albedo for how the target is chosen.
+       It lives in a UNIFORM rather than being folded into material.color, and that
+       is not a style preference. Bestiary's pooled-revive path re-tints a recycled
+       enemy in place with a colour copy onto the live material, which silently
+       wiped a gain baked into that colour: the cultist in the combat capture
+       was running at its raw 0.0016 map-times-tint albedo, so its entire visible
+       value was the albedo pedestal, and raising its albedo target by 1.46x moved
+       its measured silhouette mean by 0.001. A uniform cannot be clobbered by a
+       colour assignment, so the trim survives every revive, elite lerp and
+       damage tint the bestiary applies. */
+    diffuseColor.rgb = uMonAlbFloor * monStruct + diffuseColor.rgb * uMonAlbGain * ( 1.0 - uMonAlbFloor );
 
     totalEmissiveRadiance *= uMonEmiss;
     // per-vertex emissive mask: eye sockets, runes, ember cores, weak points.
@@ -203,14 +379,48 @@ const FRAG_EFFECTS = /* glsl */`
        CAPPED at 0.62 scene-linear, under RenderPipeline's 0.838 bloom floor: an
        aura that blooms is a glowing blob, not a champion. Measured before the cap:
        the night champion peaked at 1.18 from this term alone and its body clipped
-       to pure white. */
+       to pure white.
+
+       BOTH EMISSIVE TERMS BELOW ARE MULTIPLIED BY monStruct, and that is the fix
+       for the second half of "near-white featureless blobs".
+
+       An additive emissive is the one operation that cannot be recovered from: it
+       does not scale the surface, it replaces it. Measured on the live combat
+       frame, a ghoul caught at uMonFlash 0.10 — well under Bestiary's 0.13 ceiling
+       and therefore an ordinary hit, not an edge case — read 0.929 silhouette mean
+       luma with 83 % of its pixels past 0.9 and a luma SD of 0.088, while its two
+       identically-shaded packmates measured 0.51 and 0.53. Verified against the
+       materials alone with every transparent and additive mesh in the scene
+       hidden, so it is not a VFX overlay: 0.10 * 2.4 = 0.24 scene-linear of flat
+       white emissive on a body whose diffuse albedo is 0.070 is a 3.4:1 paint-over.
+       In a scripted fight something is always mid-flash, which is why a "featureless
+       white blob" was in every combat capture.
+
+       Weighting by the albedo map's own normalised luma (0.30x in a stained crease,
+       2.30x on a bleached crown) means a hot body stays hot but its bone still reads
+       as bone: the flash now modulates the surface instead of erasing it. The gains
+       come down as well — 2.4 -> 1.5 and the albedo-toward-white wash 0.45 -> 0.22 —
+       because the structure term averages to 1.0 and would otherwise leave the
+       punch exactly as strong as it was.
+
+       FLASH GAIN 1.5 -> 0.7, measured a second time after the above landed. With
+       Bestiary's ceiling at 0.05 the term was still contributing 0.05 * 1.5 = 0.075
+       scene-linear, and a monster body's post-floor diffuse is only 0.07-0.10, so a
+       flash was still roughly DOUBLING scene-linear radiance. On the frozen combat
+       frame that showed up as one of three identically-shaded ghouls reading 0.823
+       silhouette mean with 43 % of its pixels past 0.9 while its packmates sat at
+       0.508 and 0.522 with 3-9 % blown — a +0.30 display-luma spike from the flash
+       alone. 0.7 puts the lift at 0.035 scene-linear, about +45 % rather than +100 %,
+       which is still an unmistakable tell because the flash is ANIMATED: a 45 % step
+       that appears and decays over a few frames reads far louder than the same step
+       held static, and unlike the old value it cannot clip the body to white. */
     totalEmissiveRadiance += min(
-      uMonAuraColor * uMonAura * ( 0.10 + monF2 * 0.62 + monF3 * 1.35 ),
+      uMonAuraColor * uMonAura * ( 0.10 + monF2 * 0.62 + monF3 * 1.35 ) * monStruct,
       vec3( 0.62 ) );
-    totalEmissiveRadiance += uMonFlashColor * uMonFlash * 2.4;
+    totalEmissiveRadiance += uMonFlashColor * uMonFlash * 0.7 * monStruct;
     totalEmissiveRadiance += uMonDissEdge * monEdge * 7.0;
 
-    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.0 ), uMonFlash * 0.45 );
+    diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.0 ), uMonFlash * 0.22 );
     // wraith / phasing: fresnel-weighted coverage, never a flat 50 % fade
     float monGhostA = clamp( 0.12 + monF * 1.30 + monF3 * 0.55, 0.0, 1.0 );
     diffuseColor.a *= mix( 1.0, monGhostA, uMonGhost );
@@ -235,9 +445,10 @@ export function injectMonsterShader(mat, u) {
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>' + FRAG_DISSOLVE)
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>' + FRAG_EFFECTS);
   };
-  // v2: albedo floor + three-lobe aura. Defines are part of three's own cache key
-  // so this is belt-and-braces, but it documents that the source changed shape.
-  mat.customProgramCacheKey = () => 'sanctum-monster-v2';
+  // v3: albedo floor + three-lobe aura + map-modulated pedestal. Defines are part
+  // of three's own cache key so this is belt-and-braces, but it documents that
+  // the source changed shape.
+  mat.customProgramCacheKey = () => 'sanctum-monster-v4';
   return mat;
 }
 
@@ -245,6 +456,11 @@ export function makeMonsterUniforms(o = {}) {
   const f = o.albFloor ?? 0.075;
   return {
     uMonAlbFloor: { value: new THREE.Vector3(f * FLOOR_TINT[0], f * FLOOR_TINT[1], f * FLOOR_TINT[2]) },
+    // 1 / mean linear luma of this recipe's albedo map, so the pedestal above can
+    // be normalised without a divide per fragment. 1/0.06 is the fallback used
+    // when the map could not be measured (see mapStats).
+    uMonAlbNorm: { value: o.albNorm ?? (1 / 0.06) },
+    uMonAlbGain: { value: o.albGain ?? 1 },
     uMonDissolve: { value: 0 },
     uMonDissEdge: { value: new THREE.Color(o.dissolveEdge ?? 0xffb060) },
     uMonDissRange: { value: new THREE.Vector2(o.yMin ?? 0, o.height ?? 2) },
@@ -269,9 +485,26 @@ export class MonsterMaterials {
   constructor(engine) {
     this.engine = engine;
     this._maps = new Map();
+    this._mid = new Map();
     this._extra = new Map();
     this._owned = [];
   }
+
+  /**
+   * Linear luma statistics of a recipe's albedo map, measured once and memoised.
+   * Feeds the textured albedo pedestal and the value-trim gain — see
+   * FRAG_EFFECTS, make() and mapStats().
+   */
+  stats(key) {
+    const hit = this._mid.get(key);
+    if (hit !== undefined) return hit;
+    const v = mapStats(this.maps(key)?.map ?? null);
+    this._mid.set(key, v);
+    return v;
+  }
+
+  /** Mean linear luma of a recipe's albedo map. */
+  mid(key) { return this.stats(key).mean; }
 
   /** Cached AssetForge map set for a recipe (textures shared by all instances). */
   maps(key) {
@@ -290,6 +523,37 @@ export class MonsterMaterials {
   }
 
   uvScale(key) { return (RECIPES[key] ?? RECIPES.bone).uv; }
+
+  /**
+   * Solve this material's VALUE-TRIM GAIN for the mean scene-linear albedo its
+   * recipe asked for: `gain = albedo / (mapMean * tintLuma)`. See RECIPES.albedo
+   * for why the targets are what they are and FRAG_EFFECTS for why the result is a
+   * uniform rather than a factor folded into `color`.
+   *
+   * MUST be re-run by anything that writes `material.color`, because the tint is
+   * the denominator. Bestiary calls it after every re-tint — pooled revive, elite
+   * accent lerp, per-species colour shift — and that is the whole reason this is a
+   * method instead of eight lines inside make().
+   */
+  trim(mat) {
+    const u = mat.userData?.monU;
+    const r = RECIPES[mat.userData?.recipe];
+    if (!u?.uMonAlbGain || !r?.albedo || !mat.map) return;
+    const st = this.stats(mat.userData.recipe);
+    const tl = Math.max(0.004, 0.2126 * mat.color.r + 0.7152 * mat.color.g + 0.0722 * mat.color.b);
+    let gain = r.albedo / (st.mean * tl);
+    /* Peak clamp: never let the 99th percentile of the surface exceed 0.74
+       scene-linear. Normalising a MEAN says nothing about the peak, and the kinds
+       with a long bright tail — metal's polished scratches sit about 6x their own
+       mean — would otherwise be handed a gain that pushes their highlights past
+       albedo 1.0. That is unphysical, and in this frame it clips to exactly the
+       white blob being fixed. 0.74 is roughly dry bleached bone, the brightest
+       diffuse reflector anything in a crypt is made of. */
+    gain = Math.max(0.05, Math.min(64, Math.min(gain, 0.74 / (st.hi * tl))));
+    u.uMonAlbGain.value = gain;
+    mat.userData.albGain = gain;
+    mat.userData.albMean = st.mean * tl * gain;
+  }
 
   /**
    * Build a fresh per-instance material.
@@ -332,6 +596,7 @@ export class MonsterMaterials {
     }
     const mat = new THREE.MeshStandardMaterial(params);
     if (maps) mat.normalScale.set(r.normalScale ?? 1, r.normalScale ?? 1);
+
     // Roughness maps carry absolute values; nudge, don't replace.
     if (o.roughAdd) mat.userData.roughAdd = o.roughAdd;
 
@@ -345,8 +610,12 @@ export class MonsterMaterials {
        compiled in. See Lighting._heroRimGain / _injectHeroRim. */
     mat.userData.charRim = o.charRim ?? r.rim ?? 1.0;
 
-    const u = makeMonsterUniforms(Object.assign({ albFloor: r.floor ?? 0.075 }, o));
+    mat.userData.recipe = key;
+    const floor = r.albedo ? Math.min(r.floor ?? 0.075, r.albedo * 0.28) : (r.floor ?? 0.075);
+    const u = makeMonsterUniforms(Object.assign(
+      { albFloor: floor, albNorm: maps ? 1 / this.mid(key) : (1 / 0.06) }, o));
     injectMonsterShader(mat, u);
+    this.trim(mat);
     this._owned.push(mat);
     try { this.engine.get?.('lighting')?.registerMaterial?.(mat); } catch { /* optional */ }
     return mat;
@@ -414,6 +683,7 @@ export class MonsterMaterials {
     for (const m of this._owned) { try { m.dispose(); } catch { /* noop */ } }
     this._owned.length = 0;
     this._maps.clear();
+    this._mid.clear();
     this._extra.clear();
   }
 }

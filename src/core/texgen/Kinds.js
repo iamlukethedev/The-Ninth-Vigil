@@ -53,6 +53,94 @@ function detailField(c, seed) {
   return lo;
 }
 
+/**
+ * TIER 0 — the MACRO VALUE BAND, and it exists because of a measurement, not
+ * because a surface looked boring in a texture preview.
+ *
+ * At the gameplay camera one texture repeat on a character covers 9-11 screen
+ * pixels (measured on the live `combat` frame at 1600x900: bone 9.4 px, metal
+ * 9.4 px, cloth 11.1 px, hide 4.4 px). The hardware therefore samples the 8-16
+ * texel mip, and at that mip the only thing left of a kind whose lowest tier
+ * sits at 4+ cycles per repeat is its MEAN. Measured albedo luma standard
+ * deviation at the 16-texel mip before this tier existed:
+ *
+ *   bone 0.028   metal 0.072   cloth 0.012   flesh 0.009   charred hide 0.003
+ *
+ * A standard deviation of 0.009 is a flat colour. That is precisely the critic's
+ * "untextured flat-colour geometry", and no amount of extra fine grain fixes it,
+ * because fine grain is the first thing minification throws away.
+ *
+ * Two octaves at 2-3 cycles per repeat is the lowest band a tiling texture can
+ * carry without reading as one blob per tile, and it is the band that survives:
+ * a 2-cycle feature is 128 texels wide at 256 px, so it is still 8 texels at the
+ * 16-texel mip and loses nothing at all. On screen it lands at 4-8 px, which on
+ * a 60-90 px figure is a value break-up the eye reads as weathering.
+ *
+ * Returned mean-0, SD ~0.14, range about +/-0.45. Callers apply it
+ * MULTIPLICATIVELY, so the map's mean — and therefore frame brightness — is
+ * unchanged, and couple it into roughness and the grime supply as well, because
+ * dark AND rough AND dirty together is what reads as a used surface rather than
+ * as a colour wash.
+ */
+function macroField(c, seed, f = 2) {
+  const size = c.size;
+  const a = field(size, 8, (u, v) => fbmT(u * f, v * f, f, f, 2, 0.5, seed) - 0.5);
+  // A second, coprime-ish band at f+1 with a fractional phase offset. One noise
+  // field at one frequency reads as a single blotch per tile; two beating bands
+  // read as patches of different sizes, which is what weathering looks like. The
+  // 0.37 offset is a whole number of lattice cells away from itself after one
+  // repeat, so the field is still exactly tileable.
+  const g = f + 1;
+  const b = field(size, 8, (u, v) => fbmT(u * g + 0.37, v * g, g, g, 2, 0.5, seed + 1013) - 0.5);
+  for (let i = 0; i < a.length; i++) a[i] += b[i] * 0.62;
+  return a;
+}
+
+/**
+ * Apply a macro field multiplicatively with a soft limiter: returns `1 + m * gain`
+ * but bounded, so the field's +/-0.45 tail can neither invert a value nor double it.
+ *
+ * HOW THE GAINS WERE SET, because "looks about right" is what produced the
+ * problem. Measured relative albedo contrast (luma SD / luma mean) of the map at
+ * the mip the gameplay camera actually selects, from the live `combat` frame:
+ *
+ *   HERO   mail 0.66   steel 0.26   gold 0.21   cloth 0.22   leather 0.20
+ *   ENEMY  bone 0.13   ghoul flesh 0.15   brute flesh 0.12   charred hide 0.13
+ *
+ * The hero reads as material at 113 px and the enemies read as blobs at 60-100 px,
+ * and the gap is not resolution — every one of these is the same generator family
+ * at the same mip. It is that the enemy kinds carried HALF the relative contrast.
+ * So the tier-0 gains are set to land bone, cloth, leather and flesh in the
+ * hero's 0.20-0.26 band rather than at 0.12-0.15, which for a field of SD 0.14
+ * means a gain near 1.9 rather than near 0.9.
+ *
+ * The limiter is a rational approximation of tanh — within 2 % of it across this
+ * range, and one divide instead of two exponentials per texel per channel, which
+ * on five channels of a 1024 px map is 5 M transcendentals saved per material.
+ */
+function macroMul(m, gain) {
+  const x = m * gain;
+  return 1 + x / (1 + (x < 0 ? -x : x) * 0.72);
+}
+
+/**
+ * Clamp a TIER 3 (fine) frequency to something the texture the forge actually
+ * handed us can resolve.
+ *
+ * The forge degrades to 256 px once its VRAM share is spent, and the bestiary is
+ * last in line — every enemy map in the `combat` scenario measures 256 px. A
+ * cortex pore declared at 190 cycles per repeat is then 1.3 texels wide, which
+ * is not a pore, it is white noise that mips straight to grey. Four texels per
+ * cycle is the floor for a cellular feature to survive its own reconstruction.
+ *
+ * At 1024 px this returns the requested frequency unchanged for every value in
+ * the library (256 >= all of them), so every existing full-resolution map is
+ * bit-identical to before.
+ */
+function fineF(size, cycles) {
+  return Math.min(cycles, Math.max(8, size >> 2));
+}
+
 /** Per-texel hash — mineral flecks, grit, fibre. Averages away in mips. */
 function fleckField(c, seed) {
   const size = c.size;
@@ -508,8 +596,12 @@ export function genWood(c) {
 
 /* ================================================================= METAL */
 /**
- * Forged iron, in three declared tiers (see KIND_TIERS).
+ * Forged iron, in four declared tiers (see KIND_TIERS).
  *
+ *  T0  mill-scale zones — a 2-cycle band carried mainly in ROUGHNESS, because on
+ *      a metal the albedo map is specular F0 and a big value swing there reads as
+ *      two metals welded together. This is the only tier that still exists once
+ *      the plate is 60 px tall. See macroField().
  *  T1  hammer planishing — FACETS with arrises, not dimples. The distinction is
  *      the whole difference between "struck metal" and "bubble wrap": a smith's
  *      hammer leaves a shallow flat facet bounded by a crisp ridge, so the
@@ -553,11 +645,13 @@ export function genMetal(c) {
     warpT(u * 5, v * 5, 5, 5, S + 61, 0.75, 4);
     return fbmT(WP.x, WP.y, 5, 5, 5, 0.55, S + 67);
   });
-  const rustPit = field(size, 2, (u, v) => worleyT4(u * 64, v * 64, 64, 64, S + 71));
-  const scrA = field(size, 2, (u, v) => anisoT(u, v, 3, 1, -1, 3, 2, 96, S + 89, 3));
-  const scrB = field(size, 2, (u, v) => anisoT(u, v, 1, -2, 2, 1, 3, 70, S + 97, 3));
+  const RP = fineF(size, 64);
+  const rustPit = field(size, 2, (u, v) => worleyT4(u * RP, v * RP, RP, RP, S + 71));
+  const scrA = field(size, 2, (u, v) => anisoT(u, v, 3, 1, -1, 3, 2, fineF(size, 96), S + 89, 3));
+  const scrB = field(size, 2, (u, v) => anisoT(u, v, 1, -2, 2, 1, 3, fineF(size, 70), S + 97, 3));
   const det = detailField(c, S + 109);
   const flk = fleckField(c, S + 113);
+  const mac = macroField(c, S + 613, 2);
 
   for (let i = 0; i < size * size; i++) {
     const f1 = facet[i];
@@ -609,6 +703,31 @@ export function genMetal(c) {
       r *= 1 - 0.42 * deep; g *= 1 - 0.46 * deep; b *= 1 - 0.5 * deep;
     }
 
+    /* TIER 0 — see macroField(). On a metal the albedo map is specular F0, so the
+       macro band is deliberately weighted into ROUGHNESS rather than into value:
+       a big swing in F0 reads as two different metals welded together, whereas a
+       big swing in roughness reads as one plate where the mill scale is intact in
+       some zones and has been scoured off in others — which is what a 200-year-old
+       crypt gate looks like. The albedo term is a third of the roughness term and
+       is there only to keep the scaled zones from reading as a pure gloss change.
+       Metalness comes down slightly in the dull zones because scale is an oxide,
+       i.e. a dielectric, which is the same coupling the rust branch above uses.
+
+       Metal is the one kind whose albedo gain is NOT raised to the hero's 0.20-0.26
+       band, and that is on purpose: iron's map already measured 0.26 relative
+       contrast at the working mip before this tier existed — it was never one of
+       the flat kinds — and on a conductor the map is F0, where a 20 % swing is a
+       different alloy. The roughness gain is where the extra macro contrast goes,
+       because a roughness break-up is what makes a plate read as struck metal at
+       60 px without touching its colour at all. */
+    const M = mac[i];
+    const dull = M < 0 ? -M : 0;
+    r *= macroMul(M, 0.42);
+    g *= macroMul(M, 0.42);
+    b *= macroMul(M, 0.45);
+    rough -= M * 0.46;
+    metal *= 1 - 0.40 * dull;
+
     c.h[i] = hh;
     c.cr[i] = r; c.cg[i] = g; c.cb[i] = b;
     c.rg[i] = rough;
@@ -618,7 +737,7 @@ export function genMetal(c) {
        oxide layer back to steel, it flakes — so the two tier-2 channels are
        mutually exclusive by construction rather than by luck. */
     c.wr[i] = clamp01((ar * 0.86 + scratch * 0.52) * (1 - rust) * (0.55 + 0.7 * fr));
-    c.gm[i] = clamp01(0.35 + rustF[i] * 0.55);
+    c.gm[i] = clamp01(0.35 + rustF[i] * 0.55 - M * 0.9);
   }
 }
 
@@ -708,7 +827,7 @@ export function genGold(c) {
 
 /* ================================================================= CLOTH */
 /**
- * 2/2 TWILL weave, in three declared tiers (see KIND_TIERS).
+ * 2/2 TWILL weave, in four declared tiers (see KIND_TIERS).
  *
  * It is a twill and not a plain weave for one specific reason. A plain weave's
  * over-one/under-one interlacing is a CHECKERBOARD, and a checkerboard of round
@@ -720,6 +839,10 @@ export function genGold(c) {
  * signature is a DIAGONAL RIB. A diagonal rib survives minification as a
  * directional texture and can never be confused with a lattice of rings.
  *
+ *  T0  dye lot and sun-bleached crowns — a 2-cycle band, half multiplicative and
+ *      half an additive pale bloom, because a 0.15-luma wool cannot buy absolute
+ *      contrast from a multiply alone. This is the tier that survives a robe being
+ *      drawn 60 px tall. See macroField().
  *  T1  twill rib + thread crowns, ~2 mm per thread at a garment's UV density
  *  T2  fray at the stress patches, dirty hem, and a burnished sheen on the
  *      proud floats where the wearer's arm rubs (shared `wr` supply)
@@ -744,9 +867,10 @@ export function genCloth(c) {
   const dye = field(size, 4, (u, v) => fbmT(u * 4, v * 4, 4, 4, 5, 0.6, S + 7));
   const wearF = field(size, 4, (u, v) => fbmT(u * 6 + 3, v * 6, 6, 6, 5, 0.55, S + 19));
   const hemF = field(size, 4, (u, v) => fbmT(u * 9, v * 5, 9, 5, 4, 0.6, S + 29));
-  const fuzz = field(size, 2, (u, v) => anisoT(u, v, 1, 0, 0, 1, 7, 130, S + 41, 3));
+  const fuzz = field(size, 2, (u, v) => anisoT(u, v, 1, 0, 0, 1, 7, fineF(size, 130), S + 41, 3));
   const det = detailField(c, S + 53);
   const flk = fleckField(c, S + 59);
+  const mac = macroField(c, S + 607, 2);
 
   // per-thread dye lots and slub (diameter variance), tabulated once
   const warpDye = new Float32Array(N), weftDye = new Float32Array(N);
@@ -830,6 +954,27 @@ export function genCloth(c) {
       const hemBand = Math.max(smoothstep(0.2, 0.0, v), smoothstep(0.8, 1.0, v));
       const hem = clamp01(hemBand * (0.35 + 0.9 * hemF[i]) * 1.25);
 
+      /* TIER 0 — see macroField(). Cloth is the kind that needed this most: its
+         albedo luma SD at the 16-texel mip measured 0.012, i.e. a robe at
+         gameplay distance was a single flat value with a weave that had already
+         been mipped out of existence. Wool takes it two ways at once and both are
+         here, because a purely multiplicative band on a 0.15-luma cloth buys
+         almost no absolute contrast:
+           - multiplicative, for the dye lot and the damp/shadowed folds;
+           - ADDITIVE and pale on the positive lobe, for the sun-bleached and
+             dust-bloomed shoulders and crowns, which on real cloth are the
+             lightest thing on the garment by a wide margin.
+         Measured relative albedo contrast (luma SD / luma mean) at the 16-texel
+         mip: 0.079 before this tier, 0.22 here — the same band the hero's own
+         cloth and cloak occupy, which are the surfaces the brief says already
+         read correctly. See macroMul(). */
+      const M = mac[i];
+      const bleach = M > 0 ? M * M * 4 * 0.105 : 0;
+      r = r * macroMul(M, 1.92) + bleach;
+      g = g * macroMul(M, 1.98) + bleach * 0.94;
+      b = b * macroMul(M, 2.08) + bleach * 0.86;
+      rough -= M * 0.18;
+
       c.h[i] = hh;
       c.cr[i] = r; c.cg[i] = g; c.cb[i] = b;
       c.rg[i] = rough;
@@ -838,13 +983,17 @@ export function genCloth(c) {
       // a frayed patch has lost its nap already, so it cannot also be burnished
       c.wr[i] = clamp01(floatR * (0.30 + 0.85 * smoothstep(0.34, 0.72, wearF[i]))
         * (1 - fray));
-      c.gm[i] = clamp01(hem * 0.95 + smoothstep(0.5, 0.85, wearF[i]) * 0.45 + 0.12);
+      c.gm[i] = clamp01(hem * 0.95 + smoothstep(0.5, 0.85, wearF[i]) * 0.45 + 0.12 - M * 0.85);
     }
   }
 }
 
 /* =============================================================== LEATHER */
-/** Tanned hide: two-scale pore grain, creases, saddle stitching, burnish. */
+/**
+ * Tanned hide, in four declared tiers (see KIND_TIERS): a macro belly/back tone
+ * band (T0), hide grain cells (T1), burnished welts and creases (T2), and
+ * follicle pores (T3).
+ */
 export function genLeather(c) {
   const size = c.size, S = c.seed, P = c.params;
   P.normalStrength = 0.9;
@@ -865,7 +1014,8 @@ export function genLeather(c) {
     out[0] = WK.edge;
     out[1] = hash2(WK.cx, WK.cy, S + 17);
   });
-  const pore = field(size, 1, (u, v) => worleyT4(u * 110, v * 110, 110, 110, S + 23));
+  const LP = fineF(size, 110);
+  const pore = field(size, 1, (u, v) => worleyT4(u * LP, v * LP, LP, LP, S + 23));
   const crease = field(size, 4, (u, v) => {
     warpT(u * 4, v * 4, 4, 4, S + 31, 0.8, 3);
     return fbmT(WP.x, WP.y, 4, 4, 5, 0.55, S + 37, FBM_RIDGED);
@@ -873,6 +1023,7 @@ export function genLeather(c) {
   const scuff = field(size, 4, (u, v) => fbmT(u * 7, v * 7, 7, 7, 5, 0.6, S + 43));
   const oil = field(size, 4, (u, v) => fbmT(u * 3 + 4, v * 3, 3, 3, 4, 0.6, S + 47));
   const det = detailField(c, S + 61);
+  const mac = macroField(c, S + 619, 2);
 
   const inv = 1 / size;
   for (let y = 0, i = 0; y < size; y++) {
@@ -933,6 +1084,20 @@ export function genLeather(c) {
         rough += (0.55 - rough) * onStitch;
       }
 
+      /* TIER 0 — see macroField(). Hide is cut from an animal, and an animal is
+         not one tone: the belly is paler and thinner than the back, the flanks
+         carry old scar zones, and where a strap has lain against it for years the
+         wax has soaked in dark. Those are 5-20 cm patches. Without them a hide
+         panel at gameplay distance measured an albedo luma SD of 0.021 at the
+         working mip; the pore and grain tiers had already been averaged away.
+         Gains set to land the relative contrast at 0.20, matching the hero's own
+         leather, which the brief confirms reads correctly. See macroMul(). */
+      const M = mac[i];
+      r *= macroMul(M, 1.68);
+      g *= macroMul(M, 1.80);
+      b *= macroMul(M, 1.96);
+      rough -= M * 0.26;
+
       c.h[i] = hh;
       c.cr[i] = r; c.cg[i] = g; c.cb[i] = b;
       c.rg[i] = rough;
@@ -943,13 +1108,17 @@ export function genLeather(c) {
          rubbed, it collects dirt, which the grime channel already handles. */
       c.wr[i] = clamp01(((1 - cr2) * (0.30 + 0.55 * grain) + onStitch * 0.70)
         * (0.55 + 0.75 * ov));
-      c.gm[i] = clamp01(0.3 + scuff[i] * 0.5 + cr2 * 0.5);
+      c.gm[i] = clamp01(0.3 + scuff[i] * 0.5 + cr2 * 0.5 - M * 0.85);
     }
   }
 }
 
 /* ================================================================= FLESH */
-/** Sallow undead skin: subsurface mottling, vein network, pores, dried gore. */
+/**
+ * Sallow undead skin, in four declared tiers (see KIND_TIERS): a macro
+ * livid/sallow band (T0), subsurface mottling and the vein network (T1), dried
+ * gore in the creases (T2), and pores (T3).
+ */
 export function genFlesh(c) {
   const size = c.size, S = c.seed, P = c.params;
   P.normalStrength = 0.42;
@@ -973,10 +1142,12 @@ export function genFlesh(c) {
     const where = smoothstep(0.48, 0.8, fbmT(u * 3, v * 3, 3, 3, 3, 0.6, S + 33));
     return fbmT(WP.x, WP.y, 9, 9, 2, 0.4, S + 31, FBM_RIDGED) * where;
   });
-  const pore = field(size, 1, (u, v) => worleyT4(u * 130, v * 130, 130, 130, S + 37));
+  const FP2 = fineF(size, 130);
+  const pore = field(size, 1, (u, v) => worleyT4(u * FP2, v * FP2, FP2, FP2, S + 37));
   const gore = field(size, 4, (u, v) => fbmT(u * 7 + 5, v * 7, 7, 7, 5, 0.6, S + 41));
   const det = detailField(c, S + 47);
   const flk = fleckField(c, S + 53);
+  const mac = macroField(c, S + 631, 2);
 
   for (let i = 0; i < size * size; i++) {
     const pores = 1 - smoothstep(0.015, 0.26, pore[i]);
@@ -1021,16 +1192,35 @@ export function genFlesh(c) {
       hh += gv * 0.006;
     }
 
+    /* TIER 0 — see macroField(). The subsurface mottle above is 3 and 8 cycles per
+       repeat, which on a character is 3-8 cm — the right size for the blood
+       pooling under skin but far too small to survive the working mip: the brute's
+       flesh measured an albedo luma SD of 0.009 there, i.e. flat. This band is the
+       10-25 cm one: whole limbs that have gone livid, whole flanks still sallow.
+       Dark drifts green-grey rather than simply darker, because what is happening
+       to a corpse's skin is putrefaction, not shading. Gains set to land the
+       relative albedo contrast at 0.22 against the 0.12-0.15 it measured at gain
+       0.9, which was still only half the hero's. See macroMul(). */
+    const M = mac[i];
+    r *= macroMul(M, 1.94);
+    g *= macroMul(M, 1.68);
+    b *= macroMul(M, 1.84);
+    rough -= M * 0.22;
+
     c.h[i] = hh;
     c.cr[i] = r; c.cg[i] = g; c.cb[i] = b;
     c.rg[i] = rough;
     c.mt[i] = 0;
-    c.gm[i] = clamp01(0.16 + gore[i] * 0.55 + wr * 0.25);
+    c.gm[i] = clamp01(0.16 + gore[i] * 0.55 + wr * 0.25 - M * 0.78);
   }
 }
 
 /* ================================================================== BONE */
-/** Old bone: porous cortex, yellowing, hairline fractures, dirt in the pores. */
+/**
+ * Old bone, in four declared tiers (see KIND_TIERS): a macro stain band (T0),
+ * trabecular clusters (T1), hairline fractures and dirt staining that follow the
+ * form (T2), and cortex pores (T3).
+ */
 export function genBone(c) {
   const size = c.size, S = c.seed, P = c.params;
   P.normalStrength = 0.8;
@@ -1045,7 +1235,8 @@ export function genBone(c) {
     out[0] = WK.f1;
     out[1] = hash2(WK.cx, WK.cy, S + 17);
   });
-  const pore = field(size, 1, (u, v) => worleyT4(u * 190, v * 190, 190, 190, S + 19));
+  const PF = fineF(size, 190);
+  const pore = field(size, 1, (u, v) => worleyT4(u * PF, v * PF, PF, PF, S + 19));
   const crack = field(size, 4, (u, v) => {
     warpT(u * 5, v * 5, 5, 5, S + 23, 0.85, 3);
     // sparse hairline fractures: low octave count keeps the lines long and
@@ -1053,9 +1244,10 @@ export function genBone(c) {
     const where = smoothstep(0.46, 0.76, fbmT(u * 2, v * 2, 2, 2, 3, 0.6, S + 27));
     return fbmT(WP.x, WP.y, 5, 5, 3, 0.45, S + 29, FBM_RIDGED) * where;
   });
-  const stri = field(size, 2, (u, v) => anisoT(u, v, 1, 0, 0, 1, 4, 90, S + 31, 3));
+  const stri = field(size, 2, (u, v) => anisoT(u, v, 1, 0, 0, 1, 4, fineF(size, 90), S + 31, 3));
   const det = detailField(c, S + 37);
   const flk = fleckField(c, S + 41);
+  const mac = macroField(c, S + 601, 2);
 
   for (let i = 0; i < size * size; i++) {
     const clusters = (1 - smoothstep(0.05, 0.5, trab[i] + (det[i] - 0.5) * 0.22))
@@ -1090,11 +1282,27 @@ export function genBone(c) {
       rough += (0.95 - rough) * fr;
     }
 
+    /* TIER 0 — see macroField(). Old bone is never one value: the side that lay
+       buried is dirt-stained and dull, the side that weathered is bleached chalky
+       and slightly proud, and the boundary between them is a 5-15 cm patch, not a
+       1 mm pore. It is applied per channel with blue pulled down hardest on the
+       dark side, because the thing doing the staining is soil, and it is coupled
+       into roughness and the grime supply so the patch is dark AND matte AND
+       dirty at once. Measured relative albedo contrast (luma SD / luma mean) at
+       the 16-texel mip, which is the mip a 16 px repeat selects at the gameplay
+       camera: 0.054 before the tier existed, 0.126 at gain 0.9, 0.23 here — the
+       band the hero's own maps occupy. See macroMul(). */
+    const M = mac[i];
+    r *= macroMul(M, 1.82);
+    g *= macroMul(M, 1.98);
+    b *= macroMul(M, 2.20);
+    rough -= M * 0.24;
+
     c.h[i] = hh;
     c.cr[i] = r; c.cg[i] = g; c.cb[i] = b;
     c.rg[i] = rough;
     c.mt[i] = 0;
-    c.gm[i] = clamp01(0.35 + stain * 0.5 + fr * 0.8 + clusters * 0.4);
+    c.gm[i] = clamp01(0.35 + stain * 0.5 + fr * 0.8 + clusters * 0.4 - M * 1.05);
   }
 }
 
@@ -1417,6 +1625,15 @@ export const KIND_LIST = Object.keys(KINDS);
  * Every kind must therefore declare, and carry, at least TWO distinct frequency
  * tiers, and three wherever the surface will be seen close:
  *
+ *   t0  MACRO VALUE BAND, 2-3 cycles per repeat — the only tier that survives
+ *       minification onto a character at the gameplay camera, where one repeat is
+ *       9-11 screen pixels and everything finer has already been averaged into
+ *       the mean. Declared as [cycles per repeat, the family's own word for it,
+ *       feature size in mm]. See macroField() for the measurements that forced
+ *       it; the kinds that carry it are the ones that get drawn on a 60-90 px
+ *       figure (bone, cloth, metal, leather, flesh) plus stone, which grew its
+ *       own `macro` field for the same reason one round earlier.
+ *
  *   t1  MID-FREQUENCY STRUCTURE, and it has to be a different KIND of structure
  *       per material family — not the same cellular field at a different scale.
  *       Declared as [cycles per repeat, the family's own word for it].
@@ -1434,12 +1651,12 @@ export const KIND_TIERS = {
   stone:   { repeat: 2.0, t1: [5, 'ashlar coursing', 400], t2: ['spalled arrises + damp runoff'], t3: [256, 'quartz/biotite fleck', 8] },
   cobble:  { repeat: 2.05, t1: [9, 'laid setts', 228], t2: ['trodden lanes + mud joints'], t3: [256, 'grit fleck', 8] },
   wood:    { repeat: 1.2, t1: [4, 'boards + annual rings', 300], t2: ['rot at end grain + tannin bleed'], t3: [150, 'fibre', 8] },
-  metal:   { repeat: 0.5, t1: [13, 'hammer facets + arrises', 38], t2: ['arris polish to steel + rust pitting'], t3: [256, 'abrasive grain', 2] },
+  metal:   { repeat: 0.38, t0: [2, 'mill scale zones', 190], t1: [13, 'hammer facets + arrises', 29], t2: ['arris polish to steel + rust pitting'], t3: [256, 'abrasive grain', 1.5] },
   gold:    { repeat: 0.4, t1: [8, 'chased filigree', 50], t2: ['tarnish in the engraving'], t3: [110, 'swirl polish', 3.6] },
-  cloth:   { repeat: 0.13, t1: [52, '2/2 twill rib', 2.5], t2: ['fray patches + felted floats + hem'], t3: [130, 'slub + fuzz', 1] },
-  leather: { repeat: 0.126, t1: [38, 'hide grain cells', 3.3], t2: ['burnished welts + creases'], t3: [110, 'follicle pore', 1.1] },
-  flesh:   { repeat: 0.5, t1: [3, 'subsurface mottle', 166], t2: ['dried gore in the creases'], t3: [130, 'pore', 3.8] },
-  bone:    { repeat: 0.4, t1: [22, 'trabecular cluster', 18], t2: ['hairline fracture + dirt stain'], t3: [190, 'cortex pore', 2.1] },
+  cloth:   { repeat: 0.46, t0: [2, 'dye lot + sun-bleached crowns', 230], t1: [52, '2/2 twill rib', 8.8], t2: ['fray patches + felted floats + hem'], t3: [130, 'slub + fuzz', 3.5] },
+  leather: { repeat: 0.42, t0: [2, 'belly/back tone + wax-soaked straps', 210], t1: [38, 'hide grain cells', 11], t2: ['burnished welts + creases'], t3: [110, 'follicle pore', 3.8] },
+  flesh:   { repeat: 0.40, t0: [2, 'livid limbs / sallow flanks', 200], t1: [3, 'subsurface mottle', 133], t2: ['dried gore in the creases'], t3: [130, 'pore', 3.1] },
+  bone:    { repeat: 0.42, t0: [2, 'buried-side stain vs bleached face', 210], t1: [22, 'trabecular cluster', 19], t2: ['hairline fracture + dirt stain'], t3: [190, 'cortex pore', 2.2] },
   dirt:    { repeat: 1.5, t1: [5, 'clods', 300], t2: ['moisture + embedded gravel'], t3: [100, 'grit', 15] },
   moss:    { repeat: 0.6, t1: [4, 'growth patches', 150], t2: ['sun-scorched dry ochre'], t3: [128, 'frond', 4.7] },
   ash:     { repeat: 1.0, t1: [4, 'dunes', 250], t2: ['char lumps + live embers'], t3: [256, 'particulate', 4] },
@@ -1455,7 +1672,7 @@ export function assertTiers(log = console.warn) {
   const bad = [];
   for (const k of KIND_LIST) {
     const t = KIND_TIERS[k];
-    const n = t ? [t.t1, t.t2, t.t3].filter(Boolean).length : 0;
+    const n = t ? [t.t0, t.t1, t.t2, t.t3].filter(Boolean).length : 0;
     if (n < 2) bad.push(`${k} (${n} tier${n === 1 ? '' : 's'})`);
   }
   if (bad.length) {

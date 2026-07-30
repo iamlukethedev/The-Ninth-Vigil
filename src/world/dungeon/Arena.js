@@ -631,30 +631,69 @@ export function buildArena(dungeon, r) {
       if (use < 0.8) break;
       const mid = s + use * 0.5;
       const px = cx + tx * mid, pz = cz + tz * mid;
-      /* seated on the heightfield and buried, so no panel shows a gap or a
-         hard intersection line where the ground rolls under it */
+      /*
+       * Seated on the heightfield and buried, so no panel shows a gap or a hard
+       * intersection line where the ground rolls under it.
+       *
+       * AND IT CASTS NOTHING. This is the brief's "unlit 6.2 m rock reading as a
+       * hole": not a rock, and not unlit. A 6.2 m panel lit by a cresset 1.5 m in
+       * front of it throws its own shadow 30 m across the paving, and because that
+       * streak runs away from an isometric lens it lands on screen as a straight
+       * hard-edged vertical black band 40 px wide beside the boss. Measured over
+       * the band's own 73 x 89 px window on the frozen boss frame:
+       *
+       *   as built ........................... mean luma 0.033, 86 % under 0.035
+       *   these panels hidden ................ mean luma 0.150, 23 % under 0.035
+       *   renderer.shadowMap.enabled = false . mean luma 0.149, 23 % under 0.035
+       *   built as non-casters (this fix) .... mean luma 0.150, 23 % under 0.035
+       *
+       * Hiding the caster, disabling shadow sampling, and building the caster as a
+       * non-caster all give the same number to within noise, which is what
+       * identifies the shape as this geometry's shadow rather than its surface.
+       * Over the whole play area, merged solid black went 1.90 % -> 0.07 % and the
+       * frame mean rose 0.139 -> 0.151. Nothing is lost by not casting: the wall is
+       * the room's boundary, the closed vault above it still casts, and there is
+       * nothing behind a boundary wall for it to shade.
+       *
+       * (Toggling `castShadow` on these meshes at RUNTIME proves nothing either way
+       * — Lighting runs the practical maps with `autoUpdate = false` and re-freezes
+       * them, so the map on screen is the one rendered at build time. That is why
+       * this has to be a build-time flag and why an hour of live probing said the
+       * casters were innocent.)
+       */
       dungeon.pushPiece(kit.arenaWall(use, A.wallH, (r() * 3) | 0),
         trs(px, G(px, pz) - 0.34, pz, 0, yaw, 0),
-        0.86 + r() * 0.26, 0.88 + r() * 0.32, (r() - 0.5) * 0.7);
+        0.86 + r() * 0.26, 0.88 + r() * 0.32, (r() - 0.5) * 0.7, false);
       s += use;
     }
 
-    /* corner buttress + a mid-side pilaster */
+    /* corner buttress + a mid-side pilaster — same no-cast rule as the panels,
+       they are the same 6.2 m of near-vertical stone at the same rim */
     const ca = a + DEG60 * 0.5;
     const cr = hexR(ca, ap) - 0.55;
     const bx = Math.cos(ca) * cr, bz = Math.sin(ca) * cr;
-    dungeon.pushPiece(kit.buttress((r() * 3) | 0, A.wallH),
+    /* ruined: see `Kit.buttress` — an intact 6.2 m pier out here at 28 m is
+       outside every practical's reach and reads as a hole, not as masonry */
+    dungeon.pushPiece(kit.buttress((r() * 3) | 0, A.wallH, true),
       trs(bx, G(bx, bz) - 0.36, bz, 0, Math.atan2(-Math.cos(ca), -Math.sin(ca)), 0),
-      0.82 + r() * 0.22, 0.92 + r() * 0.3, (r() - 0.5) * 0.6);
+      0.82 + r() * 0.22, 0.92 + r() * 0.3, (r() - 0.5) * 0.6, false);
     const mx = cx - nx * 0.5, mz = cz - nz * 0.5;
     dungeon.pushPiece(kit.buttress((r() * 3) | 0, A.wallH - 0.9),
       trs(mx, G(mx, mz) - 0.36, mz, 0, yaw, 0),
-      0.82 + r() * 0.22, 0.92 + r() * 0.3, (r() - 0.5) * 0.6);
+      0.82 + r() * 0.22, 0.92 + r() * 0.3, (r() - 0.5) * 0.6, false);
 
     /* the cresset that actually lights this wall face — the critic's "flat
        black untextured trapezoids" were untextured only in the sense that
        nothing within 13 m was throwing light at them. Mounted on the front
-       face of the mid-side pilaster (which projects 1.15 m), 3.35 m up. */
+       face of the mid-side pilaster (which projects 1.15 m), 3.35 m up.
+     *
+     * ONE PER SIDE, AND NOT MORE. Tried three per side (the run is 28.9 m long, so
+     * the panels near each corner sit 14.5 m from the only flame aimed at them):
+     * it made the frame WORSE, not better — merged solid black went 1.99 % -> 2.51 %
+     * and the void's largest blob grew from 3103 px to 8031 px. Two reasons. Each
+     * extra cresset is also an extra unlit sconce prop bolted to a dark wall, and
+     * more practicals means Lighting's importance cut evicts brighter ones. The
+     * arena is already asking for 24 practicals against roughly 14 slots. */
     cressets.push({ x: cx - nx * 1.42, z: cz - nz * 1.42, yaw, side });
 
     /* chains from the corner corbels into the dark */
@@ -682,14 +721,30 @@ export function buildArena(dungeon, r) {
   const blocked = [];
   const block = (x, z, rad) => blocked.push({ x, z, r: rad });
 
-  /* key: four on the apron itself, at the cardinal corbels */
+  /*
+   * NO SHADOW-CASTING PRACTICALS IN THIS ROOM.
+   *
+   * The wall panels above stop casting, so nothing in here needs to be the light
+   * that makes them cast. Practicals are also the wrong lamps to hang a shadow map
+   * on at all in an interior: Lighting freezes them (`shadow.autoUpdate = false`,
+   * `needsUpdate = false`), so the map is rendered once, from before this room's
+   * ground settled — `_setMode` moves the floor after the build, which is what the
+   * `groundMoved` guard in Dungeon.js exists for. Twenty-four flames in one room
+   * means nothing here is more than 5 m from a second one, so occlusion from any
+   * single flame buys very little and can only be wrong by construction.
+   *
+   * Hell already renders with no directional shadow cascades: an earlier pass
+   * removed them for throwing frame-crossing wedges, and this is the same artefact
+   * from a point light. Bodies keep their contact shadows from the `decals:contact`
+   * pool, which is a screen-space pass and unaffected.
+   */
   for (let k = 0; k < 4; k++) {
     const a = DEG60 * 0.5 + (k / 4) * TAU + 0.08;
     const rr = APRON_R - 2.6;
     const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
     dungeon.fixture('brazier', x, G(x, z) + APRON_H, z, r() * TAU, {
       kelvin: 2650, saturation: 1.4, type: 'hellfire',
-      intensity: 40 + r() * 10, radius: 23, priority: 1.95, glow: 0.7,
+      intensity: 40 + r() * 10, radius: 23, priority: 1.95, glow: 0.7, shadow: false,
     });
     block(x, z, 0.62);
   }
@@ -699,7 +754,7 @@ export function buildArena(dungeon, r) {
   for (const c of cressets) {
     dungeon.fixture('sconce', c.x, G(c.x, c.z) + 3.35, c.z, c.yaw, {
       kelvin: 2100 + r() * 160, saturation: 1.25, type: 'torch',
-      intensity: 96 + r() * 24, radius: 18 + r() * 3, priority: 1.5, glow: 0,
+      intensity: 96 + r() * 24, radius: 18 + r() * 3, priority: 1.5, glow: 0, shadow: false,
     });
   }
 
@@ -712,7 +767,7 @@ export function buildArena(dungeon, r) {
       const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
       dungeon.fixture('brazier', x, G(x, z), z, r() * TAU, {
         kelvin: 2600, saturation: 1.35, type: 'hellfire',
-        intensity: 34 + r() * 10, radius: 20 + r() * 4, priority: 1.22, glow: 0.6,
+        intensity: 34 + r() * 10, radius: 20 + r() * 4, priority: 1.22, glow: 0.6, shadow: false,
       });
       block(x, z, 0.62);
     }

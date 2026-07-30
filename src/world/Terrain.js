@@ -351,6 +351,7 @@ export class Terrain {
     // Sky may register after us; re-probe occasionally (cheap, deterministic).
     if ((this.engine.clock.frame & 63) === 0) this._linkSky();
     this._syncCloudShadow();
+    this._syncChroma();
 
     this._updateLOD();
   }
@@ -1550,6 +1551,13 @@ export class Terrain {
       const m = this._lib.means[grain];
       U.uGrainMean.value = (m.x + m.y + m.z) / 3;
     }
+    /* Per-slot slope water film. Only biomes that declare `filmHold` get one, so a
+       preset without it behaves exactly as before — see the wet-stone block in
+       TerrainMaterial's FRAG_MAP for why the film is per-slot and slope-gated. */
+    const fh = p.filmHold ?? [0, 0, 0, 0];
+    U.uFilmHold.value.set(fh[0] ?? 0, fh[1] ?? 0, fh[2] ?? 0, fh[3] ?? 0);
+    this._chromaBase = p.chroma ?? 1.0;
+    this._syncChroma();
     this._pushPuddle();
     this._pushWetness();
   }
@@ -1645,6 +1653,32 @@ export class Terrain {
         console.warn('[terrain] lighting.registerMaterial failed —', e?.message ?? e);
       }
     }
+  }
+
+  /**
+   * Daylight gate on the chroma expansion.
+   *
+   * The expansion (see the chroma-gain block in TerrainMaterial's FRAG_MAP) is what
+   * gives the moor its peat-and-slate colour instead of grey, but it multiplies
+   * ALBEDO, so it compounds with whatever is lighting the ground. In daylight that is
+   * a near-neutral overcast deck and the result is the intended damp brown/blue. At
+   * night the moor is lit almost entirely by fire — measured on the `night` rig, two
+   * point lights at 0xff7a1e and 0xffe1b0 — and warm albedo times warm light times a
+   * 3x chroma gain resolved as a red-hot ground that read as lava rather than peat.
+   *
+   * Scaling with the key light's own elevation is also the physically right answer:
+   * scotopic vision loses chroma discrimination (the Purkinje shift), which is why
+   * this codebase already desaturates the sky at night through S.desat. So the moor
+   * shows its colour by day and returns to the shipped near-neutral by night, and the
+   * `night` and `hub` frames keep the albedo they were signed off with.
+   */
+  _syncChroma() {
+    const U = this._U;
+    if (!U) return;
+    const target = this._chromaBase ?? 1.0;
+    if (target <= 1.0001) { U.uChroma.value = 1.0; return; }
+    const up = this._sky?.state?.sunUp ?? 0;
+    U.uChroma.value = 1.0 + (target - 1.0) * Math.max(0, Math.min(1, up));
   }
 
   /** Terrain-side cloud shadows — only used when Sky is absent or disabled. */

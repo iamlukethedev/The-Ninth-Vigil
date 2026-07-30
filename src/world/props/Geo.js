@@ -117,6 +117,61 @@ export function ensureAttrs(geo) {
   return geo;
 }
 
+/* ================================================================== *
+ * debris texture scale
+ * ================================================================== */
+
+/**
+ * Texture tile length in metres for a DEBRIS-scale piece, given the bank material
+ * it will draw in and its own largest dimension. Returns a `uTile` for
+ * `faceBoxUV`, i.e. tiles per metre.
+ *
+ * THE UNTEXTURED-RUBBLE DEFECT, root cause. Every debris generator wrote
+ * `uTile = 1/1.65` or `1/1.1` — the architectural tile, authored for a wall. The
+ * pieces those UVs land on are 0.1-0.6 m across, so:
+ *
+ *   • loose chip on `rubble` (a worley plate field, ~13 cells per tile at a 1.1 m
+ *     tile => 8.5 cm cells) gets two or three isolated cells per 0.35 m facet —
+ *     which renders as a flat wash with a couple of stray pits in it;
+ *   • chip on `stoneRock` was worse: that name also carries a 0.26 material repeat
+ *     for boulders, so the effective tile was 4.2 m and a cell landed at 17.6 cm,
+ *     i.e. under two cells across a whole chip;
+ *   • dressed block on `stone` (3 x 5 ashlar per tile) covered ~one brick face,
+ *     and a brick face is by construction the featureless part of that generator.
+ *
+ * The crypt kit made the identical mistake at the identical scale and it is the one
+ * the canonical frames could measure: 7x7 luma SD over the debris pixels in
+ * `closeup` came in at 0.021, which is what a flat-shaded box measures. So the
+ * surface was never missing — it was magnified past the point where any of it
+ * resolved, in both places.
+ *
+ * The tile is scaled to the PIECE, not to the building. `span * k` keeps the same
+ * number of texture features across a 0.15 m chip and a 0.6 m block, and the clamps
+ * stop the two ends degenerating into macro-blur or into noise finer than the
+ * 256 px map can carry. The two families need different k because they carry
+ * different content at different densities:
+ *
+ *   ashlar (`stone`, `stoneWarm`, `stoneCold`, `marble`) — 3 x 5 dressed blocks per
+ *     tile. At `span * 1.7` a 0.5 m piece gets a 0.85 m tile => a 0.28 x 0.17 m
+ *     block, so one or two real joints cross every face and the generator's pitting
+ *     lands at 2-4 cm. Tiling it any tighter turns a broken lump into brick veneer.
+ *   granular (`rubble`, `stoneRock`, `stoneRockCold`, `dirt`) — a worley plate/pebble
+ *     field. At `span * 0.75` a 0.35 m chip gets a 0.26 m tile => 2 cm cells, which
+ *     is coarse sand and is what fractured stone actually looks like at arm's length.
+ *     `stoneRock`'s 0.26 material repeat is divided out here so both names land on
+ *     the same physical cell size.
+ */
+const ASHLAR_MATS = new Set(['stone', 'stoneWarm', 'stoneCold', 'marble']);
+const MAT_REPEAT = { stoneRock: 0.26, stoneRockCold: 0.24, dirt: 0.42 };
+
+export function debrisUV(mat, span) {
+  const s = Math.max(0.05, span);
+  const tile = ASHLAR_MATS.has(mat)
+    ? clamp(s * 1.7, 0.38, 0.95)
+    : clamp(s * 0.75, 0.16, 0.46);
+  return 1 / (tile / (MAT_REPEAT[mat] ?? 1));
+}
+
 /**
  * Per-face planar UV projection onto the dominant axis of the face normal,
  * in metres. Requires non-indexed geometry (so a face never shares a vertex
@@ -186,6 +241,7 @@ export function bakeWear(geo, {
   seed = 1, base = 0.42, baseH = 0.35, cavity = 0.35, blotch = 0.2,
   blotchFreq = 1.6, moss = 0, mossColor = [0.42, 0.55, 0.3], mossDir = [0, 1, 0],
   dust = 0, dustColor = [1.18, 1.14, 1.06], tint = null,
+  grain = 0, grainFreq = 26,
 } = {}) {
   ensureAttrs(geo);
   geo.computeBoundingBox();
@@ -205,6 +261,25 @@ export function bakeWear(geo, {
     // seeded blotch weathering
     const bl = fbm3(x * blotchFreq, y * blotchFreq * 0.8, z * blotchFreq, { octaves: 3, seed, gain: 0.55 });
     k *= 1 + (bl - 0.5) * 2 * blotch;
+    /*
+     * Fine grain, a whole octave band above `blotch`.
+     *
+     * `blotch` runs at 1-3.5 cycles/m, which is a per-PROP weathering pattern: it
+     * separates one instance from another and does nothing at all inside a single
+     * 0.4 m facet. That is how a prop ends up flat at character range with every
+     * wear layer switched on: the debris facets in `closeup` measured a mean 7x7
+     * luma SD of 0.021 with nothing in the pipeline varying below 30 cm (that
+     * particular debris is the crypt kit's rather than a prop, but the ceiling is
+     * the same one and every `bakeWear` caller was under it). At `grainFreq` 26
+     * cycles/m one wavelength is 3.8 cm, which is
+     * roughly the vertex spacing of a subdivided chip, so it is the highest
+     * frequency vertex colour can actually carry, and it lands exactly in the band
+     * the eye reads as "stone" rather than "surface".
+     */
+    if (grain > 0) {
+      const gr = fbm3(x * grainFreq, y * grainFreq, z * grainFreq, { octaves: 2, seed: seed + 907, gain: 0.5 });
+      k *= 1 + (gr - 0.5) * 2 * grain;
+    }
     out[0] = k; out[1] = k; out[2] = k;
     if (moss > 0) {
       const facing = clamp01(nx * md[0] + ny * md[1] + nz * md[2]);
@@ -471,11 +546,30 @@ export function rockGeo({
  * Angular broken slab — scree, rubble, cliff chunks, masonry debris.
  * A box with randomised corner displacement and fractured faces.
  */
+/**
+ * `fine` — SIZE-RELATIVE fracture relief, in metres of displacement.
+ *
+ * The two fbm terms above it run at a FIXED 2.1 and 5.5 cycles per world metre,
+ * which is correct on a 3 m standing stone and does nothing whatsoever on a 0.3 m
+ * chip: at 2.1 cycles/m a 0.3 m piece spans 0.63 of one noise cell, so the
+ * "displacement" it receives is a single smooth gradient and every facet comes out
+ * of the generator dead planar. That is the geometric half of a debris field
+ * measuring a mean 7x7 luma SD of 0.021 — the value a flat-shaded box gives, seen
+ * on the crypt kit's debris in `closeup`. There is no signal at facet scale for a
+ * highlight to catch, only one flat normal per triangle.
+ *
+ * This term is scaled to the piece instead: `fineCycles` wavelengths across its
+ * largest dimension, so a 0.15 m chip and a 0.6 m block both get the same number
+ * of bumps across their faces, and the amplitude is in absolute metres so it never
+ * distorts the silhouette. Defaults to 0, i.e. every existing caller is untouched.
+ */
 export function shardGeo({
   w = 1, h = 0.4, d = 0.8, seed = 1, seg = 2, rough = 0.28, uTile = 0.625, bevel = 0.05,
+  fine = 0, fineCycles = 7,
 } = {}) {
   const geo = new RoundedBoxGeometry(w, h, d, seg, Math.min(bevel, Math.min(w, h, d) * 0.32));
   const p = geo.attributes.position.array;
+  const ff = fineCycles / Math.max(0.05, Math.max(w, h, d));
   for (let i = 0, n = geo.attributes.position.count; i < n; i++) {
     const o = i * 3;
     const x = p[o], y = p[o + 1], z = p[o + 2];
@@ -486,6 +580,19 @@ export function shardGeo({
     p[o] = x * (1 + m);
     p[o + 1] = y * (1 + m * 1.25);
     p[o + 2] = z * (1 + m);
+    if (fine > 0) {
+      // Displace along the box normal direction rather than radially, so a flat
+      // face gets relief instead of being scaled about the centre.
+      const c = fbm3(x * ff + 11, y * ff, z * ff, { octaves: 2, seed: seed + 613, gain: 0.5 }) - 0.5;
+      const e = fbm3(x * ff * 2.7, y * ff * 2.7 + 3, z * ff * 2.7, { octaves: 2, seed: seed + 811, gain: 0.5 }) - 0.5;
+      const amp = (c + e * 0.45) * fine * 2;
+      const ax = Math.abs(x) / (w * 0.5 + 1e-6);
+      const ay = Math.abs(y) / (h * 0.5 + 1e-6);
+      const az = Math.abs(z) / (d * 0.5 + 1e-6);
+      if (ax >= ay && ax >= az) p[o] += Math.sign(x || 1) * amp;
+      else if (ay >= az) p[o + 1] += Math.sign(y || 1) * amp;
+      else p[o + 2] += Math.sign(z || 1) * amp;
+    }
   }
   geo.computeVertexNormals();
   const out = faceBoxUV(geo, uTile);
