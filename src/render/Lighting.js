@@ -1191,16 +1191,38 @@ uniform float nonaRimGain;  // per-material gain
         blendEquation: THREE.AddEquation,
         blendSrc: THREE.ZeroFactor,
         blendDst: THREE.OneMinusSrcAlphaFactor,
-        uniforms: { uPool: { value: new THREE.Vector3(0.52, 2.25, 0.44) } },
+        uniforms: {
+          uPool: { value: new THREE.Vector3(0.52, 2.25, 0.44) },
+          /* Soft intersection against the depth prepass — see `_bindPoolDepth`. */
+          tDepth: { value: null },
+          uDepthOn: { value: 0 },
+          uCam: { value: new THREE.Vector2(0.1, 500) },
+          uSoft: { value: 0.30 },
+        },
         vertexShader: /* glsl */`
           varying vec2 vP;
+          varying vec4 vClip;
+          varying vec3 vView;
           void main() {
             vP = position.xz;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            vec4 mv = modelViewMatrix * vec4( position, 1.0 );
+            vView = mv.xyz;
+            vClip = projectionMatrix * mv;
+            gl_Position = vClip;
           }`,
         fragmentShader: /* glsl */`
           uniform vec3 uPool;   // x: peak darkening, y: outer radius (m), z: core fraction
+          uniform sampler2D tDepth;
+          uniform float uDepthOn;
+          uniform vec2 uCam;    // near, far
+          uniform float uSoft;  // metres over which an intruding surface fades the pool
           varying vec2 vP;
+          varying vec4 vClip;
+          varying vec3 vView;
+
+          float poolViewZ( float d, float n, float f ) {
+            return ( n * f ) / ( ( f - n ) * d - f );
+          }
           void main() {
             float t = length( vP ) / uPool.y;
             /* Two lobes. The core is real contact occlusion directly under the
@@ -1221,6 +1243,29 @@ uniform float nonaRimGain;  // per-material gain
                that matters is the ground the figure is READ AGAINST, half a metre
                to two metres out, and that is the wide lobe's job. */
             float a = uPool.x * ( wide * 0.60 + core * 0.40 );
+
+            /* Soft intersection with the world.
+             *
+             * This quad is flat and 4-vertex, but a crypt floor is not: it is
+             * flagstones, steps and rubble at different heights. With an ordinary
+             * depth test, every slab standing proud of the quad's plane clips it
+             * along the slab's own straight edge, and the result is a hard-edged
+             * rectangle that slides across the floor with the hero — which is
+             * exactly how it was reported. Depth testing is therefore off and the
+             * comparison is done here, so an intruding surface *fades* the pool
+             * over uSoft metres instead of cutting it.
+             *
+             * Sign: the quad sits ~3.5 cm above the floor, so in the ordinary case
+             * the floor is slightly FARTHER than the quad and this is a no-op. It
+             * only bites when something is nearer than the quad — a raised slab
+             * (fades) or a column or character in front of it (goes to zero, which
+             * is what the depth test used to do correctly). */
+            if ( uDepthOn > 0.5 ) {
+              vec2 suv = ( vClip.xy / vClip.w ) * 0.5 + 0.5;
+              float sd = -poolViewZ( texture2D( tDepth, suv ).x, uCam.x, uCam.y );
+              a *= smoothstep( -uSoft, 0.0, sd + vView.z );
+            }
+
             if ( a < 0.004 ) discard;
             gl_FragColor = vec4( 0.0, 0.0, 0.0, clamp( a, 0.0, 0.72 ) );
           }`,
@@ -1591,7 +1636,33 @@ uniform float nonaRimGain;  // per-material gain
       } catch { /* flat is an acceptable degrade */ }
     }
     pool.mat.uniforms.uPool.value.x = this._heroRim.pool;
+    this._bindPoolDepth(pool);
     pool.mesh.updateMatrixWorld(true);
+  }
+
+  /**
+   * Hand the pool the depth prepass so it can soften its own intersection.
+   *
+   * The pool is `noGBuffer`, so that buffer holds the world WITHOUT it, which is
+   * exactly the comparison wanted. Tiers that run no G-buffer keep the ordinary
+   * depth test — it clips, but a hard edge is better than a pool painted over
+   * the columns, and those tiers have no depth texture to test against.
+   */
+  _bindPoolDepth(pool) {
+    const u = pool.mat.uniforms;
+    const depth = this.engine.renderPipeline?.gbuffer?.depthTexture ?? null;
+    const cam = this.engine.camera;
+    if (depth) {
+      u.tDepth.value = depth;
+      u.uDepthOn.value = 1;
+      if (cam) u.uCam.value.set(cam.near, cam.far);
+      if (pool.mat.depthTest) { pool.mat.depthTest = false; pool.mat.needsUpdate = true; }
+    } else if (u.uDepthOn.value !== 0) {
+      u.tDepth.value = null;
+      u.uDepthOn.value = 0;
+      pool.mat.depthTest = true;
+      pool.mat.needsUpdate = true;
+    }
   }
 
   /**
