@@ -8,6 +8,13 @@ A Diablo-class isometric action RPG that runs in a browser tab, built on Three.j
 runtime.** There are no image files, no models, no fonts, no audio files, and no network fetches.
 The repository contains no binary art assets at all, because there are none to contain.
 
+**And every line of it was written by AI agents.** As far as we know this is the first game built
+end to end by [Hermes](https://github.com/NousResearch/hermes-agent) agents — not autocompleted
+with AI assistance, but architected, implemented, reviewed and debugged by agents working against a
+written contract, with a human directing rather than typing. That is the actual experiment here, and
+**it is an open invitation: bring your own agents and let's build this game together.** See
+[Built by agents](#built-by-agents).
+
 ![The hero at character range](shots/closeup.png)
 
 Roughly 107,000 lines across 142 ES modules, 22 engine systems, WebGL2 via Three.js r185. No
@@ -17,6 +24,7 @@ engine, no editor, no asset pipeline.
 
 ## Table of contents
 
+- [Built by agents](#built-by-agents)
 - [The premise](#the-premise)
 - [The constraint that defines the project](#the-constraint-that-defines-the-project)
 - [Quick start](#quick-start)
@@ -30,6 +38,63 @@ engine, no editor, no asset pipeline.
 - [Repository layout](#repository-layout)
 - [Contributing](#contributing)
 - [License](#license)
+
+---
+
+## Built by agents
+
+This repository is a working answer to a question that usually gets argued about rather than tested:
+**can AI agents build and maintain something genuinely hard?** Not a to-do app or a landing page —
+a real-time renderer with cascaded shadows, a procedural character rig, a navigation mesh with pack
+coordination, and a 16-sampler GPU budget that punishes carelessness by turning the screen white.
+
+The build was run with [Hermes Agent](https://github.com/NousResearch/hermes-agent), the
+open-source self-improving agent from [Nous Research](https://nousresearch.com). Hermes is
+MIT-licensed, runs on your own infrastructure rather than inside an editor, keeps memory across
+sessions, and spawns subagents for parallel workstreams — which is what made a project this size
+tractable. Waves of subagents took separate modules against a shared written contract, and the
+skills system meant a lesson learned once did not have to be re-explained.
+
+Three things turned out to matter far more than model choice, and they are why this repo is
+structured the way it is:
+
+**A written contract beats instructions in a chat.** `ENGINE_CONTRACT.md` defines the module
+lifecycle, the services, the event bus, the determinism rules and the performance budget. Every
+agent reads it before writing code. Most integration failures traced back to something the contract
+did not say.
+
+**An objective function beats self-assessment.** Agents are persuasive about their own work, which
+makes "I fixed it" worthless on its own. So correctness here is *measured*: deterministic
+screenshots, `CRITIC_RUBRIC.md`'s fifteen instant-fail flags, and `tools/guard.mjs` and
+`tools/smoke.mjs` in CI. The most repeated failure on this project was an agent changing code,
+reasoning that it should work, and reporting success while the defect sat untouched at the same
+pixel coordinates. Pixels do not negotiate.
+
+**Parallelism needs partitioned file ownership.** When six subagents once ran at once, two both
+owned `Decals.js` and two both owned `Lighting.js`. Last write won, and the rest silently vanished.
+
+### The invitation
+
+**This is a collaborative experiment, and you are invited — bring your agents.**
+
+Point Hermes, or whatever agent you run, at this repository and have it pick up work. Everything an
+agent needs to be productive without asking questions is already committed: the contract, the
+rubric it will be judged against, `KNOWN_ISSUES.md` with pixel coordinates and measured
+before-and-after numbers, and tooling that makes claims checkable rather than asserted. Point your
+agent at `CONTRIBUTING.md` first — it is written to be read by one.
+
+Good first targets are in [Honest assessment](#honest-assessment) and `KNOWN_ISSUES.md`: the
+overworld has no highlights, additive sprites clip to white discs, enemy materials read as
+near-white at gameplay distance, and there is an open bug where black triangular flashes appear
+only while the player walks — invisible to every static capture, which makes it a genuinely
+interesting agent problem.
+
+Two ground rules, and they apply to humans and agents identically. **Prove visual changes in
+pixels**, with before-and-after crops of the same region and the measured numbers. And **say in
+your PR that an agent wrote it, and which one** — not as a disclaimer, but because comparing how
+different agents perform against the same contract and the same rubric is part of the point. If
+your agent gets stuck somewhere the documentation should have carried it, that is a bug in the
+documentation; open an issue about it.
 
 ---
 
@@ -379,8 +444,9 @@ Four documents carry the project's institutional memory, and they are worth read
 
 ## Contributing
 
-Issues and pull requests are welcome. **[CONTRIBUTING.md](CONTRIBUTING.md)** is the full guide; the
-short version is:
+Issues and pull requests are welcome, **from humans and from agents equally** — see
+[the invitation](#the-invitation). **[CONTRIBUTING.md](CONTRIBUTING.md)** is the full guide, written
+to be handed straight to an agent; the short version is:
 
 - Read `ENGINE_CONTRACT.md`. It is short, and it is the difference between a patch that lands and
   a patch that breaks a shader link.

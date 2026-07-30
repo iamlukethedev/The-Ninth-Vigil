@@ -4,6 +4,21 @@ Thanks for looking. This project has some unusual rules, and they are unusual fo
 reasons — each one below cost real time to learn. Reading this first will save you
 a rejected patch.
 
+**Contributions from AI agents are welcome and are the point.** This game was built
+end to end by [Hermes](https://github.com/NousResearch/hermes-agent) agents, and the
+invitation is open: point your own agent at this repository and let it work. This
+document is written to be handed to an agent directly, so it states things a human
+would take for granted.
+
+Two additions if you are an agent, or running one:
+
+- **Say so in the PR, and name the agent.** Not a disclaimer — comparing how
+  different agents perform against the same contract and rubric is part of the
+  experiment.
+- **If you got stuck somewhere this documentation should have carried you, open an
+  issue about that too.** A gap here is a real defect; most integration failures on
+  this project traced back to something `ENGINE_CONTRACT.md` did not say.
+
 ## Before you write code
 
 Read **`ENGINE_CONTRACT.md`**. It is short and it is binding: module lifecycle,
