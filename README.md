@@ -250,9 +250,17 @@ software and hardware output legitimately differ and asserting cross-machine equ
 a permanently red build.
 
 The CI scenario is `combat`, which puts nine actors under live AI so the determinism check has
-something to bite on. Encouragingly, it holds: 90 frames of pathfinding, avoidance and attack-token
-arbitration reach a bit-identical state across runs, which also confirms the `performance.now()`
-work-splitting budgets in `AI.js` and `NavGrid.js` do not leak into simulation results.
+something to bite on — and it holds more strongly than the contract requires. Forty-five frames of
+pathfinding, avoidance and attack-token arbitration hash to `761af13895c0` on local hardware GL, on
+local SwiftShader, and on a GPU-less GitHub runner: **simulation state is identical across machines
+and across rendering backends**, not merely stable run to run. That also confirms the
+`performance.now()` work-splitting budgets in `AI.js` and `NavGrid.js` never leak into simulation
+results, which is the one thing that could have made those budgets unsafe.
+
+That property would allow a stored golden hash as a regression gate. It is deliberately not used:
+any legitimate balance change moves the hash, so the gate would mostly generate "just update the
+expected value" commits, which trains people to bypass exactly the check it exists to enforce.
+Comparing two runs against each other needs no maintenance and catches the real failure mode.
 
 `CRITIC_RUBRIC.md` defines ten scored axes and fifteen **instant-fail flags** — things like a
 black or single-colour frame, untextured flat-colour geometry, obvious texture tiling, or uniform

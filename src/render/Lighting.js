@@ -74,8 +74,38 @@ const TIER = {
   // the crypt's great hall is 21-26 m across: at ten slots the far third of the
   // room fell off the pool and went to true black. Fourteen keeps every wall bay
   // lit and still fits the forward light loop comfortably.
-  high:  { point: 12, pointShadows: 2, spot: 3, spotShadows: 1, pointRes: 512, spotRes: 1024, probe: [24, 5, 24], probeSize: 92 },
-  ultra: { point: 14, pointShadows: 2, spot: 3, spotShadows: 1, pointRes: 512, spotRes: 1024, probe: [28, 5, 28], probeSize: 96 },
+  // `spotShadows` is 0 everywhere ON PURPOSE, and it is the fix for the worst
+  // live defect this project had: hard-edged black wedges flashing across the
+  // frame, which is what "black triangles while I walk" was.
+  //
+  // A shadowed SPOT slot destabilises the whole frame merely by existing. It
+  // does not matter what it is lighting: measured on the live path with a
+  // static camera, six interleaved A/B blocks of 50 frames (interleaved because
+  // the metric drifts with combat state, which makes sequential ablation lie),
+  // with the slot present but UNOWNED and at zero intensity, 8.48 % of the play
+  // area still moved more than 0.15 luma between consecutive frames and
+  // near-black peaked at 7.1 %; with `castShadow` off it, 0.76 % and 3.2 %.
+  // Worse in 6 of 6 blocks, and the frame mean RISES 0.334 -> 0.345.
+  //
+  // The unowned path is its own trap — `LightPool.apply()` collapses the light
+  // to `distance = 0.5` while its depth map still holds a 24 m render, so the
+  // lookup is projected through a frustum 48x too small — but owning the shaft
+  // measured the same ~9 %, so the slot is unsound either way.
+  //
+  // Nothing cheaper touched it: the rebuild stagger (period 2 vs 1), freezing
+  // the map after one build, `shadow.intensity`, the shadow camera's far plane,
+  // pinning the cross-fade, and removing the characters from the caster set
+  // were each ruled out by the same interleaved test. Nor was it a post pass —
+  // AO, SSR, volumetric, bloom, grain and auto-exposure were all cleared, and
+  // the AO buffers themselves measure temporally static (frame-to-frame delta
+  // 0.0007) while the lit frame churns.
+  //
+  // Point shadows are kept: they measured clean and they are what grounds the
+  // braziers. Spots keep their slots, just not shadowed ones, so the crypt's
+  // 620 cd shaft still lights the hall — its silhouette is its cone and the
+  // volumetric pass, not a depth map.
+  high:  { point: 12, pointShadows: 2, spot: 3, spotShadows: 0, pointRes: 512, spotRes: 1024, probe: [24, 5, 24], probeSize: 92 },
+  ultra: { point: 14, pointShadows: 2, spot: 3, spotShadows: 0, pointRes: 512, spotRes: 1024, probe: [28, 5, 28], probeSize: 96 },
 };
 
 const PROBE_DEFINE = 'NONA_PROBEVOL';
