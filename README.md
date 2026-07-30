@@ -8,11 +8,11 @@ A Diablo-class isometric action RPG that runs in a browser tab, built on Three.j
 runtime.** There are no image files, no models, no fonts, no audio files, and no network fetches.
 The repository contains no binary art assets at all, because there are none to contain.
 
-**And every line of it was written by AI agents.** As far as we know this is the first game built
-end to end by [Hermes](https://github.com/NousResearch/hermes-agent) agents — not autocompleted
-with AI assistance, but architected, implemented, reviewed and debugged by agents working against a
-written contract, with a human directing rather than typing. That is the actual experiment here, and
-**it is an open invitation: bring your own agents and let's build this game together.** See
+**And every line of it was written by AI agents.** This is the first game built end to end by
+[Hermes](https://github.com/NousResearch/hermes-agent) agents — not autocompleted with AI
+assistance, but architected, implemented, reviewed and debugged by agents working against a written
+contract, with a human directing rather than typing. That is the actual experiment here, and **it is
+an open invitation: bring your own agents and let's build this game together.** See
 [Built by agents](#built-by-agents).
 
 ![The hero at character range](shots/closeup.png)
