@@ -1,5 +1,5 @@
 /**
- * Module manifest + load order. Integrator-owned — agents must NOT edit this.
+ * Module manifest + load order. Part of the integration spine — do not edit.
  *
  * Modules are imported dynamically and skipped if the file does not exist yet,
  * so the game always boots even while parts are still being built.

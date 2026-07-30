@@ -69,43 +69,51 @@ const DEG = Math.PI / 180;
  */
 const TIER = {
   low:   { point: 4,  pointShadows: 0, spot: 0, spotShadows: 0, pointRes: 256, spotRes: 512,  probe: [16, 4, 16], probeSize: 76 },
-  med:   { point: 6,  pointShadows: 1, spot: 2, spotShadows: 0, pointRes: 384, spotRes: 512,  probe: [20, 4, 20], probeSize: 84 },
+  med:   { point: 6,  pointShadows: 0, spot: 2, spotShadows: 0, pointRes: 384, spotRes: 512,  probe: [20, 4, 20], probeSize: 84 },
   // Pool SIZE is free in texture units (only shadowed lights cost a sampler), and
   // the crypt's great hall is 21-26 m across: at ten slots the far third of the
   // room fell off the pool and went to true black. Fourteen keeps every wall bay
   // lit and still fits the forward light loop comfortably.
-  // `spotShadows` is 0 everywhere ON PURPOSE, and it is the fix for the worst
-  // live defect this project had: hard-edged black wedges flashing across the
-  // frame, which is what "black triangles while I walk" was.
+  // No pooled slot casts a shadow at any tier, and that is the fix for the
+  // defect this project spent the longest on: hard-edged black wedges flashing
+  // around the hero as he walks, worsening as enemies crowd in.
   //
-  // A shadowed SPOT slot destabilises the whole frame merely by existing. It
-  // does not matter what it is lighting: measured on the live path with a
-  // static camera, six interleaved A/B blocks of 50 frames (interleaved because
-  // the metric drifts with combat state, which makes sequential ablation lie),
-  // with the slot present but UNOWNED and at zero intensity, 8.48 % of the play
-  // area still moved more than 0.15 luma between consecutive frames and
-  // near-black peaked at 7.1 %; with `castShadow` off it, 0.76 % and 3.2 %.
-  // Worse in 6 of 6 blocks, and the frame mean RISES 0.334 -> 0.345.
+  // A shadowed POOLED slot is temporally unstable in a way none of its knobs
+  // reach. Measured on the live path with a static camera and stable slot
+  // ownership, in interleaved A/B blocks (interleaved because the metric drifts
+  // with combat state, which makes sequential ablation lie): with the two point
+  // slots casting, ~10.5 % of the play area moved more than 0.15 luma between
+  // consecutive frames and near-black peaked near 7 %; with `castShadow` off
+  // them, 0.41 % and 2.7 %. Worse in 6 of 6 blocks — and the frame is BRIGHTER
+  // without them (mean 0.319 -> 0.363), because what the maps mostly produced
+  // was a smear of self-shadowing over the party rather than readable contact.
   //
-  // The unowned path is its own trap — `LightPool.apply()` collapses the light
-  // to `distance = 0.5` while its depth map still holds a 24 m render, so the
-  // lookup is projected through a frustum 48x too small — but owning the shaft
-  // measured the same ~9 %, so the slot is unsound either way.
+  // The spot slot was unsound on top of that, since it is also wrong when
+  // unowned: `LightPool.apply()` collapses the light to `distance = 0.5` while
+  // its depth map still holds a 24 m render, so the lookup is projected through
+  // a frustum 48x too small. Present but unowned and at zero intensity it still
+  // measured 8.48 % against 0.76 % with `castShadow` off.
   //
-  // Nothing cheaper touched it: the rebuild stagger (period 2 vs 1), freezing
-  // the map after one build, `shadow.intensity`, the shadow camera's far plane,
-  // pinning the cross-fade, and removing the characters from the caster set
-  // were each ruled out by the same interleaved test. Nor was it a post pass —
-  // AO, SSR, volumetric, bloom, grain and auto-exposure were all cleared, and
-  // the AO buffers themselves measure temporally static (frame-to-frame delta
-  // 0.0007) while the lit frame churns.
+  // Ruled out by the same interleaved test, so do not spend time on them again:
+  // the rebuild stagger (period 2 vs 1), freezing the map after one build,
+  // `shadow.intensity`, the shadow camera's far plane, the PCF tap radius
+  // (2.6 / 1 / 0), the shadow bias and normal bias, pinning the light position,
+  // slot ownership thrash (fixed on its own merits in `LightRig.select()` —
+  // ownership is now stable for minutes, and the churn did not move), the
+  // characters as casters, and caster visibility popping (the caster set
+  // measures completely static: 0 flips in 40 frames, 1167 instances every
+  // frame). Nor is it a post pass — AO, SSR, volumetric, bloom, grain and
+  // auto-exposure were all cleared, and the AO buffers measure temporally
+  // static (delta 0.0007) while the lit frame churns.
   //
-  // Point shadows are kept: they measured clean and they are what grounds the
-  // braziers. Spots keep their slots, just not shadowed ones, so the crypt's
-  // 620 cd shaft still lights the hall — its silhouette is its cone and the
-  // volumetric pass, not a depth map.
-  high:  { point: 12, pointShadows: 2, spot: 3, spotShadows: 0, pointRes: 512, spotRes: 1024, probe: [24, 5, 24], probeSize: 92 },
-  ultra: { point: 14, pointShadows: 2, spot: 3, spotShadows: 0, pointRes: 512, spotRes: 1024, probe: [28, 5, 28], probeSize: 96 },
+  // Nothing is lost that the frame was actually using. Grounding comes from the
+  // contact-AO stage in `AOApplyPass` and the hero pool, the practicals still
+  // fall off by inverse square, and the crypt's 620 cd shaft still lights the
+  // hall — its silhouette is its cone and the volumetric pass, not a depth map.
+  // The sun/CSM path is untouched: exteriors still cast, and that is where a
+  // directional shadow is both stable and load-bearing.
+  high:  { point: 12, pointShadows: 0, spot: 3, spotShadows: 0, pointRes: 512, spotRes: 1024, probe: [24, 5, 24], probeSize: 92 },
+  ultra: { point: 14, pointShadows: 0, spot: 3, spotShadows: 0, pointRes: 512, spotRes: 1024, probe: [28, 5, 28], probeSize: 96 },
 };
 
 const PROBE_DEFINE = 'NONA_PROBEVOL';

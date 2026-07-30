@@ -29,16 +29,27 @@ Determinism: `dungeon` captured twice is byte-identical
 
 ---
 
-## 1. Hard-edged black wedges — `boss`, live `dungeon`
+## 1. Hard-edged black wedges — `boss`, live `dungeon` — RESOLVED (1a-1e)
 
-**Flag: "Black, blank, or single-color frame"** · severity 9 · **open**
+**Flag: "Black, blank, or single-color frame"** · severity 9 · **closed**
 
 The headline defect, and the reason the hero and enemies were reported as "not
 showing". Large, straight-sided, un-feathered black polygons cross the play
 area and swallow whatever is behind them.
 
-This turned out to be **four stacked causes**, not one. 1a and 1d are fixed;
-1b and 1c remain.
+This turned out to be **five stacked causes**, not one, which is why it kept
+coming back after each fix looked convincing on a still frame.
+
+1a, 1d and 1e are fixed and verified below. 1b and 1c were taken by the Wave 3
+lighting and grade lanes; their write-ups here still read as proposals and have
+not been re-verified against their original measurements, so treat those two
+sections as historical. What *is* verified is the flag itself: it no longer
+reproduces anywhere. All eight captures pass `sheet.mjs --analyze` in AAA range,
+and a full walking lap of the live crypt has no wedge in any frame, worst frame
+4.2 % near-black.
+
+1e is the one to remember: it was only findable on the live path with a static
+camera and interleaved A/B, and is invisible in any single capture.
 
 ### 1a. Four sun cascades in a sunless interior — FIXED (`d2aad35`)
 
@@ -137,6 +148,52 @@ uncontrolled diff; the `ProbeVolume` irradiance grid, which snaps to whole cells
 and so cannot swim; and `hero_cloak`, whose stale 40 m bounding sphere is a
 culling inefficiency (worth fixing separately) but changes nothing in the
 G-buffer.
+
+### 1e. Pooled practicals casting shadows — FIXED
+
+1d took the flashing down a long way but did not end it: the user still reported
+black flashes "coming from one of the rocks" and a floor that "moves around the
+hero". Both were the pooled point practicals casting shadows.
+
+Measured on the live path with a **static camera**, in interleaved and
+counterbalanced A/B blocks — interleaved because the metric drifts several
+percent with combat state, which makes plain sequential ablation lie:
+
+| point shadow slots | play area moving >0.15 luma per frame | near-black, peak | frame mean |
+|---|---|---|---|
+| casting | 10.5 % | 7.0 % | 0.319 |
+| not casting | **0.41 %** | **2.7 %** | 0.362 |
+
+6 of 6 blocks, and note the frame gets *brighter*: what the cube maps were
+mostly contributing was a smear of self-shadowing across the party, not
+readable contact. `TIER` in `render/Lighting.js` now allocates no shadowed
+pooled slot at any tier. Walking a full lap of the crypt, the **worst** frame
+now measures 4.2 % near-black with no wedge anywhere in it
+(`shots/_debug/play/walk_worst.png`).
+
+Grounding is unaffected because it was never coming from these maps: it comes
+from the contact-AO stage rebuilt in 1d, the hero pool, and inverse-square
+falloff. The sun/CSM path is untouched, so exteriors still cast. Actor
+separation is unchanged within its (large) frame-to-frame variance — mean SEP
+across eight actors 0.123 casting vs 0.139 not casting, and the hero's own
+separation improves, 0.066 to 0.127.
+
+**Ruled out by the same test, so do not re-litigate:** the rebuild stagger
+(period 2 vs 1), freezing the map after one build, `shadow.intensity`, the
+shadow camera far plane, the PCF tap radius (2.6 / 1 / 0), shadow and normal
+bias, pinning the light position, the characters as casters, and caster
+visibility popping — the caster set is completely static (0 visibility flips in
+40 frames, 1167 instances every frame).
+
+**Not the cause, but fixed on its own merits:** shadow slot ownership thrashed
+between braziers, so a slot's owner changed every few frames and its cube was
+re-rasterised from a new position each time. `LightRig.select()` now ranks the
+shadow tier with a real veto — a fresh incumbent is untouchable for
+`SHADOW_MIN_TENURE`, after which a challenger needs to beat it by
+`SHADOW_EVICT_MARGIN`. The previous multiplicative nudge inside a single global
+sort could not hold a slot. Ownership is now stable indefinitely (0 changes in
+39 frames, tenure climbing past 3.6 s). This did **not** move the churn, which
+is what proved thrash was not the mechanism.
 
 ---
 
