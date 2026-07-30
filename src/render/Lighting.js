@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Lighting
+ * THE NINTH VIGIL — Lighting
  *
  * Diablo 4's look is 80% lighting: near-black ambient, dramatic warm practicals,
  * a cold skylight fill, and everything nailed down by shadow. This module owns
@@ -78,7 +78,7 @@ const TIER = {
   ultra: { point: 14, pointShadows: 2, spot: 3, spotShadows: 1, pointRes: 512, spotRes: 1024, probe: [28, 5, 28], probeSize: 96 },
 };
 
-const PROBE_DEFINE = 'SANCTUM_PROBEVOL';
+const PROBE_DEFINE = 'NONA_PROBEVOL';
 const PROBE_HOOK = '#include <lights_fragment_maps>';
 
 /**
@@ -126,7 +126,7 @@ const PROBE_HOOK = '#include <lights_fragment_maps>';
  * the project rewrites it, so it is a safe anchor; the fallbacks exist only so a
  * three version bump degrades instead of white-screening.
  */
-const RIM_DEFINE = 'SANCTUM_HERORIM';
+const RIM_DEFINE = 'NONA_HERORIM';
 
 /**
  * Hard ceiling on the SCENE-WIDE rim DirectionalLight.
@@ -192,9 +192,9 @@ export class Lighting {
      */
     this._heroRim = { gain: 0.62, pow: 1.6, wrap: 0.48, kick: 0.45, pool: 0.52, poolBias: 1.35, ceil: 0.80 };
     this._rimUniforms = {
-      sanctumRimDir: { value: new THREE.Vector3(0, 0.45, 1).normalize() },
-      sanctumRimCol: { value: new THREE.Vector3(0, 0, 0) },
-      sanctumRimTune: { value: new THREE.Vector4(1.6, 0.48, 0.80, 0.30) },
+      nonaRimDir: { value: new THREE.Vector3(0, 0.45, 1).normalize() },
+      nonaRimCol: { value: new THREE.Vector3(0, 0, 0) },
+      nonaRimTune: { value: new THREE.Vector4(1.6, 0.48, 0.80, 0.30) },
     };
 
     /** Materials registered for CSM + probe injection. */
@@ -238,15 +238,15 @@ export class Lighting {
     this._chunkBackup = null;
 
     this._probeUniforms = {
-      sanctumProbeVol: { value: null },
-      sanctumProbeMin: { value: new THREE.Vector3() },
-      sanctumProbeInvSize: { value: new THREE.Vector3(1, 1, 1) },
-      sanctumProbeParams: { value: new THREE.Vector2(1, 4) },
+      nonaProbeVol: { value: null },
+      nonaProbeMin: { value: new THREE.Vector3() },
+      nonaProbeInvSize: { value: new THREE.Vector3(1, 1, 1) },
+      nonaProbeParams: { value: new THREE.Vector2(1, 4) },
       /* Oriented interior wall bounce — see BIOME_LIGHTING.crypt.wallFill in
        * LightRig for why a room needs a horizontally-weighted fill and a
        * hemisphere cannot supply one. Black outside sunless interiors, so the
        * term is one multiply-add that resolves to nothing for every exterior. */
-      sanctumWallFill: { value: new THREE.Color(0, 0, 0) },
+      nonaWallFill: { value: new THREE.Color(0, 0, 0) },
     };
 
     // Wired in the constructor (not init) so modules that build materials during
@@ -283,16 +283,16 @@ export class Lighting {
 
     /* ---- hemisphere: cold sky, warm-dark ground bounce ---- */
     this.hemi = new THREE.HemisphereLight(0x223146, 0x140d09, 0.2);
-    this.hemi.name = 'sanctum.hemi';
+    this.hemi.name = 'nona.hemi';
     this.hemi.position.set(0, 40, 0);
     scene.add(this.hemi);
 
     /* ---- camera-tracking rim / back light ---- */
     this.rim = new THREE.DirectionalLight(0x5b82ad, 0.5);
-    this.rim.name = 'sanctum.rim';
+    this.rim.name = 'nona.rim';
     this.rim.castShadow = false;
     this.rimTarget = new THREE.Object3D();
-    this.rimTarget.name = 'sanctum.rim.target';
+    this.rimTarget.name = 'nona.rim.target';
     scene.add(this.rimTarget);
     this.rim.target = this.rimTarget;
     scene.add(this.rim);
@@ -334,7 +334,7 @@ export class Lighting {
       this.csm.updateFrustums();
       for (let i = 0; i < this.csm.lights.length; i++) {
         const l = this.csm.lights[i];
-        l.name = `sanctum.csm.${i}`;
+        l.name = `nona.csm.${i}`;
         l.intensity = 0;
         l.shadow.autoUpdate = true;
       }
@@ -377,9 +377,9 @@ export class Lighting {
         sizeX: tier.probeSize, sizeY: 17, sizeZ: tier.probeSize,
         scale: 4,
       });
-      this._probeUniforms.sanctumProbeVol.value = this.probes.texture;
-      this._probeUniforms.sanctumProbeInvSize.value.copy(this.probes.texInvSize);
-      this._probeUniforms.sanctumProbeParams.value.set(this.preset.probeIntensity, this.probes.scale);
+      this._probeUniforms.nonaProbeVol.value = this.probes.texture;
+      this._probeUniforms.nonaProbeInvSize.value.copy(this.probes.texInvSize);
+      this._probeUniforms.nonaProbeParams.value.set(this.preset.probeIntensity, this.probes.scale);
     } catch (e) {
       console.warn('[lighting] probe volume disabled —', e);
       this.probes = null;
@@ -490,7 +490,7 @@ export class Lighting {
         !selfComposing &&
         typeof mat.onBeforeCompile === 'function' &&
         mat.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile &&
-        !mat.userData.__sanctumHook
+        !mat.userData.__nonaHook
           ? mat.onBeforeCompile
           : null;
 
@@ -520,7 +520,7 @@ export class Lighting {
         // Last, so it sits on top of the character shader's own grade.
         if (rimGainU) { try { self._injectHeroRim(shader, rimGainU); } catch (e) { console.error('[lighting:rim-hook]', e); } }
       };
-      mat.userData.__sanctumHook = true;
+      mat.userData.__nonaHook = true;
       mat.needsUpdate = true;
       this._materials.add(mat);
     } catch (e) {
@@ -670,7 +670,7 @@ export class Lighting {
       }
 
       /* probes */
-      if (this.probes) this._probeUniforms.sanctumProbeParams.value.set(p.probeIntensity, this.probes.scale);
+      if (this.probes) this._probeUniforms.nonaProbeParams.value.set(p.probeIntensity, this.probes.scale);
       this._applyWallFill(p);
 
       /* IBL */
@@ -755,7 +755,7 @@ export class Lighting {
      * figure fills the frame and the ground behind it is barely in shot, so the
      * bias collapses back onto the feet where it reads as pure contact occlusion. */
     r.poolBias = near ? 0.25 : 1.10;
-    this._rimUniforms.sanctumRimTune.value.set(r.pow, r.wrap, r.ceil, r.kick);
+    this._rimUniforms.nonaRimTune.value.set(r.pow, r.wrap, r.ceil, r.kick);
     if (this.heroPool) this.heroPool.mat.uniforms.uPool.value.x = r.pool;
   }
 
@@ -967,7 +967,7 @@ export class Lighting {
    */
   _applyWallFill(p) {
     const f = p?.wallFill;
-    const c = this._probeUniforms.sanctumWallFill.value;
+    const c = this._probeUniforms.nonaWallFill.value;
     if (!f) { c.setRGB(0, 0, 0); return; }
     c.set(f.color).multiplyScalar(f.intensity ?? 1);
   }
@@ -976,19 +976,19 @@ export class Lighting {
   _injectProbe(shader) {
     if (!shader.fragmentShader.includes(PROBE_HOOK)) return;
     const u = this._probeUniforms;
-    shader.uniforms.sanctumProbeVol = u.sanctumProbeVol;
-    shader.uniforms.sanctumProbeMin = u.sanctumProbeMin;
-    shader.uniforms.sanctumProbeInvSize = u.sanctumProbeInvSize;
-    shader.uniforms.sanctumProbeParams = u.sanctumProbeParams;
-    shader.uniforms.sanctumWallFill = u.sanctumWallFill;
+    shader.uniforms.nonaProbeVol = u.nonaProbeVol;
+    shader.uniforms.nonaProbeMin = u.nonaProbeMin;
+    shader.uniforms.nonaProbeInvSize = u.nonaProbeInvSize;
+    shader.uniforms.nonaProbeParams = u.nonaProbeParams;
+    shader.uniforms.nonaWallFill = u.nonaWallFill;
 
     shader.fragmentShader =
       `#ifdef ${PROBE_DEFINE}
-uniform highp sampler3D sanctumProbeVol;
-uniform vec3 sanctumProbeMin;
-uniform vec3 sanctumProbeInvSize;
-uniform vec2 sanctumProbeParams;
-uniform vec3 sanctumWallFill;
+uniform highp sampler3D nonaProbeVol;
+uniform vec3 nonaProbeMin;
+uniform vec3 nonaProbeInvSize;
+uniform vec2 nonaProbeParams;
+uniform vec3 nonaWallFill;
 #endif
 ` + shader.fragmentShader.replace(
         PROBE_HOOK,
@@ -997,10 +997,10 @@ uniform vec3 sanctumWallFill;
 	{
 		// world position reconstructed from view space (no extra varyings)
 		vec3 sctWP = ( ( vec4( geometryPosition, 1.0 ) - viewMatrix[ 3 ] ) * viewMatrix ).xyz;
-		vec3 sctUVW = ( sctWP - sanctumProbeMin ) * sanctumProbeInvSize;
+		vec3 sctUVW = ( sctWP - nonaProbeMin ) * nonaProbeInvSize;
 		vec3 sctCl = clamp( sctUVW, vec3( 0.0 ), vec3( 1.0 ) );
 		float sctEdge = 1.0 - smoothstep( 0.0, 0.10, length( sctUVW - sctCl ) );
-		irradiance += texture( sanctumProbeVol, sctCl ).rgb * sanctumProbeParams.x * sanctumProbeParams.y * sctEdge;
+		irradiance += texture( nonaProbeVol, sctCl ).rgb * nonaProbeParams.x * nonaProbeParams.y * sctEdge;
 
 		/* ORIENTED INTERIOR WALL BOUNCE. \`geometryNormal\` is VIEW space, and
 		 * this term has to be keyed off world up, so rotate it back: for the
@@ -1020,7 +1020,7 @@ uniform vec3 sanctumWallFill;
 		 * \`aomap_fragment\`, so it reads as lit stone with cavities rather
 		 * than as a flat lift. */
 		vec3 sctWN = geometryNormal * mat3( viewMatrix );
-		irradiance += sanctumWallFill * ( 1.0 - min( abs( sctWN.y ), 1.0 ) );
+		irradiance += nonaWallFill * ( 1.0 - min( abs( sctWN.y ), 1.0 ) );
 	}
 #endif`
       );
@@ -1065,17 +1065,17 @@ uniform vec3 sanctumWallFill;
     if (!anchor) return;
 
     const u = this._rimUniforms;
-    shader.uniforms.sanctumRimDir = u.sanctumRimDir;
-    shader.uniforms.sanctumRimCol = u.sanctumRimCol;
-    shader.uniforms.sanctumRimTune = u.sanctumRimTune;
-    shader.uniforms.sanctumRimGain = gainU;
+    shader.uniforms.nonaRimDir = u.nonaRimDir;
+    shader.uniforms.nonaRimCol = u.nonaRimCol;
+    shader.uniforms.nonaRimTune = u.nonaRimTune;
+    shader.uniforms.nonaRimGain = gainU;
 
     shader.fragmentShader =
       `#ifdef ${RIM_DEFINE}
-uniform vec3 sanctumRimDir;    // world-space direction TOWARD the rim source
-uniform vec3 sanctumRimCol;    // linear colour, premultiplied by scenario intensity
-uniform vec4 sanctumRimTune;   // x: fresnel power, y: terminator wrap, z: scene-linear ceiling, w: kicker gain
-uniform float sanctumRimGain;  // per-material gain
+uniform vec3 nonaRimDir;    // world-space direction TOWARD the rim source
+uniform vec3 nonaRimCol;    // linear colour, premultiplied by scenario intensity
+uniform vec4 nonaRimTune;   // x: fresnel power, y: terminator wrap, z: scene-linear ceiling, w: kicker gain
+uniform float nonaRimGain;  // per-material gain
 #endif
 ` + src.replace(
         anchor,
@@ -1086,7 +1086,7 @@ uniform float sanctumRimGain;  // per-material gain
 		// Which side of the figure the rim source is on. Everything below is
 		// gated on this, so the camera-facing side stays dark and the term reads
 		// as a LIGHT rather than as a cartoon outline drawn round the whole body.
-		vec3 sctRimL = normalize( ( viewMatrix * vec4( sanctumRimDir, 0.0 ) ).xyz );
+		vec3 sctRimL = normalize( ( viewMatrix * vec4( nonaRimDir, 0.0 ) ).xyz );
 		// ...and its mirror across the camera's vertical plane, at 0.62 weight.
 		// ONE back light outlines ONE shoulder, and on a 12-25 px torso that is a
 		// half-figure read: measured, the hero gained only 0.028 of body luma from
@@ -1094,23 +1094,23 @@ uniform float sanctumRimGain;  // per-material gain
 		// because the brute had more surface facing the one direction. The mirror
 		// wraps the whole upper silhouette and still leaves a clear key side.
 		vec3 sctRimL2 = vec3( -sctRimL.x, sctRimL.y, sctRimL.z );
-		float sctSideA = clamp( ( dot( sctRimN, sctRimL ) + sanctumRimTune.y ) /
-			( 1.0 + sanctumRimTune.y ), 0.0, 1.0 );
-		float sctSideB = clamp( ( dot( sctRimN, sctRimL2 ) + sanctumRimTune.y ) /
-			( 1.0 + sanctumRimTune.y ), 0.0, 1.0 );
+		float sctSideA = clamp( ( dot( sctRimN, sctRimL ) + nonaRimTune.y ) /
+			( 1.0 + nonaRimTune.y ), 0.0, 1.0 );
+		float sctSideB = clamp( ( dot( sctRimN, sctRimL2 ) + nonaRimTune.y ) /
+			( 1.0 + nonaRimTune.y ), 0.0, 1.0 );
 		float sctRimSide = max( sctSideA, sctSideB * 0.62 );
 		float sctRimSide2 = sctRimSide * sctRimSide;
 		// LOBE 1 — the grazing band. Draws the actual outline.
-		float sctRimEdge = pow( 1.0 - clamp( dot( sctRimV, sctRimN ), 0.0, 1.0 ), sanctumRimTune.x );
+		float sctRimEdge = pow( 1.0 - clamp( dot( sctRimV, sctRimN ), 0.0, 1.0 ), nonaRimTune.x );
 		// LOBE 2 — a broad back-light kicker over the whole far side. At 20-40 px
 		// of figure this is the half that survives the AA resolve; without it the
 		// band is a single pixel and averages to nothing (see the note above).
-		float sctRimLobe = sctRimEdge * sctRimSide2 + sanctumRimTune.w * sctRimSide2 * sctRimSide;
+		float sctRimLobe = sctRimEdge * sctRimSide2 + nonaRimTune.w * sctRimSide2 * sctRimSide;
 		// Hard ceiling, in scene-linear units, so no per-material gain can ever
 		// push the band over the bloom threshold no matter how it is tuned.
 		gl_FragColor.rgb += min(
-			sanctumRimCol * ( sctRimLobe * sanctumRimGain ),
-			vec3( sanctumRimTune.z ) );
+			nonaRimCol * ( sctRimLobe * nonaRimGain ),
+			vec3( nonaRimTune.z ) );
 	}
 #endif
 ` + anchor
@@ -1145,7 +1145,7 @@ uniform float sanctumRimGain;  // per-material gain
       const geo = new THREE.PlaneGeometry(5.6, 5.6, 1, 1);
       geo.rotateX(-Math.PI * 0.5);
       const mat = new THREE.ShaderMaterial({
-        name: 'sanctum.heroPool',
+        name: 'nona.heroPool',
         transparent: true,
         depthWrite: false,
         depthTest: true,
@@ -1188,7 +1188,7 @@ uniform float sanctumRimGain;  // per-material gain
           }`,
       });
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.name = 'sanctum.heroPool';
+      mesh.name = 'nona.heroPool';
       mesh.frustumCulled = false;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
@@ -1220,7 +1220,7 @@ uniform float sanctumRimGain;  // per-material gain
         delete mat.defines[RIM_DEFINE];
       }
       mat.onBeforeCompile = function () {};
-      delete mat.userData.__sanctumHook;
+      delete mat.userData.__nonaHook;
       mat.needsUpdate = true;
     } catch {}
   }
@@ -1461,7 +1461,7 @@ uniform float sanctumRimGain;  // per-material gain
      * the scenario's colour story (cold slate in the crypt, violet in the arena,
      * silver under moonlight) without a second table to keep in sync. */
     const ru = this._rimUniforms;
-    ru.sanctumRimDir.value.set(dx, dy, dz).normalize();
+    ru.nonaRimDir.value.set(dx, dy, dz).normalize();
     /* Chroma, then LUMINANCE normalisation, then a peak clamp. The order is the
      * whole fix, and it is arithmetic, not taste.
      *
@@ -1498,8 +1498,8 @@ uniform float sanctumRimGain;  // per-material gain
     let s = g / lum2;
     const peak = Math.max(cr, cg, cb, 1e-4) * s;
     if (peak > ceil) s *= ceil / peak;
-    ru.sanctumRimCol.value.set(cr * s, cg * s, cb * s);
-    ru.sanctumRimTune.value.set(this._heroRim.pow, this._heroRim.wrap, this._heroRim.ceil, this._heroRim.kick);
+    ru.nonaRimCol.value.set(cr * s, cg * s, cb * s);
+    ru.nonaRimTune.value.set(this._heroRim.pow, this._heroRim.wrap, this._heroRim.ceil, this._heroRim.kick);
 
     this.hemi.position.set(f.x, f.y + 40, f.z);
     this._updateHeroPool();
@@ -1567,8 +1567,8 @@ uniform float sanctumRimGain;  // per-material gain
     const p = this.preset;
 
     probes.recenter(this.focus);
-    this._probeUniforms.sanctumProbeMin.value.copy(probes.texMin);
-    this._probeUniforms.sanctumProbeInvSize.value.copy(probes.texInvSize);
+    this._probeUniforms.nonaProbeMin.value.copy(probes.texMin);
+    this._probeUniforms.nonaProbeInvSize.value.copy(probes.texInvSize);
 
     probes.begin(0, 0, 0);
     const bounce = p.bounce;

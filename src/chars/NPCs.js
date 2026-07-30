@@ -1,5 +1,5 @@
 /**
- * SANCTUM — NPCs: the townsfolk.
+ * THE NINTH VIGIL — NPCs: the townsfolk.
  *
  * The `hub` scenario asks for `spawn.npcs: 6` and nothing was answering, because
  * Bestiary only knows how to build monsters. This module fills that slot, and it

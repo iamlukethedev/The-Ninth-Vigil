@@ -1,5 +1,5 @@
 /**
- * SANCTUM — item model
+ * THE NINTH VIGIL — item model
  * ---------------------------------------------------------------------------
  * Deterministic item generation for the character screen and the tooltip. Real
  * ARPG data shape: a base (which decides the icon, the type line and the
@@ -56,7 +56,7 @@ const BASES = {
   ring2:   [{ name: 'Signet',    icon: 'ring',   type: 'Ring',    primary: 'none' }],
   misc:    [{ name: 'Elixir',    icon: 'potion', type: 'Elixir',  primary: 'none' },
             { name: 'Ruby',      icon: 'gem',    type: 'Gem',     primary: 'none' },
-            { name: 'Sigil',     icon: 'scroll', type: 'Nightmare Sigil', primary: 'none' },
+            { name: 'Sigil',     icon: 'scroll', type: 'Nocturn Sigil', primary: 'none' },
             { name: 'Codex',     icon: 'tome',   type: 'Tome',    primary: 'none' }],
 };
 
@@ -88,7 +88,7 @@ const AFFIX_OFF = [
   ['+{v}% Attack Speed', 4, 11, ''],
   ['+{v}% Overpower Damage', 22, 78, ''],
   ['+{v}% Damage while Berserking', 10, 30, ''],
-  ['+{v} Damage per Fury Spent', 3, 14, ''],
+  ['+{v} Damage per Zeal Spent', 3, 14, ''],
   ['+{v}% Vulnerable Damage', 12, 44, ''],
 ];
 const AFFIX_DEF = [
@@ -103,9 +103,9 @@ const AFFIX_DEF = [
 const AFFIX_UTIL = [
   ['+{v}% Movement Speed', 4, 16, ''],
   ['+{v}% Resource Generation', 5, 18, ''],
-  ['+{v} Fury on Kill', 2, 9, ''],
+  ['+{v} Zeal on Kill', 2, 9, ''],
   ['+{v}% Lucky Hit Chance', 3, 11, ''],
-  ['+{v} to Bloodwhirl', 1, 4, ''],
+  ['+{v} to Threshing Floor', 1, 4, ''],
 ];
 
 const LEGENDARY_POWER = [

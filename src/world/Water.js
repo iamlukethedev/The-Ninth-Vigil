@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Water.js : every liquid surface in the game.
+ * THE NINTH VIGIL — Water.js : every liquid surface in the game.
  *
  * Three liquids, one system:
  *
@@ -88,7 +88,7 @@ function chainOBC(material, mine, tag) {
     },
   });
   material.customProgramCacheKey = function () {
-    return `sanctum-${tag}-${rev}-${externals.length}`;
+    return `nona-${tag}-${rev}-${externals.length}`;
   };
 }
 
@@ -655,7 +655,7 @@ function buildWaveTexture(size, seed) {
   tex.magFilter = THREE.LinearFilter;
   tex.flipY = false;
   tex.needsUpdate = true;
-  tex.name = 'sanctum.waveSlope';
+  tex.name = 'nona.waveSlope';
   return tex;
 }
 
@@ -698,7 +698,7 @@ function buildFallbackDetail(size, seed) {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.flipY = false;
   tex.needsUpdate = true;
-  tex.name = 'sanctum.lqDetailFallback';
+  tex.name = 'nona.lqDetailFallback';
   return tex;
 }
 
@@ -844,7 +844,7 @@ export class Water {
       this._tex.wave = buildWaveTexture(low ? 128 : 256, SEED + 11);
       this._tex.detail = this._detailTexture(low ? 128 : 256);
 
-      try { e.assets?.register?.('sanctumLavaCrust', lavaCrustGen); } catch { /* forge absent */ }
+      try { e.assets?.register?.('nonaLavaCrust', lavaCrustGen); } catch { /* forge absent */ }
 
       this._mats.water = this._makeWaterMaterial();
       this._mats.caustic = this._makeCausticMaterial();
@@ -1078,7 +1078,7 @@ export class Water {
     let maps = null;
     try {
       maps = this.engine.assets?.pbr?.({
-        kind: 'sanctumLavaCrust', size: this.engine.quality?.tier === 'low' ? 256 : 512,
+        kind: 'nonaLavaCrust', size: this.engine.quality?.tier === 'low' ? 256 : 512,
         seed: SEED + 23, tiling: 1,
       });
     } catch (e) {
@@ -1151,7 +1151,7 @@ export class Water {
       fog: true,
       premultipliedAlpha: false,
     });
-    mat.name = 'SanctumWater';
+    mat.name = 'NonaWater';
 
     chainOBC(mat, (shader) => {
       Object.assign(shader.uniforms, U);
@@ -1195,7 +1195,7 @@ export class Water {
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
     });
-    mat.name = 'SanctumBlood';
+    mat.name = 'NonaBlood';
 
     chainOBC(mat, (shader) => {
       Object.assign(shader.uniforms, U);
@@ -1252,7 +1252,7 @@ export class Water {
       dithering: true,
       fog: true,
     });
-    mat.name = 'SanctumLava';
+    mat.name = 'NonaLava';
 
     chainOBC(mat, (shader) => {
       Object.assign(shader.uniforms, U);
@@ -1278,7 +1278,7 @@ export class Water {
 
   _makeCausticMaterial() {
     return new THREE.ShaderMaterial({
-      name: 'SanctumCaustics',
+      name: 'NonaCaustics',
       vertexShader: CAUSTIC_VS,
       fragmentShader: CAUSTIC_FS,
       uniforms: {
@@ -1299,7 +1299,7 @@ export class Water {
 
   _makeHazeMaterial() {
     return new THREE.ShaderMaterial({
-      name: 'SanctumHeatHaze',
+      name: 'NonaHeatHaze',
       vertexShader: HAZE_VS,
       fragmentShader: HAZE_FS,
       uniforms: {
@@ -2083,7 +2083,7 @@ export class Water {
         stencilBuffer: false,
         samples: 0,
       });
-      this._refl.texture.name = 'sanctum.waterReflection';
+      this._refl.texture.name = 'nona.waterReflection';
       this._refl.texture.minFilter = THREE.LinearFilter;
       this._refl.texture.magFilter = THREE.LinearFilter;
       this._refl.texture.generateMipmaps = false;

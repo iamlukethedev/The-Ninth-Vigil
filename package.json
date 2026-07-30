@@ -1,7 +1,7 @@
 {
-  "name": "sanctum",
+  "name": "ninth-vigil",
   "version": "1.0.0",
-  "description": "SANCTUM — a Diablo 4-class isometric action RPG in Three.js",
+  "description": "THE NINTH VIGIL — a Diablo 4-class isometric action RPG in Three.js",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5190",

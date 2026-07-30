@@ -1,5 +1,5 @@
 /**
- * SANCTUM — CharacterMesh
+ * THE NINTH VIGIL — CharacterMesh
  * ---------------------------------------------------------------------------
  * The hero's body and armour, built once at init as five skinned meshes (one
  * per surface family: flesh, cloth, leather, steel, gold) sharing a single
@@ -1754,7 +1754,7 @@ function injectHeroShader(mat, u) {
       .replace('#include <aomap_fragment>', '#include <aomap_fragment>' + HERO_FRAG_AO)
       .replace('#include <opaque_fragment>', HERO_FRAG_GRADE + '#include <opaque_fragment>');
   };
-  mat.customProgramCacheKey = () => 'sanctum-hero-v9';
+  mat.customProgramCacheKey = () => 'nona-hero-v9';
   return mat;
 }
 

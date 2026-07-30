@@ -1,5 +1,5 @@
 /**
- * SANCTUM — HUD
+ * THE NINTH VIGIL — HUD
  * ---------------------------------------------------------------------------
  * The whole interface. A DOM/CSS overlay rather than an orthographic layer:
  * text stays vector-crisp at any resolution, and every ornament is a canvas
@@ -61,7 +61,7 @@ const CD_PHASE = {
 };
 
 const BUFFS = [
-  { id: 'fury',   name: 'Unbridled Fury',   glyph: 'flame',  col: '#d8552a', kind: 'buff',   dur: 18,  stacks: 3 },
+  { id: 'zeal',   name: 'Unbridled Zeal',   glyph: 'flame',  col: '#d8552a', kind: 'buff',   dur: 18,  stacks: 3 },
   { id: 'ward',   name: 'Iron Bulwark',     glyph: 'ward',   col: '#7fa8d8', kind: 'buff',   dur: 9,   stacks: 0 },
   { id: 'bless',  name: 'Ancestral Blessing', glyph: 'sigil', col: '#e0c74e', kind: 'buff',  dur: 42,  stacks: 0 },
   { id: 'bleed',  name: 'Rending Wound',    glyph: 'drain',  col: '#a8261c', kind: 'debuff', dur: 6,   stacks: 5 },
@@ -135,7 +135,7 @@ export class HUD {
       document.head.appendChild(this.style);
 
       this.root = mk('div', '', document.body);
-      this.root.id = 'sanctum-hud';
+      this.root.id = 'nona-hud';
 
       this._buildVeil();
       this._buildOrbs();
@@ -224,7 +224,7 @@ export class HUD {
       const glass = mk('div', 'oGlass', o);
       const bez = mk('div', 'oBez', o);
       const cap = txt('div', 'oCap num', '', o);
-      const lab = txt('div', 'oLab eng', isHp ? 'Life' : 'Fury', o);
+      const lab = txt('div', 'oLab eng', isHp ? 'Life' : 'Zeal', o);
 
       const size = 380;
       cav.style.backgroundImage = `url("${this.atlas.orbCavityURI(size, { tag: side })}")`;
@@ -690,59 +690,59 @@ export function lightHex(h) {
 function hudCSS() {
   return `
 /* ------------------------------------------------------------------ veil */
-#sanctum-hud .veil{ position:absolute; inset:0; background-size:100% 100%; }
-#sanctum-hud .foot{
+#nona-hud .veil{ position:absolute; inset:0; background-size:100% 100%; }
+#nona-hud .foot{
   position:absolute; left:0; right:0; bottom:0; height:26vh;
   background:linear-gradient(to top,rgba(2,3,5,.72) 0%,rgba(2,3,5,.34) 38%,rgba(0,0,0,0) 100%);
 }
 
 /* ------------------------------------------------------------------ orbs */
-#sanctum-hud .orb{ position:absolute; width:22.2vh; height:22.2vh; bottom:0.6vh; }
-#sanctum-hud .orb.hp{ left:1.4vh; }
-#sanctum-hud .orb.rs{ right:1.4vh; }
-#sanctum-hud .orb>div{ position:absolute; }
-#sanctum-hud .oCav{ inset:12.8%; border-radius:50%; background-size:100% 100%; }
-#sanctum-hud .oClip{ inset:12.8%; border-radius:50%; overflow:hidden; }
-#sanctum-hud .oLiq{ position:absolute; left:0; right:0; bottom:0; height:70%; }
-#sanctum-hud .oGhost{ position:absolute; left:0; right:0; bottom:0; height:70%; opacity:.4;
+#nona-hud .orb{ position:absolute; width:22.2vh; height:22.2vh; bottom:0.6vh; }
+#nona-hud .orb.hp{ left:1.4vh; }
+#nona-hud .orb.rs{ right:1.4vh; }
+#nona-hud .orb>div{ position:absolute; }
+#nona-hud .oCav{ inset:12.8%; border-radius:50%; background-size:100% 100%; }
+#nona-hud .oClip{ inset:12.8%; border-radius:50%; overflow:hidden; }
+#nona-hud .oLiq{ position:absolute; left:0; right:0; bottom:0; height:70%; }
+#nona-hud .oGhost{ position:absolute; left:0; right:0; bottom:0; height:70%; opacity:.4;
   mix-blend-mode:screen; }
-#sanctum-hud .oCau{ position:absolute; inset:0; mix-blend-mode:overlay; opacity:.62; }
-#sanctum-hud .oMen{ position:absolute; height:1.6vh; bottom:70%;
+#nona-hud .oCau{ position:absolute; inset:0; mix-blend-mode:overlay; opacity:.62; }
+#nona-hud .oMen{ position:absolute; height:1.6vh; bottom:70%;
   transform:translateY(50%); border-radius:50%; }
-#sanctum-hud .oGlass{ inset:12.8%; border-radius:50%; background-size:100% 100%; }
-#sanctum-hud .oBez{ inset:0; background-size:100% 100%;
+#nona-hud .oGlass{ inset:12.8%; border-radius:50%; background-size:100% 100%; }
+#nona-hud .oBez{ inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .8vh 1.6vh rgba(0,0,0,.85)); }
-#sanctum-hud .oCap{
+#nona-hud .oCap{
   left:0; right:0; top:58%; text-align:center;
   font-size:1.74vh; letter-spacing:.03em; color:#f4e8ca;
   text-shadow:0 1px 0 #000,0 -1px 2px rgba(0,0,0,.95),0 0 1.4vh rgba(0,0,0,.95);
 }
-#sanctum-hud .oLab{
+#nona-hud .oLab{
   left:0; right:0; top:69%; text-align:center;
   font-size:.94vh; letter-spacing:.34em; color:#a5977a;
   text-shadow:0 1px 0 #000,0 0 1vh rgba(0,0,0,.9);
 }
-#sanctum-hud .dmgVig{ position:absolute; inset:0; opacity:0;
+#nona-hud .dmgVig{ position:absolute; inset:0; opacity:0;
   background:radial-gradient(ellipse at 50% 50%,rgba(0,0,0,0) 42%,rgba(120,14,8,.28) 76%,rgba(150,20,10,.55) 100%); }
 
 /* ------------------------------------------------------------ action bar */
-#sanctum-hud .bar{
+#nona-hud .bar{
   position:absolute; left:50%; bottom:5.2vh; transform:translateX(-50%);
   display:flex; gap:.86vh; align-items:flex-end;
 }
-#sanctum-hud .slot{ position:relative; width:8.0vh; height:8.0vh; }
-#sanctum-hud .slot>div{ position:absolute; }
-#sanctum-hud .sSock{ inset:0; background-size:100% 100%;
+#nona-hud .slot{ position:relative; width:8.0vh; height:8.0vh; }
+#nona-hud .slot>div{ position:absolute; }
+#nona-hud .sSock{ inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .5vh 1.1vh rgba(0,0,0,.85)); }
-#sanctum-hud .sIco{ inset:15%; background-size:100% 100%; background-repeat:no-repeat; }
-#sanctum-hud .sCd{ inset:11%; border-radius:12%; opacity:0; }
-#sanctum-hud .sHand{ left:50%; top:11%; width:.19vh; height:39%;
+#nona-hud .sIco{ inset:15%; background-size:100% 100%; background-repeat:no-repeat; }
+#nona-hud .sCd{ inset:11%; border-radius:12%; opacity:0; }
+#nona-hud .sHand{ left:50%; top:11%; width:.19vh; height:39%;
   transform-origin:50% 100%; opacity:0;
   background:linear-gradient(to top,rgba(255,236,190,.9),rgba(255,236,190,.05)); }
-#sanctum-hud .sCdT{ left:0; right:0; top:50%; transform:translateY(-52%);
+#nona-hud .sCdT{ left:0; right:0; top:50%; transform:translateY(-52%);
   text-align:center; font-size:2.30vh; color:#f6ecd2; opacity:0;
   text-shadow:0 1px 0 #000,0 2px 3px rgba(0,0,0,.95),0 0 1.2vh rgba(0,0,0,.95); }
-#sanctum-hud .sRdy{ inset:9%; border-radius:14%; opacity:0; }
+#nona-hud .sRdy{ inset:9%; border-radius:14%; opacity:0; }
 /* The keybind tab is riveted ONTO the socket's lower bevel rather than hung in
    the gap beneath it. Hung, it started at 3.0vh off the bottom edge and the xp
    bar occupies 1.5–3.75vh, so the later sibling painted over the tab's bottom
@@ -752,7 +752,7 @@ function hudCSS() {
    that costs nothing elsewhere: dropping the xp bar instead would push the
    level medallion (4.4vh tall, hung 1.2vh proud of the trough) off the bottom
    edge, and raising the whole bar would close the gap to the buff row. */
-#sanctum-hud .sKb{
+#nona-hud .sKb{
   left:50%; bottom:-0.9vh; transform:translateX(-50%);
   min-width:3.3vh; height:2.0vh; padding:0 .48vh;
   display:flex; align-items:center; justify-content:center;
@@ -761,63 +761,63 @@ function hudCSS() {
 }
 
 /* ------------------------------------------------------------------- xp */
-#sanctum-hud .xpWrap{
+#nona-hud .xpWrap{
   position:absolute; left:50%; bottom:1.5vh; transform:translateX(-50%);
   width:64vh; height:2.25vh;
 }
-#sanctum-hud .xpWrap>div{ position:absolute; }
-#sanctum-hud .xpClip{ left:.36vh; right:.36vh; top:.36vh; bottom:.36vh; overflow:hidden; border-radius:.3vh; }
-#sanctum-hud .xpFill{ position:absolute; left:0; top:0; bottom:0; width:60%;
+#nona-hud .xpWrap>div{ position:absolute; }
+#nona-hud .xpClip{ left:.36vh; right:.36vh; top:.36vh; bottom:.36vh; overflow:hidden; border-radius:.3vh; }
+#nona-hud .xpFill{ position:absolute; left:0; top:0; bottom:0; width:60%;
   background-size:100% 100%; box-shadow:0 0 .8vh rgba(226,180,90,.42); }
-#sanctum-hud .xpFrame{ inset:0; background-size:100% 100%;
+#nona-hud .xpFrame{ inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .3vh .7vh rgba(0,0,0,.75)); }
-#sanctum-hud .xpPlate{
+#nona-hud .xpPlate{
   left:-3.3vh; top:-1.2vh; width:4.4vh; height:4.4vh; background-size:100% 100%;
   display:flex; align-items:center; justify-content:center;
   filter:drop-shadow(0 .4vh .8vh rgba(0,0,0,.85));
 }
-#sanctum-hud .xpLvl{ font-size:2.0vh; color:#f0dc9a; letter-spacing:0;
+#nona-hud .xpLvl{ font-size:2.0vh; color:#f0dc9a; letter-spacing:0;
   text-shadow:0 -1px 0 #000,0 1px 0 rgba(255,240,190,.2),0 0 1vh rgba(200,150,60,.5); }
-#sanctum-hud .xpPct{ right:-4.6vh; top:.3vh; font-size:.94vh; color:#8e8267; letter-spacing:.16em; }
+#nona-hud .xpPct{ right:-4.6vh; top:.3vh; font-size:.94vh; color:#8e8267; letter-spacing:.16em; }
 
 /* ---------------------------------------------------------------- buffs */
-#sanctum-hud .buffs{
+#nona-hud .buffs{
   position:absolute; left:50%; bottom:14.4vh; transform:translateX(-50%);
   display:flex; gap:.78vh; align-items:center;
 }
-#sanctum-hud .buff{ position:relative; width:4.3vh; height:4.3vh; }
-#sanctum-hud .buff>div{ position:absolute; }
-#sanctum-hud .bFr{ inset:0; background-size:100% 100%;
+#nona-hud .buff{ position:relative; width:4.3vh; height:4.3vh; }
+#nona-hud .buff>div{ position:absolute; }
+#nona-hud .bFr{ inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .3vh .6vh rgba(0,0,0,.8)); }
-#sanctum-hud .bIc{ inset:22%; background-size:100% 100%; }
-#sanctum-hud .bSw{ inset:14%; border-radius:50%; }
-#sanctum-hud .bSt{
+#nona-hud .bIc{ inset:22%; background-size:100% 100%; }
+#nona-hud .bSw{ inset:14%; border-radius:50%; }
+#nona-hud .bSt{
   right:-.25vh; bottom:-.35vh; min-width:1.5vh; height:1.5vh; padding:0 .18vh;
   display:flex; align-items:center; justify-content:center;
   font-size:1.0vh; color:#f2e6c8; background:radial-gradient(circle at 40% 32%,#3d444d,#0c0e11 76%);
   border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.9),inset 0 1px 0 rgba(226,196,132,.3);
 }
-#sanctum-hud .bTm{ left:0; right:0; top:104%; text-align:center; font-size:.92vh;
+#nona-hud .bTm{ left:0; right:0; top:104%; text-align:center; font-size:.92vh;
   color:#a89a78; text-shadow:0 1px 0 #000; }
 
 /* ---------------------------------------------------------------- quest */
-#sanctum-hud .quest{ left:2.0vh; top:2.0vh; width:27.5vh; height:13.4vh; }
-#sanctum-hud .quest .body{ padding:1.7vh 1.9vh 1.2vh; }
-#sanctum-hud .qTitle{ font-size:1.50vh; letter-spacing:.10em; color:#241a0c;
+#nona-hud .quest{ left:2.0vh; top:2.0vh; width:27.5vh; height:13.4vh; }
+#nona-hud .quest .body{ padding:1.7vh 1.9vh 1.2vh; }
+#nona-hud .qTitle{ font-size:1.50vh; letter-spacing:.10em; color:#241a0c;
   text-shadow:0 1px 0 rgba(255,248,220,.45); }
-#sanctum-hud .qSub{ font-size:.90vh; color:#63512f; margin-top:.20vh; letter-spacing:.22em; }
-#sanctum-hud .quest .rule{ margin:.5vh 0 .55vh; }
-#sanctum-hud .qList{ display:flex; flex-direction:column; gap:.30vh; }
-#sanctum-hud .qRow{ display:flex; align-items:baseline; gap:.6vh;
+#nona-hud .qSub{ font-size:.90vh; color:#63512f; margin-top:.20vh; letter-spacing:.22em; }
+#nona-hud .quest .rule{ margin:.5vh 0 .55vh; }
+#nona-hud .qList{ display:flex; flex-direction:column; gap:.30vh; }
+#nona-hud .qRow{ display:flex; align-items:baseline; gap:.6vh;
   font-size:1.18vh; color:#33270f; line-height:1.34; }
-#sanctum-hud .qRow.done{ color:#6d5f45; text-decoration:line-through; text-decoration-thickness:.5px; }
-#sanctum-hud .qPip{ width:.56vh; height:.56vh; flex:0 0 auto; margin-top:.42vh;
+#nona-hud .qRow.done{ color:#6d5f45; text-decoration:line-through; text-decoration-thickness:.5px; }
+#nona-hud .qPip{ width:.56vh; height:.56vh; flex:0 0 auto; margin-top:.42vh;
   transform:rotate(45deg);
   background:linear-gradient(135deg,#c8a75c,#5d4415); box-shadow:0 0 0 1px rgba(0,0,0,.5); }
-#sanctum-hud .qRow.done .qPip{ background:linear-gradient(135deg,#7d735c,#3a3428); }
+#nona-hud .qRow.done .qPip{ background:linear-gradient(135deg,#7d735c,#3a3428); }
 
 /* --------------------------------------------------------------- toasts */
-#sanctum-hud .toasts{
+#nona-hud .toasts{
   position:absolute; left:50%; top:7.4vh; transform:translateX(-50%);
   display:flex; flex-direction:column; align-items:center; gap:.55vh;
 }
@@ -826,30 +826,30 @@ function hudCSS() {
    encounter banner prints through the phase line. panels/Combat.js publishes
    the state as this class; the offset is that reach plus the same ~2.7vh of air
    the column had before the bar was rebuilt taller. */
-#sanctum-hud.hasBoss .toasts{ top:14.0vh; }
-#sanctum-hud .toast{ opacity:0; }
-#sanctum-hud .tIn{
+#nona-hud.hasBoss .toasts{ top:14.0vh; }
+#nona-hud .toast{ opacity:0; }
+#nona-hud .tIn{
   min-width:26vh; padding:.62vh 3.4vh; background-size:100% 100%;
   display:flex; align-items:center; justify-content:center;
   filter:drop-shadow(0 .5vh 1.1vh rgba(0,0,0,.8));
 }
-#sanctum-hud .tIn>div{ font-size:1.30vh; letter-spacing:.26em; color:#d8c8a4;
+#nona-hud .tIn>div{ font-size:1.30vh; letter-spacing:.26em; color:#d8c8a4;
   text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(255,238,190,.14); white-space:nowrap; }
-#sanctum-hud .toast.t-boss .tIn>div{ font-size:1.84vh; letter-spacing:.30em; color:#f0b48a;
+#nona-hud .toast.t-boss .tIn>div{ font-size:1.84vh; letter-spacing:.30em; color:#f0b48a;
   text-shadow:0 -1px 0 #000,0 0 1.8vh rgba(200,60,30,.6); }
-#sanctum-hud .toast.t-level .tIn>div{ color:#f4dc96; font-size:1.7vh;
+#nona-hud .toast.t-level .tIn>div{ color:#f4dc96; font-size:1.7vh;
   text-shadow:0 -1px 0 #000,0 0 1.8vh rgba(210,160,50,.65); }
-#sanctum-hud .toast.t-danger .tIn>div{ color:#eda08c; }
-#sanctum-hud .toast.t-good .tIn>div{ color:#bcd49a; }
+#nona-hud .toast.t-danger .tIn>div{ color:#eda08c; }
+#nona-hud .toast.t-good .tIn>div{ color:#bcd49a; }
 
 /* ------------------------------------------------------------- loot log */
-#sanctum-hud .lootLog{
+#nona-hud .lootLog{
   position:absolute; left:2.6vh; bottom:25.0vh;
   display:flex; flex-direction:column-reverse; gap:.34vh; align-items:flex-start;
 }
-#sanctum-hud .lRow{ display:flex; align-items:center; gap:.7vh; opacity:0; }
-#sanctum-hud .lPip{ width:.72vh; height:.72vh; border-radius:50%; flex:0 0 auto; }
-#sanctum-hud .lName{ font-family:${FONT_BODY}; font-size:1.24vh; letter-spacing:.03em;
+#nona-hud .lRow{ display:flex; align-items:center; gap:.7vh; opacity:0; }
+#nona-hud .lPip{ width:.72vh; height:.72vh; border-radius:50%; flex:0 0 auto; }
+#nona-hud .lName{ font-family:${FONT_BODY}; font-size:1.24vh; letter-spacing:.03em;
   text-shadow:0 1px 0 #000,0 0 .9vh rgba(0,0,0,.9); white-space:nowrap; }
 `;
 }

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — HeroClips
+ * THE NINTH VIGIL — HeroClips
  * ---------------------------------------------------------------------------
  * The hero's animation set. Two kinds of clip live here:
  *

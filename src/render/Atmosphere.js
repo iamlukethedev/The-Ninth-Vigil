@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Atmosphere support library.
+ * THE NINTH VIGIL — Atmosphere support library.
  *
  * Everything the Sky module needs that is not scene-graph plumbing:
  *   - weather presets
@@ -844,7 +844,7 @@ export function buildCloudNoise(size = 256, seed = 20873) {
   tex.generateMipmaps = true;
   tex.colorSpace = THREE.NoColorSpace;
   tex.needsUpdate = true;
-  tex.name = 'sanctum.cloudNoise';
+  tex.name = 'nona.cloudNoise';
 
   const res = { texture: tex, field, size };
   _noiseCache.set(key, res);
@@ -899,7 +899,7 @@ export function buildCloudShadowTexture(noise, coverage, softness = 1.0) {
   tex.generateMipmaps = true;
   tex.colorSpace = THREE.NoColorSpace;
   tex.needsUpdate = true;
-  tex.name = 'sanctum.cloudShadow';
+  tex.name = 'nona.cloudShadow';
   return tex;
 }
 

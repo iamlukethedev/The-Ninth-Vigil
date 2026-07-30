@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Cloak
+ * THE NINTH VIGIL — Cloak
  * ---------------------------------------------------------------------------
  * A verlet cloth grid pinned across the hero's pauldrons. This is the only
  * part of the character that is simulated rather than skinned, because a cloak
@@ -488,7 +488,7 @@ export class Cloak {
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>' + CLOAK_FRAG_EMIT)
         .replace('#include <opaque_fragment>', CLOAK_FRAG_GRADE + '#include <opaque_fragment>');
     };
-    mat.customProgramCacheKey = () => 'sanctum-cloak-v6';
+    mat.customProgramCacheKey = () => 'nona-cloak-v6';
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'hero_cloak';

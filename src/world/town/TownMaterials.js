@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Town material bank.
+ * THE NINTH VIGIL — Town material bank.
  *
  * A settlement is built out of about eight surfaces: oak framing, sawn plank,
  * lime plaster, ashlar, weathered shingle, wrought iron, patched sailcloth and

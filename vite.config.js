@@ -9,7 +9,7 @@ import { defineConfig } from 'vite';
  * index.html or tools is modified.
  */
 const townBoot = {
-  name: 'sanctum-town-boot',
+  name: 'nona-town-boot',
   transformIndexHtml() {
     return [
       {

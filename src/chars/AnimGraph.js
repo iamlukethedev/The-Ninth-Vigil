@@ -1,5 +1,5 @@
 /**
- * SANCTUM — AnimGraph (hero layer)
+ * THE NINTH VIGIL — AnimGraph (hero layer)
  * ---------------------------------------------------------------------------
  * The bestiary's `monsters/AnimKit.js` already ships a working procedural clip
  * graph with quaternion crossfades and decaying impulses. The hero needs three

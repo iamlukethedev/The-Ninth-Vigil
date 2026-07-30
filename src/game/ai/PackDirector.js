@@ -1,5 +1,5 @@
 /**
- * SANCTUM — encounter director.
+ * THE NINTH VIGIL — encounter director.
  *
  * This is the most important file in the AI for how the game *reads*. Nine
  * enemies that all attack whenever they are in range produce an unreadable

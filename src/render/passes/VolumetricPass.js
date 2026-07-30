@@ -150,10 +150,10 @@ export class VolumetricPass extends Pass {
       stencilBuffer: false,
       generateMipmaps: false,
     });
-    this.target.texture.name = 'Sanctum.godrays';
+    this.target.texture.name = 'Nona.godrays';
 
     this.rayMaterial = quadMaterial(
-      'Sanctum.Godrays',
+      'Nona.Godrays',
       RAY_FRAG,
       {
         tColor: { value: null },
@@ -179,7 +179,7 @@ export class VolumetricPass extends Pass {
       { VOL_SAMPLES: samples }
     );
 
-    this.compositeMaterial = quadMaterial('Sanctum.GodraysComposite', COMPOSITE_FRAG, {
+    this.compositeMaterial = quadMaterial('Nona.GodraysComposite', COMPOSITE_FRAG, {
       tDiffuse: { value: null },
       tVol: { value: this.target.texture },
       tDepth: { value: depthTexture },

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — boss controller.
+ * THE NINTH VIGIL — boss controller.
  *
  * A boss is not a big grunt. It is a *rotation*: a small set of distinct,
  * heavily telegraphed abilities on independent cooldowns, gated by range and by

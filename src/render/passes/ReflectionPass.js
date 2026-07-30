@@ -180,10 +180,10 @@ export class ReflectionPass extends Pass {
       stencilBuffer: false,
       generateMipmaps: false,
     });
-    this.target.texture.name = 'Sanctum.ssr';
+    this.target.texture.name = 'Nona.ssr';
 
     this.marchMaterial = quadMaterial(
-      'Sanctum.SSRMarch',
+      'Nona.SSRMarch',
       MARCH_FRAG,
       {
         tColor: { value: null },
@@ -209,7 +209,7 @@ export class ReflectionPass extends Pass {
       { SSR_STEPS: steps }
     );
 
-    this.compositeMaterial = quadMaterial('Sanctum.SSRComposite', COMPOSITE_FRAG, {
+    this.compositeMaterial = quadMaterial('Nona.SSRComposite', COMPOSITE_FRAG, {
       tDiffuse: { value: null },
       tRefl: { value: this.target.texture },
       tDepth: { value: depthTexture },

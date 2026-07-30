@@ -6,7 +6,7 @@
  *   node tools/shot.mjs --all
  *
  * Boots the vite dev server (reusing one if already listening), loads the game
- * with ?shot=<scenario>, waits for window.__SANCTUM__.ready, drives the sim a
+ * with ?shot=<scenario>, waits for window.__NONA__.ready, drives the sim a
  * fixed number of frames with a fixed dt so output is byte-stable, then grabs a
  * PNG of the canvas.
  *
@@ -78,18 +78,18 @@ async function shoot(browser, scenario, outPath, w, h, frames) {
     timeout: 60000,
   });
 
-  await page.waitForFunction(() => window.__SANCTUM__ && window.__SANCTUM__.ready === true, null, {
+  await page.waitForFunction(() => window.__NONA__ && window.__NONA__.ready === true, null, {
     timeout: 120000,
   });
 
   // Let the engine build the scenario (assets, streaming, GPU warmup).
   await page.evaluate(async (s) => {
-    if (window.__SANCTUM__.scenario) await window.__SANCTUM__.scenario(s);
+    if (window.__NONA__.scenario) await window.__NONA__.scenario(s);
   }, scenario);
 
   // Deterministic warm-up then the measured frames.
   await page.evaluate(async (f) => {
-    await window.__SANCTUM__.step(f, 1 / 60);
+    await window.__NONA__.step(f, 1 / 60);
   }, frames);
 
   mkdirSync(dirname(outPath), { recursive: true });
@@ -97,7 +97,7 @@ async function shoot(browser, scenario, outPath, w, h, frames) {
   await (canvas ?? page).screenshot({ path: outPath });
 
   const perf = await page
-    .evaluate(() => window.__SANCTUM__.stats?.() ?? null)
+    .evaluate(() => window.__NONA__.stats?.() ?? null)
     .catch(() => null);
 
   await page.close();

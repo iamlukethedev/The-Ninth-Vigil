@@ -1,5 +1,5 @@
 /**
- * SANCTUM — LightRig
+ * THE NINTH VIGIL — LightRig
  *
  * Support machinery for `src/render/Lighting.js`:
  *
@@ -324,7 +324,7 @@ export class LightPool {
       } else {
         light = new THREE.PointLight(0xffffff, 0, 10, 2);
       }
-      light.name = `sanctum.${this.kind}${shadowed ? '.sh' : ''}.${i}`;
+      light.name = `nona.${this.kind}${shadowed ? '.sh' : ''}.${i}`;
       light.castShadow = shadowed;
       light.matrixAutoUpdate = true;
 

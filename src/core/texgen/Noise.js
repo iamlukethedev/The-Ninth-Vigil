@@ -1,5 +1,5 @@
 /**
- * SANCTUM — tileable procedural noise toolkit.
+ * THE NINTH VIGIL — tileable procedural noise toolkit.
  *
  * Everything here is built on the deterministic `hash2` lattice from Rand.js,
  * so the output is bit-identical across runs (the screenshot critic requires

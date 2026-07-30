@@ -1,5 +1,5 @@
 /**
- * SANCTUM — procedural decal atlas.
+ * THE NINTH VIGIL — procedural decal atlas.
  *
  * Every decal in the game reads from exactly two textures, so the whole system
  * costs 2 of the 16 fragment texture units no matter how many decal types exist:

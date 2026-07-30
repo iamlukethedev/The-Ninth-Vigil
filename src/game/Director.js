@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Director.
+ * THE NINTH VIGIL — Director.
  *
  * The layer that makes this a game instead of a diorama. It owns:
  *
@@ -181,7 +181,7 @@ export class Director {
       this.mode = peaceful ? 'peaceful' : this.live ? 'explore' : 'posed';
 
       /* Difficulty and depth follow the scenario's intent, so a boss frame is
-         a Nightmare-tier depth-3 fight and the hub is a level-1 safe zone. */
+         a Nocturn-tier depth-3 fight and the hub is a level-1 safe zone. */
       const depth = name === 'boss' ? 3 : name === 'combat' ? 2 : 1;
       this.world.reset({ depth, tierIndex: name === 'boss' ? 2 : name === 'combat' ? 1 : 1 });
       this.world.syncPlayerLevel();

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — navigation grid + A* + string-pulled path smoothing.
+ * THE NINTH VIGIL — navigation grid + A* + string-pulled path smoothing.
  *
  * A single sliding nav *tile* centred on the action rather than a grid over the
  * whole 260 m heightfield: agents only ever path within a few dozen metres of

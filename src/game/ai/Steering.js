@@ -1,5 +1,5 @@
 /**
- * SANCTUM — local avoidance (RVO / reciprocal velocity obstacles).
+ * THE NINTH VIGIL — local avoidance (RVO / reciprocal velocity obstacles).
  *
  * Each agent hands us a *preferred* velocity from its brain; we return a
  * velocity that is as close to it as possible while not committing to a

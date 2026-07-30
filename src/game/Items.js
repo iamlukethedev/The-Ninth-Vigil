@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Items
+ * THE NINTH VIGIL — Items
  * ---------------------------------------------------------------------------
  * Slots, base types, rarity tiers, the item factory, and the procedural ICON
  * DESCRIPTOR that the HUD renders. Pure data + pure functions — nothing here

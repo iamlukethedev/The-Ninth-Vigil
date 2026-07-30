@@ -476,13 +476,13 @@ export function buildLookLUT(name, size = 32) {
   tex.colorSpace = THREE.NoColorSpace;
   tex.unpackAlignment = 1;
   tex.generateMipmaps = false;
-  tex.name = `Sanctum.LUT.${name}`;
+  tex.name = `Nona.LUT.${name}`;
   tex.needsUpdate = true;
   return tex;
 }
 
 /**
- * The live stage. Everything the grade does now lives in `sanctumGrade` (shared
+ * The live stage. Everything the grade does now lives in `nonaGrade` (shared
  * with the merged CompositePass so the low tiers resolve the same image): the
  * LUT, the soft pedestal, contrast, shadow reconstruction, split tone,
  * saturation rolloff and the filmic highlight shoulder.
@@ -496,7 +496,7 @@ varying vec2 vUv;
 
 void main() {
   vec4 base = texture2D( tDiffuse, vUv );
-  gl_FragColor = vec4( sanctumGrade( base.rgb ), base.a );
+  gl_FragColor = vec4( nonaGrade( base.rgb ), base.a );
 }
 `;
 
@@ -577,7 +577,7 @@ export function syncGradeUniforms(u, params, lutCache) {
  */
 export class GradePass extends QuadPass {
   constructor(params, lutCache) {
-    super(FRAG, { tDiffuse: { value: null }, ...gradeUniforms() }, {}, 'Sanctum.Grade');
+    super(FRAG, { tDiffuse: { value: null }, ...gradeUniforms() }, {}, 'Nona.Grade');
     this.params = params;
     this.lutCache = lutCache;
     this.needsSwap = true;

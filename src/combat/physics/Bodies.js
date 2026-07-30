@@ -1,5 +1,5 @@
 /**
- * SANCTUM — impulse-based rigid bodies + their pooled instanced renderer.
+ * THE NINTH VIGIL — impulse-based rigid bodies + their pooled instanced renderer.
  *
  * Scope: debris, barrel staves, urn shards, dropped loot, skulls and gibs. Tens
  * of small convex chunks, spawned in bursts, that must tumble convincingly, come

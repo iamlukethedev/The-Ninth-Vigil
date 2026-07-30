@@ -1,5 +1,5 @@
 /**
- * SANCTUM — ragdolls.
+ * THE NINTH VIGIL — ragdolls.
  *
  * On death an enemy's skeleton becomes a constrained chain of bodies: one body
  * per major bone, joint limits that forbid impossible poses, collision against

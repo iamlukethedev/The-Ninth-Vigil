@@ -1,5 +1,5 @@
 /**
- * SANCTUM — prop placement.
+ * THE NINTH VIGIL — prop placement.
  *
  * Uniform scatter is the single most obvious tell of a procedural world, so
  * nothing here is uniform. Every field is built from:

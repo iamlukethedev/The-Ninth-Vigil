@@ -1,5 +1,5 @@
 /**
- * SANCTUM — decal type table.
+ * THE NINTH VIGIL — decal type table.
  *
  * Every field here is consumed either by the geometry builder (size, res,
  * orient) or by the stain shader through vertex attributes (life, dry, tint,

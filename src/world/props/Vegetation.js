@@ -1,5 +1,5 @@
 /**
- * SANCTUM — vegetation dressing.
+ * THE NINTH VIGIL — vegetation dressing.
  *
  * Everything here is *dead or dying*: gnarled leafless trees, bare thorn,
  * heather that has gone to straw, sedge, hanging moss, roots tearing out of the

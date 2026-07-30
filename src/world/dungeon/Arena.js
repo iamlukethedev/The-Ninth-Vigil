@@ -1,5 +1,5 @@
 /**
- * SANCTUM — boss arena.
+ * THE NINTH VIGIL — boss arena.
  *
  * A hexagonal basalt chamber, paved. A ritual apron of dressed radial slabs
  * carries the sigil ring at the centre; laid courses of basalt flagging run out
@@ -19,7 +19,7 @@
  *    material. Five meshes, all back-face culled, all invisible from an
  *    isometric camera. What the art director read as "a smooth featureless
  *    grey-brown gradient with no material" was the SKY DOME seen through the
- *    hole: hiding `sanctum.skyDome` dropped that region from luma 56.2 to 5.6,
+ *    hole: hiding `nona.skyDome` dropped that region from luma 56.2 to 5.6,
  *    while tinting the floor material red, deleting its albedo map, and hiding
  *    the entire dungeon group each changed it by under 1.1 luma.
  *

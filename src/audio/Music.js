@@ -1,5 +1,5 @@
 /**
- * SANCTUM — adaptive procedural score.
+ * THE NINTH VIGIL — adaptive procedural score.
  * ---------------------------------------------------------------------------
  * There is no music file. The score is composed at runtime from a modal scale
  * (Aeolian for exploration, Phrygian once blades are out — the Phrygian ♭II is

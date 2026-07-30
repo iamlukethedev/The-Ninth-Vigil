@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Minimap
+ * THE NINTH VIGIL — Minimap
  * ---------------------------------------------------------------------------
  * A real top-down render of the live dungeon: the plan is rasterised once from
  * `Dungeon.layout.open` (the same occupancy grid the geometry was built from),
@@ -40,7 +40,7 @@ export class Minimap {
     this.fog = mk('div', 'mmFog', this.plate);
     this.frame = mk('div', 'mmFrame', this.root);
     this.frame.style.backgroundImage = `url("${this.orn.circleFrame(420, { tag: 'mm' })}")`;
-    this.label = txt('div', 'mmLabel eng', 'THE HOLLOW SANCTUM', this.root);
+    this.label = txt('div', 'mmLabel eng', 'THE HOLLOW THE NINTH VIGIL', this.root);
     this.coord = txt('div', 'mmCoord num', '', this.root);
 
     this.blips = [];
@@ -345,27 +345,27 @@ export class Minimap {
   /* ================================================================== CSS */
 
   _injectCSS() {
-    if (document.getElementById('sanctum-hud-mmap')) return;
+    if (document.getElementById('nona-hud-mmap')) return;
     const s = document.createElement('style');
-    s.id = 'sanctum-hud-mmap';
+    s.id = 'nona-hud-mmap';
     s.textContent = `
-#sanctum-hud .mmap{ position:absolute; right:2.0vh; top:2.0vh; width:20.5vh; height:20.5vh; }
-#sanctum-hud .mmPlate{ position:absolute; inset:9.4%; border-radius:50%; overflow:hidden;
+#nona-hud .mmap{ position:absolute; right:2.0vh; top:2.0vh; width:20.5vh; height:20.5vh; }
+#nona-hud .mmPlate{ position:absolute; inset:9.4%; border-radius:50%; overflow:hidden;
   background:#06070a; }
-#sanctum-hud .mmMap{ position:absolute; inset:0; background-repeat:no-repeat;
+#nona-hud .mmMap{ position:absolute; inset:0; background-repeat:no-repeat;
   image-rendering:auto; }
-#sanctum-hud .mmFog{ position:absolute; inset:0;
+#nona-hud .mmFog{ position:absolute; inset:0;
   background:radial-gradient(circle at 50% 50%,rgba(0,0,0,0) 46%,rgba(3,4,6,.55) 78%,rgba(2,3,5,.9) 100%); }
-#sanctum-hud .mmBlips{ position:absolute; inset:0; }
-#sanctum-hud .mmBlip{ position:absolute; border-radius:50%; transform:translate(-50%,-50%); }
-#sanctum-hud .mmArrow{ position:absolute; left:50%; top:50%; width:2.5vh; height:2.5vh;
+#nona-hud .mmBlips{ position:absolute; inset:0; }
+#nona-hud .mmBlip{ position:absolute; border-radius:50%; transform:translate(-50%,-50%); }
+#nona-hud .mmArrow{ position:absolute; left:50%; top:50%; width:2.5vh; height:2.5vh;
   background-size:100% 100%; background-repeat:no-repeat; }
-#sanctum-hud .mmFrame{ position:absolute; inset:0; background-size:100% 100%;
+#nona-hud .mmFrame{ position:absolute; inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .8vh 1.6vh rgba(0,0,0,.85)); }
-#sanctum-hud .mmLabel{ position:absolute; left:50%; bottom:-1.7vh; transform:translateX(-50%);
+#nona-hud .mmLabel{ position:absolute; left:50%; bottom:-1.7vh; transform:translateX(-50%);
   font-size:.92vh; letter-spacing:.28em; color:#a8996f; white-space:nowrap;
   text-shadow:0 1px 0 #000,0 0 1vh rgba(0,0,0,.9); }
-#sanctum-hud .mmCoord{ position:absolute; left:50%; bottom:-3.3vh; transform:translateX(-50%);
+#nona-hud .mmCoord{ position:absolute; left:50%; bottom:-3.3vh; transform:translateX(-50%);
   font-size:.86vh; letter-spacing:.14em; color:#6f6650; white-space:nowrap;
   text-shadow:0 1px 0 #000; }
 `;

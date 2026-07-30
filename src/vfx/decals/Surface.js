@@ -1,5 +1,5 @@
 /**
- * SANCTUM — decal surface conforming.
+ * THE NINTH VIGIL — decal surface conforming.
  *
  * Two paths, both of which produce world-space geometry that hugs whatever the
  * decal landed on. A flat quad hovering over uneven ground is an instant fail,

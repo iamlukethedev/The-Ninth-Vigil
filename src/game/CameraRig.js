@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { perlin2 } from '../core/Rand.js';
 
 /**
- * SANCTUM — CameraRig
+ * THE NINTH VIGIL — CameraRig
  * ------------------------------------------------------------------
  * The isometric ARPG camera. Everything here exists to hide the fact
  * that there is a camera at all:
@@ -82,8 +82,8 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
  *                         561 px down a 900 px frame.
  *
  * `boss` — the same ACTOR SCALE argument, applied to the one frame that has to
- * sell spectacle. The scenario asks for 36 m / 50° / pitch 50, and the Sanctum
- * Warden is a 7.74 m body (measured live: `SPECIES.boss.height` 6.5 × the 1.19
+ * sell spectacle. The scenario asks for 36 m / 50° / pitch 50, and Apollyon
+ * is a 7.74 m body (measured live: `SPECIES.boss.height` 6.5 × the 1.19
  * spawn scale). At the authored lens that is
  *   7.74 · cos50 · 900 / (2 · 41.4 · tan25) = 108 px
  * head to toe in a 900 px frame — 12 % of frame height for the title character,
@@ -1333,7 +1333,7 @@ export class CameraRig {
         g.depthWrite = false;
       }
       g.opacity = 1;
-      g.userData = Object.assign({}, g.userData, { sanctumOccluderGhost: true });
+      g.userData = Object.assign({}, g.userData, { nonaOccluderGhost: true });
       g.needsUpdate = true;
       if (g !== m) this._ghosts.push(g);
       return g;
@@ -1362,7 +1362,7 @@ export class CameraRig {
       if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isPoints || o.isLine || o.isSprite) return;
       if (o.userData?.occluder === false || o.userData?.noOcclude) return;
       if (this._occIgnore.has(o)) return;
-      if (o.userData?.sanctumOccluderGhost) return;
+      if (o.userData?.nonaOccluderGhost) return;
       if (heroRoot && (o === heroRoot || this._isDescendant(o, heroRoot))) return;
 
       const g = o.geometry;

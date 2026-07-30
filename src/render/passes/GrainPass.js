@@ -7,7 +7,7 @@ import { GLSL_COMMON, GLSL_GRAIN } from './ShaderChunks.js';
  * deepest shadows, where it is otherwise strongest.
  *
  * WHY THIS EXISTS (round-1 blocker #9, the half of it that is not about the UI).
- * `sanctumGrain` weights grain by luma — heavier in the shadows, and then
+ * `nonaGrain` weights grain by luma — heavier in the shadows, and then
  * multiplied AGAIN by `uGrainShadowBias` below 0.16 luma. That is right for the
  * monochrome component, which is what reads as film. It is exactly wrong for the
  * chroma component: coloured noise on a near-black pixel is the most visible
@@ -231,7 +231,7 @@ void main() {
     rgb = max( rgb + delta * t, vec3( 0.0 ) );
   }
 
-  vec3 g = sanctumGrain( rgb, gl_FragCoord.xy );
+  vec3 g = nonaGrain( rgb, gl_FragCoord.xy );
   // Split what the grain added into its monochrome and chroma parts. The
   // monochrome part is film and is kept everywhere; the chroma part is kept only
   // where it cannot manufacture a coloured single pixel — out of the deep
@@ -320,7 +320,7 @@ export class GrainPass extends QuadPass {
         ...grainUniforms(),
       },
       {},
-      'Sanctum.Grain'
+      'Nona.Grain'
     );
     this.params = params;
     this.frame = 0;

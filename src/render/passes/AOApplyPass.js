@@ -54,8 +54,8 @@ import { GLSL_COMMON, GLSL_BILATERAL } from './ShaderChunks.js';
  * WHY THE CONTACT TERM IS ESTIMATED IN ITS OWN TARGET, AND RESOLVED SPATIALLY.
  * --------------------------------------------------------------------------
  * The contact estimator is a 16-tap count. Divided by 16 and multiplied by
- * `contactIntensity` 2.5, then renormalised past the 0.12 pedestal, ONE tap
- * flipping moves the term by 2.5/16/0.88 = 0.177 — an 18 % luma step. So the
+ * `contactIntensity` 1.2, then renormalised past the 0.12 pedestal, ONE tap
+ * flipping moves the term by 1.2/16/0.88 = 0.085 — an 8 % luma step. So the
  * estimator's sampling variance is not a subtle grain, it is the loudest signal
  * in the frame, and the first version handed every pixel a DIFFERENT 16-tap
  * subset by rotating the spiral with `ign(gl_FragCoord)`. Measured on the
@@ -144,7 +144,7 @@ float depthAt( vec2 uv ) { return texture2D( tDepth, uv ).x; }
  * use them; the depth-derivative fallback exists only for the case where the
  * pass is constructed without a normal target. */
 vec3 viewNormal( vec2 uv, vec3 P ) {
-#ifdef SANCTUM_GB_NORMAL
+#ifdef NONA_GB_NORMAL
   vec3 gn = texture2D( tNormal, uv ).xyz * 2.0 - 1.0;
   float gnl = length( gn );
   return gnl > 1e-4 ? gn / gnl : vec3( 0.0, 0.0, 1.0 );
@@ -180,7 +180,7 @@ const CONTACT_FRAG = /* glsl */ `
 ${GLSL_COMMON}
 
 uniform sampler2D tDepth;
-#ifdef SANCTUM_GB_NORMAL
+#ifdef NONA_GB_NORMAL
 uniform sampler2D tNormal;
 #endif
 
@@ -305,7 +305,7 @@ uniform sampler2D tAO;
 // (which would clash with the shared bilateral helper's sampler2D parameter).
 uniform sampler2D tDepth;
 uniform sampler2D tContact;
-#ifdef SANCTUM_GB_NORMAL
+#ifdef NONA_GB_NORMAL
 uniform sampler2D tNormal;
 #endif
 
@@ -322,6 +322,8 @@ uniform float uLumaProtect;
 uniform float uProtKnee;
 uniform float uDepthSigma;
 uniform vec3  uAoColor;
+uniform float uFloorTotal;   // Bottom stop on ao * cao — see the note at its use.
+uniform float uFloorKnee;    // Half-width of that stop's C1 knee.
 
 // --- short-radius contact term ---
 uniform float uCOn;          // 0 when the contact target was not rendered.
@@ -366,6 +368,17 @@ float protectAt( float l, float knee, float k ) {
  * number covers every framing the game has. Renormalising by the accepted
  * weight is what keeps the magnitude right where taps are rejected.
  */
+/**
+ * max( x, 0 ) with a C1 quadratic knee of half-width k — the scalar twin of the
+ * grade's softFloor. Used to give occlusion a bottom stop without putting a
+ * kink in its transfer curve, because a kink is a visible contour on the floor.
+ */
+float aoSoftFloor( float x, float k ) {
+  float w = max( k, 1e-5 );
+  float q = clamp( ( x + w ) / ( 2.0 * w ), 0.0, 1.0 );
+  return max( x, w * q * q );
+}
+
 float resolveContact( vec2 uv, float dc ) {
   float raw = texture2D( tContact, uv ).x;
   if ( uCDenoise <= 0.0 ) return raw;
@@ -453,13 +466,29 @@ void main() {
   ao = mix( 1.0, ao, protectAt( l, uProtKnee, uLumaProtect ) );
   cao = mix( 1.0, cao, protectAt( l, uCProtKnee, uLumaProtect * uCProtect ) );
 
-  float total = ao * cao;
+  /*
+   * BOTTOM STOP ON THE COMBINED TERM. The two terms are floored independently
+   * (uMinAO, uCFloor) but nothing floored their PRODUCT, so the multiplier the
+   * frame actually receives bottomed out at 0.17 * 0.06 = 0.010 — occlusion was
+   * allowed to remove 99 % of the light. Measured while walking the crypt with
+   * seven enemies inside 4 m: 11.4 % of the play area was resolving to near
+   * black against 1.4 % with the pass off, peaking at 21.4 %, and the frame's
+   * mean luma jumped 0.102 between consecutive frames against 0.037 with it off.
+   * That single-frame jump is the black flashing.
+   *
+   * The stop is a soft floor rather than a max() for the reason the grade uses
+   * one: a hard clamp puts a slope discontinuity at one value, and every surface
+   * whose shading crosses it grows a contour line. Above uFloorTotal + uFloorKnee
+   * this is the identity, so all the grounding contrast that matters is
+   * untouched and only the crush is removed.
+   */
+  float total = uFloorTotal + aoSoftFloor( ao * cao - uFloorTotal, uFloorKnee );
 
   if ( uDebug == 1 ) { gl_FragColor = vec4( vec3( total ), base.a ); return; }
   if ( uDebug == 2 ) { gl_FragColor = vec4( vec3( cao ), base.a ); return; }
   if ( uDebug == 3 ) { gl_FragColor = vec4( vec3( ao ), base.a ); return; }
   if ( uDebug == 4 ) {
-#ifdef SANCTUM_GB_NORMAL
+#ifdef NONA_GB_NORMAL
     vec3 N = texture2D( tNormal, vUv ).xyz * 2.0 - 1.0;
     gl_FragColor = vec4( normalize( N ) * 0.5 + 0.5, base.a );
 #else
@@ -477,7 +506,7 @@ void main() {
 
 /** Fallbacks, so the pass is correct even if `params` never carries the knobs. */
 const D = {
-  contactIntensity: 2.5,
+  contactIntensity: 1.2,
   contactRadius: 0.22,
   contactPower: 2.1,
   contactBias: 0.08,
@@ -512,6 +541,13 @@ const D = {
    */
   aoProtectKnee: 0.9,
   contactProtectKnee: 1.25,
+  /*
+   * Least light the combined term may leave, and the half-width of the knee it
+   * eases into. Occlusion darkens; it does not delete. See the note where these
+   * are applied for the measurement that set them.
+   */
+  aoFloorTotal: 0.28,
+  aoFloorKnee: 0.18,
   aoDebug: 0,
 };
 
@@ -534,7 +570,7 @@ export class AOApplyPass extends Pass {
     this._quad = new QuadRenderer();
 
     const defines = { CONTACT_TAPS: Math.max(4, Math.min(32, taps | 0)) };
-    if (normalTexture) defines.SANCTUM_GB_NORMAL = 1;
+    if (normalTexture) defines.NONA_GB_NORMAL = 1;
 
     /*
      * RG16F, point sampled: R is the raw obscurance and G the receiver's linear
@@ -552,10 +588,10 @@ export class AOApplyPass extends Pass {
       stencilBuffer: false,
       generateMipmaps: false,
     });
-    this.contactTarget.texture.name = 'Sanctum.contactAO';
+    this.contactTarget.texture.name = 'Nona.contactAO';
 
     this.contactMaterial = quadMaterial(
-      'Sanctum.ContactAO',
+      'Nona.ContactAO',
       CONTACT_FRAG,
       {
         tDepth: { value: depthTexture },
@@ -578,7 +614,7 @@ export class AOApplyPass extends Pass {
     );
 
     this.material = quadMaterial(
-      'Sanctum.AOApply',
+      'Nona.AOApply',
       APPLY_FRAG,
       {
         tDiffuse: { value: null },
@@ -599,6 +635,8 @@ export class AOApplyPass extends Pass {
         uProtKnee: { value: D.aoProtectKnee },
         uDepthSigma: { value: 6.0 },
         uAoColor: { value: new THREE.Color(0.055, 0.062, 0.085) },
+        uFloorTotal: { value: D.aoFloorTotal },
+        uFloorKnee: { value: D.aoFloorKnee },
         uCOn: { value: 1 },
         uCIntensity: { value: D.contactIntensity },
         uCPower: { value: D.contactPower },
@@ -670,6 +708,8 @@ export class AOApplyPass extends Pass {
     u.uLumaProtect.value = p.aoLumaProtect;
     u.uProtKnee.value = p.aoProtectKnee ?? D.aoProtectKnee;
     u.uAoColor.value.setRGB(p.aoColor[0], p.aoColor[1], p.aoColor[2]);
+    u.uFloorTotal.value = p.aoFloorTotal ?? D.aoFloorTotal;
+    u.uFloorKnee.value = p.aoFloorKnee ?? D.aoFloorKnee;
     u.uCOn.value = contactOn ? 1 : 0;
     u.uCIntensity.value = cIntensity;
     u.uCPower.value = p.contactPower ?? D.contactPower;

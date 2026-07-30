@@ -1,5 +1,5 @@
 /**
- * SANCTUM — physics primitives.
+ * THE NINTH VIGIL — physics primitives.
  *
  * Allocation-free intersection kernels. Everything here is pure arithmetic on
  * numbers written into caller-owned scratch objects, because the solvers below

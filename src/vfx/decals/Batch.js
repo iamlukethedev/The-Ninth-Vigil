@@ -1,5 +1,5 @@
 /**
- * SANCTUM — decal geometry batch.
+ * THE NINTH VIGIL — decal geometry batch.
  *
  * One BufferGeometry, one material, ONE DRAW CALL, N fixed-stride slots. Slots
  * are handed out FIFO, which is also the eviction order, so the buffer never

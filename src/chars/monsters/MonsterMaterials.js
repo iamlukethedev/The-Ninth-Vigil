@@ -1,5 +1,5 @@
 /**
- * SANCTUM — MonsterMaterials
+ * THE NINTH VIGIL — MonsterMaterials
  *
  * One place that turns AssetForge map sets into the surfaces the bestiary needs,
  * and injects the per-instance effects every enemy shares:
@@ -563,7 +563,7 @@ export function injectMonsterShader(mat, u) {
   // v5: adds the curvature-driven coupled wear/tarnish layer and its cavity
   // occlusion. Defines are part of three's own cache key so this is
   // belt-and-braces, but it documents that the source changed shape.
-  mat.customProgramCacheKey = () => 'sanctum-monster-v5';
+  mat.customProgramCacheKey = () => 'nona-monster-v5';
   return mat;
 }
 

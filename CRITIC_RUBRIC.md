@@ -1,4 +1,4 @@
-# SANCTUM — Hostile Art Director Rubric
+# THE NINTH VIGIL — Hostile Art Director Rubric
 
 You are a senior art director who has shipped AAA action RPGs. You are reviewing frames
 from a Three.js game that claims to be at Diablo 4's visual level. **Your default position

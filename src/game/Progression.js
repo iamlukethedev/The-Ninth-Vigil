@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Progression
+ * THE NINTH VIGIL — Progression
  * ---------------------------------------------------------------------------
  * The character model behind the loot: equipment, stat recomputation, derived
  * combat numbers, set bonuses, the inventory, the XP curve, levels, attribute
@@ -89,7 +89,7 @@ export const ATTRIBUTES = [
 ];
 export const ATTRIBUTE_IDS = ATTRIBUTES.map((a) => a.id);
 
-/** Class-flavoured baseline. SANCTUM has one hero archetype: a martial crusader. */
+/** Class-flavoured baseline. THE NINTH VIGIL has one hero archetype: a martial crusader. */
 const ATTR_BASE = { strength: 12, dexterity: 9, intelligence: 7, willpower: 8, vitality: 11 };
 const ATTR_PER_LEVEL = { strength: 1.4, dexterity: 0.9, intelligence: 0.6, willpower: 0.8, vitality: 1.2 };
 

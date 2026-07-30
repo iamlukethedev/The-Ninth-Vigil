@@ -1,5 +1,5 @@
 /**
- * SANCTUM — procedural surface library.
+ * THE NINTH VIGIL — procedural surface library.
  *
  * Every kind is built the same way, because that is what makes them read as
  * one material library rather than thirteen unrelated noise experiments:

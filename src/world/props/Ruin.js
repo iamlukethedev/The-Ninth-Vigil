@@ -1,5 +1,5 @@
 /**
- * SANCTUM — ruin dressing. Columns, lintels, cracked walls, tombstones,
+ * THE NINTH VIGIL — ruin dressing. Columns, lintels, cracked walls, tombstones,
  * sarcophagi, statue fragments, arch remnants.
  *
  * Authored to the canonical scale table: ashlar block 0.55 × 0.32 m, tombstone

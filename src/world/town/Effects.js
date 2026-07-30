@@ -1,5 +1,5 @@
 /**
- * SANCTUM — town atmospherics: chimney smoke and brazier flame.
+ * THE NINTH VIGIL — town atmospherics: chimney smoke and brazier flame.
  *
  * Both are deliberately NOT billboard quads. Camera-facing cards are an explicit
  * instant-fail in the rubric, and a town at dusk lives or dies on whether the

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — UI Theme
+ * THE NINTH VIGIL — UI Theme
  * ---------------------------------------------------------------------------
  * Design tokens for the whole interface: type stacks, the gothic palette,
  * rarity colours, and the CSS custom properties every panel reads.
@@ -170,7 +170,7 @@ export const dmgStyleOf = (t) => DMG[t] ?? DMG.physical;
  */
 export function baseCSS() {
   return `
-#sanctum-hud{
+#nona-hud{
   position:fixed; inset:0; z-index:900; pointer-events:none;
   overflow:hidden;
   font-family:${FONT_BODY};
@@ -183,30 +183,30 @@ export function baseCSS() {
   --iron:${PAL.iron}; --ironDark:${PAL.ironDark}; --ironDeep:${PAL.ironDeep};
   --text:${PAL.text}; --textHi:${PAL.textHi}; --textDim:${PAL.textDim};
 }
-#sanctum-hud *{ margin:0; padding:0; box-sizing:border-box; }
-#sanctum-hud .hide{ display:none !important; }
+#nona-hud *{ margin:0; padding:0; box-sizing:border-box; }
+#nona-hud .hide{ display:none !important; }
 
 /* every panel is a physical object: raster fill + ornate border painted into
    its own backing canvas, plus a real cast shadow */
-#sanctum-hud .pnl{ position:absolute; }
-#sanctum-hud .pnl>canvas.skin{
+#nona-hud .pnl{ position:absolute; }
+#nona-hud .pnl>canvas.skin{
   position:absolute; inset:0; width:100%; height:100%; display:block;
   filter:drop-shadow(0 1.4vh 2.6vh rgba(0,0,0,.82));
 }
-#sanctum-hud .pnl>.body{ position:absolute; inset:0; }
+#nona-hud .pnl>.body{ position:absolute; inset:0; }
 /* an .auto panel is sized BY its content: the body flows normally so the
    element gets a real height, and the skin canvas stretches to match */
-#sanctum-hud .pnl.auto>.body{ position:relative; inset:auto; }
+#nona-hud .pnl.auto>.body{ position:relative; inset:auto; }
 
 /* engraved lettering: dark cut below, warm catch-light above */
-#sanctum-hud .eng{
+#nona-hud .eng{
   font-family:${FONT_ENGRAVED};
   text-transform:uppercase;
   letter-spacing:.24em;
   color:${PAL.text};
   text-shadow:0 -1px 0 rgba(0,0,0,.92), 0 1px 0 rgba(232,206,150,.20);
 }
-#sanctum-hud .disp{
+#nona-hud .disp{
   font-family:${FONT_DISPLAY};
   text-transform:uppercase;
   letter-spacing:.17em;
@@ -214,31 +214,31 @@ export function baseCSS() {
   text-shadow:0 -1px 0 rgba(0,0,0,.95), 0 1px 1px rgba(0,0,0,.7),
               0 1px 0 rgba(255,230,170,.24), 0 0 1.4vh rgba(190,140,60,.30);
 }
-#sanctum-hud .num{ font-family:${FONT_NUM}; font-variant-numeric:lining-nums tabular-nums; }
-#sanctum-hud .flav{ font-family:${FONT_BODY}; font-style:italic; color:#9a8c6d; }
+#nona-hud .num{ font-family:${FONT_NUM}; font-variant-numeric:lining-nums tabular-nums; }
+#nona-hud .flav{ font-family:${FONT_BODY}; font-style:italic; color:#9a8c6d; }
 
 /* GILT — a display line rasterised and gilded by UIAtlas.titleURI. This is the
    interface's display "face": there is no woff2 (see the note at the top of this
    file), so the ornamental capital, the tracking and the gold-leaf specular are
    all authored into the raster. The element is sized by HEIGHT only; its width is
    set from the raster's own aspect so letterforms are never stretched. */
-#sanctum-hud .gilt{
+#nona-hud .gilt{
   background-size:100% 100%; background-repeat:no-repeat; margin:0 auto;
 }
 /* inscriptional tracking steps, so a caller never invents a value */
-#sanctum-hud .tr-wide{ letter-spacing:.34em; }
-#sanctum-hud .tr-head{ letter-spacing:.30em; }
-#sanctum-hud .tr-cap { letter-spacing:.24em; }
-#sanctum-hud .sc{ font-variant-caps:small-caps; letter-spacing:.14em; }
+#nona-hud .tr-wide{ letter-spacing:.34em; }
+#nona-hud .tr-head{ letter-spacing:.30em; }
+#nona-hud .tr-cap { letter-spacing:.24em; }
+#nona-hud .sc{ font-variant-caps:small-caps; letter-spacing:.14em; }
 
 /* a hairline gold rule with a diamond centre — used between tooltip sections */
-#sanctum-hud .rule{
+#nona-hud .rule{
   position:relative; height:.9vh;
   background:linear-gradient(90deg,rgba(178,140,60,0) 0%,rgba(178,140,60,.52) 18%,
              rgba(220,180,100,.72) 50%,rgba(178,140,60,.52) 82%,rgba(178,140,60,0) 100%)
              center/100% 1px no-repeat;
 }
-#sanctum-hud .rule:after{
+#nona-hud .rule:after{
   content:''; position:absolute; left:50%; top:50%; width:.62vh; height:.62vh;
   transform:translate(-50%,-50%) rotate(45deg);
   background:linear-gradient(135deg,${PAL.goldSpec},${PAL.goldDark});

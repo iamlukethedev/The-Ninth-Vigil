@@ -1,5 +1,5 @@
 /**
- * SANCTUM — RigKit
+ * THE NINTH VIGIL — RigKit
  *
  * Procedural skeleton definition + skinned-geometry construction for the
  * bestiary. Everything here is deterministic: the same rig definition and seed

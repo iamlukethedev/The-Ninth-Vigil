@@ -1,5 +1,5 @@
 /**
- * SANCTUM — capsule character controller.
+ * THE NINTH VIGIL — capsule character controller.
  *
  * `moveCapsule(capsule, delta)` is the one function Hero, Bestiary and the AI's
  * steering need: give it where you want to go, get back where you actually got

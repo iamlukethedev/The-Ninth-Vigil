@@ -1,5 +1,5 @@
 /**
- * SANCTUM — AssetForge: the procedural PBR material factory.
+ * THE NINTH VIGIL — AssetForge: the procedural PBR material factory.
  *
  * Nothing in this project ships an authored texture. Every albedo, normal,
  * roughness, metalness, occlusion and height map in the game is synthesised

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — synthesised SFX library.
+ * THE NINTH VIGIL — synthesised SFX library.
  * ---------------------------------------------------------------------------
  * No samples. Every entry is a recipe `(S, o) => endTimeSeconds` built from
  * three layers:

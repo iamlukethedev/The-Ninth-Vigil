@@ -103,7 +103,7 @@ function lumTarget(size) {
     stencilBuffer: false,
     generateMipmaps: false,
   });
-  rt.texture.name = `Sanctum.lum${size}`;
+  rt.texture.name = `Nona.lum${size}`;
   return rt;
 }
 
@@ -132,15 +132,15 @@ export class AutoExposurePass extends Pass {
     this._cur = 0;
     this._seeded = false;
 
-    this.lumMaterial = quadMaterial('Sanctum.Lum', LUM_FRAG, {
+    this.lumMaterial = quadMaterial('Nona.Lum', LUM_FRAG, {
       tHDR: { value: null },
       uTexel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) },
     });
-    this.downMaterial = quadMaterial('Sanctum.LumDown', DOWN_FRAG, {
+    this.downMaterial = quadMaterial('Nona.LumDown', DOWN_FRAG, {
       tSrc: { value: null },
       uSrcTexel: { value: new THREE.Vector2(1 / 64, 1 / 64) },
     });
-    this.adaptMaterial = quadMaterial('Sanctum.LumAdapt', ADAPT_FRAG, {
+    this.adaptMaterial = quadMaterial('Nona.LumAdapt', ADAPT_FRAG, {
       tLum: { value: this.rt1.texture },
       tPrev: { value: null },
       uDt: { value: 1 / 60 },
@@ -228,7 +228,7 @@ export class ExposureApplyPass extends QuadPass {
         uBias: { value: 1.0 },
       },
       {},
-      'Sanctum.ExposureApply'
+      'Nona.ExposureApply'
     );
     this.auto = autoExposure;
     this.params = params;

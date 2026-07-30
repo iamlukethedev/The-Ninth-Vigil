@@ -1,5 +1,5 @@
 /**
- * SANCTUM — modular architectural pieces for the crypt kit.
+ * THE NINTH VIGIL — modular architectural pieces for the crypt kit.
  *
  * Every builder returns `{ <materialKey>: BufferGeometry }` so the module can
  * batch a piece across several materials without knowing what it is made of.

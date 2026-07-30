@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Weather & airborne particulate.
+ * THE NINTH VIGIL — Weather & airborne particulate.
  *
  * Every system here is a single InstancedMesh whose motion is evaluated entirely
  * in the vertex shader from `uTime` plus static per-instance attributes, so the

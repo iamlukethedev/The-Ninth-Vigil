@@ -1,5 +1,5 @@
 /**
- * SANCTUM — world-anchored ground labels
+ * THE NINTH VIGIL — world-anchored ground labels
  * ---------------------------------------------------------------------------
  * WHY THIS FILE EXISTS (round-1 blocker #9, and KNOWN_ISSUES #1).
  *
@@ -664,43 +664,43 @@ export class WorldLabels {
   /* ================================================================== CSS */
 
   _injectCSS() {
-    if (document.getElementById('sanctum-hud-wlabels')) return;
+    if (document.getElementById('nona-hud-wlabels')) return;
     const s = document.createElement('style');
-    s.id = 'sanctum-hud-wlabels';
+    s.id = 'nona-hud-wlabels';
     s.textContent = `
-#sanctum-hud .wlLayer{ position:absolute; inset:0; pointer-events:none; }
+#nona-hud .wlLayer{ position:absolute; inset:0; pointer-events:none; }
 
 /* One plate. Content-sized, so the cartouche is measured, not guessed. */
-#sanctum-hud .wl{
+#nona-hud .wl{
   position:absolute; left:0; top:0; width:max-content; opacity:0;
   will-change:transform,opacity;
 }
-#sanctum-hud .wlSkin{
+#nona-hud .wlSkin{
   position:absolute; inset:0; width:100%; height:100%; display:block;
   filter:drop-shadow(0 .28vh .5vh rgba(0,0,0,.78));
 }
 /* hairline stem back down to the drop when the plate has been nudged up */
-#sanctum-hud .wlStem{
+#nona-hud .wlStem{
   position:absolute; top:100%; width:1px; height:0;
   background:linear-gradient(to bottom,rgba(226,196,132,.55),rgba(226,196,132,0));
 }
-#sanctum-hud .wlIn{
+#nona-hud .wlIn{
   position:relative; display:flex; align-items:center; gap:.44vh;
   padding:.32vh 1.05vh .34vh .82vh;
 }
 /* a wrapped name already has its own leading; do not also pad it vertically */
-#sanctum-hud .wl.two .wlIn{ padding-top:.22vh; padding-bottom:.24vh; }
-#sanctum-hud .wlPip{
+#nona-hud .wl.two .wlIn{ padding-top:.22vh; padding-bottom:.24vh; }
+#nona-hud .wlPip{
   width:.52vh; height:.52vh; flex:0 0 auto; border-radius:50%;
 }
-#sanctum-hud .wlCol{ display:flex; flex-direction:column; min-width:0; }
-#sanctum-hud .wl .wlName{
+#nona-hud .wlCol{ display:flex; flex-direction:column; min-width:0; }
+#nona-hud .wl .wlName{
   font-family:${FONT_DISPLAY};
   font-size:1.10vh; line-height:1.20; letter-spacing:.075em;
   max-width:17vh; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   text-shadow:0 -1px 0 rgba(0,0,0,.95),0 1px 0 rgba(0,0,0,.85),0 0 .5vh rgba(0,0,0,.9);
 }
-#sanctum-hud .wl .wl2{ font-size:1.00vh; opacity:.92; letter-spacing:.09em; }
+#nona-hud .wl .wl2{ font-size:1.00vh; opacity:.92; letter-spacing:.09em; }
 `;
     document.head.appendChild(s);
   }

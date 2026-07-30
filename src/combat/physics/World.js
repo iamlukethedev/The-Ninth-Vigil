@@ -1,5 +1,5 @@
 /**
- * SANCTUM — static world collision.
+ * THE NINTH VIGIL — static world collision.
  *
  * The collision world is an AABB soup plus a heightfield, and both come from the
  * modules that already own the truth:

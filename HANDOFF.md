@@ -1,15 +1,52 @@
-# SANCTUM — Continuation Prompt (paste this into Cursor)
+# THE NINTH VIGIL — Continuation Prompt (paste this into Cursor)
 
 Everything below the line is a self-contained brief. It assumes zero prior conversation.
 
 ---
 
-You are continuing work on **SANCTUM**, a Diablo 4–class isometric action RPG built in
+You are continuing work on **THE NINTH VIGIL**, a Diablo 4–class isometric action RPG built in
 Three.js r185. It is a real, working, feature-complete game: ~98,700 lines across 142 files,
 21 engine modules, running at 60+ fps.
 
-**Project root:** `/Users/lucasguilherme/Apps/World Of Warcraft`
-(the folder is named "World Of Warcraft" for historical reasons — the game is SANCTUM)
+**Repository:** https://github.com/iamlukethedev/The-Ninth-Vigil
+
+New to the project? Read `README.md` first — it covers the premise, the architecture and the
+verification loop. This file is the working continuation brief and assumes you have.
+
+## Naming — the project was called SANCTUM until 2026-07-30
+
+If you are looking for `SANCTUM`, it is gone. Grepping for it will find nothing and that is
+expected. The rename was mechanical and total, and it split three ways:
+
+| was | is | why |
+|---|---|---|
+| `SANCTUM` (the title, in prose and headers) | `THE NINTH VIGIL` | Sanctum was taken |
+| `sanctum*` / `Sanctum*` / `SANCTUM_*` (engine identifiers, GLSL functions, `#define`s, DOM ids, material and texture names, program cache keys) | `nona*` / `Nona*` / `NONA_*` | `nona` is the Latin name of the ninth hour. It is **not** `vigil` on purpose: `vigil` is already a lore token (the `ashenVigil` set, the `unbrokenVigil` power, the `vigil` elixir), so a `vigil` engine prefix would read as fiction |
+| "the Sanctum" as an in-world **place** | unchanged | The order is the Vigil; the place they keep watch over is still the Sanctum. Six deliberate survivors, in `Affixes.js`, `WorldState.js`, `HUD.js`, `Minimap.js` |
+
+The title is load-bearing rather than decorative, and the fiction now runs on it. The ninth hour
+is the hour of the crucifixion — the moment when, from inside the story, evil has plainly won. A
+vigil is the watch kept through the night that ends at dawn. So the premise is the inverse of
+Diablo's: **the descent goes toward light, and the outcome is never in doubt — only its cost is.**
+Concretely, in data:
+
+- **`DIFFICULTY`** (`game/director/WorldState.js`) is the canonical hours, ascending —
+  Vespers, Compline, Nocturn, Matins, **Lauds**. The ladder climbs toward sunrise, so the
+  hardest tier is named for daybreak instead of for damnation. Colours walk the same arc.
+- **`LEVEL_NAMES`** is nine vigils, ending on `The Ninth Vigil` — the title drop is the last
+  level. Every name was already in the item vocabulary, and the loot has been foreshadowing the
+  count since the first build ("Nine were made. Eight are accounted for.").
+- **`BOSS_NAMES`** ends on `Apollyon, the Ninth Hour` (Revelation 9:11). The boss archetype
+  label in `Species.js` and `ai/Archetypes.js` is `Apollyon`, was `Sanctum Warden`.
+- **The resource** is `zeal`, was `fury`. Fury is a vice; zeal is the warrior virtue.
+- **The skill tree's three branches** are FAITH / HOPE / CHARITY (1 Corinthians 13:13), was
+  RAGE / IRON / BLOOD. The charity branch gives where the blood branch drained.
+- **The hub objective title** is `The Chapterhouse`, was `Sanctuary` — which was Diablo's word
+  for the world, not ours.
+
+The references are deliberately submerged: nothing preaches, and every string still reads as
+plain gothic flavour to a player who does not know the sources. Keep it that way — the moment a
+line explains itself, it stops working.
 
 ---
 
@@ -250,7 +287,7 @@ bestiary ai combat physics loot director camera vfx decals audio hud render`.
   A* nav with local avoidance and attack-token pack coordination, boss phases, full
   itemization with procedurally-named legendaries, encounter director, procedural audio
   (synthesised SFX + adaptive modal score).
-- **UI** — ornate gothic HUD: liquid health/fury orbs, rune ability bar with cooldown sweeps,
+- **UI** — ornate gothic HUD: liquid health/zeal orbs, rune ability bar with cooldown sweeps,
   XP bar, framed minimap, quest log, boss phase bar, floating damage numbers, rarity-coloured
   loot labels, paper-doll character sheet, skill tree, item tooltips.
 
@@ -309,7 +346,7 @@ and were not — verify these in pixels with extra suspicion.
    0.054, 0.038) — bodies landing on floor of a similar value.
    Do NOT re-do the albedo floor or the rim injection: both are already correctly implemented
    and verified present in the compiled fragment shaders (`userData.charRim` is set at
-   `MonsterMaterials.make()` ~line 346, `uMonAlbFloor` and `#define SANCTUM_HERORIM` are live in
+   `MonsterMaterials.make()` ~line 346, `uMonAlbFloor` and `#define NONA_HERORIM` are live in
    every monster material). This is a *tuning* job on `Lighting.js` `_heroRim` — `gain` (0.62)
    and `pool` — plus possibly a value-aware term so a body on similar-valued floor gets more rim.
    Worth ~0.05–0.10 SEP. Verify with the oracle; require all three runs to pass.
@@ -512,7 +549,7 @@ and were not — verify these in pixels with extra suspicion.
   *If you ever "simplify" that memo back to `(mode, biome)`, every character vanishes again.*
   Also note: this is the bug that proves the Verification Trap section above — it was invisible
   to all eight canonical screenshots, and two full rounds were wasted "fixing black materials"
-  that were never broken. `userData.charRim`, `uMonAlbFloor` and `#define SANCTUM_HERORIM` were
+  that were never broken. `userData.charRim`, `uMonAlbFloor` and `#define NONA_HERORIM` were
   all verified present in the compiled fragment shaders the whole time.
 - **Actor visibility.** `hero.root` contained 0 meshes (skinned meshes were parented outside
   it and only rendered because skinned geometry follows bones). Now 8 meshes / 93,298 tris.

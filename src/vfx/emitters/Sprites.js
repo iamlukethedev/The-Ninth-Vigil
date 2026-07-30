@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { hash2 } from '../../core/Rand.js';
 
 /**
- * SANCTUM — GPU billboard particle batch.
+ * THE NINTH VIGIL — GPU billboard particle batch.
  *
  * One `InstancedBufferGeometry` of unit quads, one draw call, one time uniform.
  * The CPU only ever writes a slot's *initial conditions* on spawn; every frame
@@ -184,7 +184,7 @@ export function buildMaskTexture(size = 256) {
   tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = true;
   tex.colorSpace = THREE.NoColorSpace;
-  tex.name = 'Sanctum.vfxMasks';
+  tex.name = 'Nona.vfxMasks';
   tex.needsUpdate = true;
   return tex;
 }
@@ -733,7 +733,7 @@ export class SpriteBatch {
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       side: THREE.DoubleSide,
     });
-    this.material.name = o.name ?? 'Sanctum.vfxSprites';
+    this.material.name = o.name ?? 'Nona.vfxSprites';
     this.material.userData.noCSM = true;
 
     this.mesh = new THREE.Mesh(geo, this.material);

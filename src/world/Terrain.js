@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Terrain.
+ * THE NINTH VIGIL — Terrain.
  *
  * A 513² eroded heightfield rendered as an 8×8 chunked LOD grid with skirts,
  * shaded by a height-blended 4-layer triplanar splat material (TerrainMaterial.js).
@@ -1580,7 +1580,7 @@ export class Terrain {
         dithering: true,
         flatShading: false,
       });
-      mat.name = 'SanctumFarSkirt';
+      mat.name = 'NonaFarSkirt';
       this._skirtMat = mat;
 
       const mesh = new THREE.Mesh(g, mat);

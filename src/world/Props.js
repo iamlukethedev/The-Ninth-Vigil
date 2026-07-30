@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Props: environment dressing.
+ * THE NINTH VIGIL — Props: environment dressing.
  *
  * This module owns the rubric's "craft density" axis. A Diablo-class frame is
  * *dense with authored detail* — chains, roots, candles, cracked masonry, bone,
@@ -1709,7 +1709,7 @@ export class Props {
      * Five hell braziers ask for `shadow: true` from their recipe (the hellfire
      * variant in props/Fixtures.js), and Lighting promotes the two most important
      * of them into its shadow-capable point pool — measured live in the boss frame
-     * as `sanctum.point.sh.0/1`, sitting 4.5 m up inside the arena. Those two maps
+     * as `nona.point.sh.0/1`, sitting 4.5 m up inside the arena. Those two maps
      * are what threw the hard-edged black band across the arena paving that the
      * brief describes as an unlit rock; the caster was a wall panel, and the
      * geometry half of the fix is in dungeon/Arena.js.

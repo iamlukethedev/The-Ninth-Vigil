@@ -1,5 +1,5 @@
 /**
- * SANCTUM — ambience beds.
+ * THE NINTH VIGIL — ambience beds.
  * ---------------------------------------------------------------------------
  * Continuous, always-running layers whose gains are crossfaded by biome and
  * weather, plus sparse scheduled one-shots (drips, debris, embers) that keep

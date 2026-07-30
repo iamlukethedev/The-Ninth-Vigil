@@ -1,5 +1,5 @@
 /**
- * SANCTUM — UIAtlas
+ * THE NINTH VIGIL — UIAtlas
  * ---------------------------------------------------------------------------
  * Every pixel of ornament in the interface is generated here, at runtime, from
  * a deterministic PRNG. There are no image files, no icon fonts, no gradients

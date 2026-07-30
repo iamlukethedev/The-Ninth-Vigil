@@ -1,5 +1,5 @@
 /**
- * SANCTUM — character screen
+ * THE NINTH VIGIL — character screen
  * ---------------------------------------------------------------------------
  * Two ornate panels:
  *
@@ -1229,70 +1229,70 @@ export class Character {
   /* ================================================================== CSS */
 
   _injectCSS() {
-    if (document.getElementById('sanctum-hud-char')) return;
+    if (document.getElementById('nona-hud-char')) return;
     const s = document.createElement('style');
-    s.id = 'sanctum-hud-char';
+    s.id = 'nona-hud-char';
     s.textContent = `
-#sanctum-hud .charPnl{ left:2.4vh; top:3.4vh; width:44vh; height:76vh; }
-#sanctum-hud .charPnl .body{ padding:2.8vh 2.8vh 2.6vh; }
-#sanctum-hud .cHead{ text-align:center; margin-bottom:.9vh; padding:0 3.6vh; }
+#nona-hud .charPnl{ left:2.4vh; top:3.4vh; width:44vh; height:76vh; }
+#nona-hud .charPnl .body{ padding:2.8vh 2.8vh 2.6vh; }
+#nona-hud .cHead{ text-align:center; margin-bottom:.9vh; padding:0 3.6vh; }
 /* a gilded raster line, not CSS text — see _setTitle and UITheme's .gilt.
    The negative margin puts the raster's baseline where the old CSS line's
    baseline was, so the title still sits inside the header cartouche. */
-#sanctum-hud .cName{ margin-top:-1.15vh; }
-#sanctum-hud .cSub{ margin-top:.66vh; font-size:.96vh; letter-spacing:.22em; color:#cfbf96;
+#nona-hud .cName{ margin-top:-1.15vh; }
+#nona-hud .cSub{ margin-top:.66vh; font-size:.96vh; letter-spacing:.22em; color:#cfbf96;
   text-shadow:0 -1px 0 rgba(0,0,0,.9),0 1px 1px rgba(0,0,0,.7); }
-#sanctum-hud .cSub .cDot{ margin:0 .6vh; color:#645a44; }
+#nona-hud .cSub .cDot{ margin:0 .6vh; color:#645a44; }
 
-#sanctum-hud .cDoll{ position:relative; height:40.2vh; margin-top:.4vh; }
-#sanctum-hud .cFig{ position:absolute; left:6.6vh; right:6.6vh; top:-0.6vh; bottom:7.2vh; }
-#sanctum-hud .cFigSkin{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+#nona-hud .cDoll{ position:relative; height:40.2vh; margin-top:.4vh; }
+#nona-hud .cFig{ position:absolute; left:6.6vh; right:6.6vh; top:-0.6vh; bottom:7.2vh; }
+#nona-hud .cFigSkin{ position:absolute; inset:0; width:100%; height:100%; display:block; }
 
-#sanctum-hud .eqSlot{ position:absolute; width:${SLOT_VH}vh; height:${SLOT_VH}vh; }
-#sanctum-hud .eqSlot>div{ position:absolute; }
-#sanctum-hud .eqSock{ inset:0; background-size:100% 100%;
+#nona-hud .eqSlot{ position:absolute; width:${SLOT_VH}vh; height:${SLOT_VH}vh; }
+#nona-hud .eqSlot>div{ position:absolute; }
+#nona-hud .eqSock{ inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .3vh .7vh rgba(0,0,0,.85)); }
-#sanctum-hud .eqSil{ inset:20%; background-size:100% 100%; background-repeat:no-repeat; }
-#sanctum-hud .eqGlow{ inset:-16%; pointer-events:none; }
-#sanctum-hud .eqIcon{ inset:13%; background-size:100% 100%; background-repeat:no-repeat; }
-#sanctum-hud .eqBez{ inset:0; background-size:100% 100%; background-repeat:no-repeat; opacity:0; }
-#sanctum-hud .eqLab{ left:-1.2vh; right:-1.2vh; top:101%; text-align:center; font-size:.70vh;
+#nona-hud .eqSil{ inset:20%; background-size:100% 100%; background-repeat:no-repeat; }
+#nona-hud .eqGlow{ inset:-16%; pointer-events:none; }
+#nona-hud .eqIcon{ inset:13%; background-size:100% 100%; background-repeat:no-repeat; }
+#nona-hud .eqBez{ inset:0; background-size:100% 100%; background-repeat:no-repeat; opacity:0; }
+#nona-hud .eqLab{ left:-1.2vh; right:-1.2vh; top:101%; text-align:center; font-size:.70vh;
   letter-spacing:.18em; color:#c2b28d; text-shadow:0 -1px 0 rgba(0,0,0,.9),0 1px 1px rgba(0,0,0,.8); }
 
 /* the stat columns sit ON the vellum ledger, so they need a margin inside its
    gold inlay — right-aligned numerals were finishing 2 px from the frame */
-#sanctum-hud .cStats{ display:flex; gap:1.7vh; margin-top:1.1vh; padding:0 1.0vh 0 .2vh; }
-#sanctum-hud .cCol{ flex:1 1 0; min-width:0; }
+#nona-hud .cStats{ display:flex; gap:1.7vh; margin-top:1.1vh; padding:0 1.0vh 0 .2vh; }
+#nona-hud .cCol{ flex:1 1 0; min-width:0; }
 
-#sanctum-hud .invPnl{ left:135.4vh; top:3.4vh; width:40vh; height:76vh; }
-#sanctum-hud .invPnl .body{ padding:2.8vh 2.8vh 2.5vh; display:flex; flex-direction:column; }
-#sanctum-hud .iHead{ text-align:center; padding:0 3.6vh; }
-#sanctum-hud .iTitle{ margin-top:-.86vh; }
-#sanctum-hud .iTabRow{ display:flex; align-items:center; gap:.6vh; margin-bottom:1.0vh; }
-#sanctum-hud .iTabLab{ font-size:.82vh; letter-spacing:.24em; color:#c4b48f;
+#nona-hud .invPnl{ left:135.4vh; top:3.4vh; width:40vh; height:76vh; }
+#nona-hud .invPnl .body{ padding:2.8vh 2.8vh 2.5vh; display:flex; flex-direction:column; }
+#nona-hud .iHead{ text-align:center; padding:0 3.6vh; }
+#nona-hud .iTitle{ margin-top:-.86vh; }
+#nona-hud .iTabRow{ display:flex; align-items:center; gap:.6vh; margin-bottom:1.0vh; }
+#nona-hud .iTabLab{ font-size:.82vh; letter-spacing:.24em; color:#c4b48f;
   text-shadow:0 -1px 0 rgba(0,0,0,.85); }
-#sanctum-hud .iTabs{ display:flex; gap:.36vh; margin-left:auto; }
-#sanctum-hud .iTab{ width:2.1vh; height:1.8vh; background-size:100% 100%;
+#nona-hud .iTabs{ display:flex; gap:.36vh; margin-left:auto; }
+#nona-hud .iTab{ width:2.1vh; height:1.8vh; background-size:100% 100%;
   display:flex; align-items:center; justify-content:center;
   font-size:.90vh; color:#8e8267; filter:drop-shadow(0 .15vh .3vh rgba(0,0,0,.75)); }
-#sanctum-hud .iTab.on{ color:#f4dc9a; }
-#sanctum-hud .iRule{ margin:.9vh 0 .8vh; }
-#sanctum-hud .iGrid{ display:grid; grid-template-columns:repeat(${COLS},1fr);
+#nona-hud .iTab.on{ color:#f4dc9a; }
+#nona-hud .iRule{ margin:.9vh 0 .8vh; }
+#nona-hud .iGrid{ display:grid; grid-template-columns:repeat(${COLS},1fr);
   gap:.46vh; }
-#sanctum-hud .iCell{ position:relative; width:100%; padding-top:100%; }
-#sanctum-hud .iCell>div{ position:absolute; }
-#sanctum-hud .cSock{ inset:0; background-size:100% 100%; }
-#sanctum-hud .cGlow{ inset:-10%; pointer-events:none; }
-#sanctum-hud .cIcon{ inset:11%; background-size:100% 100%; background-repeat:no-repeat; }
-#sanctum-hud .cBez{ inset:0; background-size:100% 100%; background-repeat:no-repeat; opacity:0; }
-#sanctum-hud .cStack{ right:.1vh; bottom:-.05vh; font-size:.86vh; color:#e8dcc0;
+#nona-hud .iCell{ position:relative; width:100%; padding-top:100%; }
+#nona-hud .iCell>div{ position:absolute; }
+#nona-hud .cSock{ inset:0; background-size:100% 100%; }
+#nona-hud .cGlow{ inset:-10%; pointer-events:none; }
+#nona-hud .cIcon{ inset:11%; background-size:100% 100%; background-repeat:no-repeat; }
+#nona-hud .cBez{ inset:0; background-size:100% 100%; background-repeat:no-repeat; opacity:0; }
+#nona-hud .cStack{ right:.1vh; bottom:-.05vh; font-size:.86vh; color:#e8dcc0;
   text-shadow:0 1px 0 #000,0 0 .5vh #000; }
-#sanctum-hud .iFoot{ display:flex; align-items:center; gap:.7vh; margin-top:auto; }
-#sanctum-hud .iCoin{ width:1.6vh; height:1.6vh; background-size:100% 100%;
+#nona-hud .iFoot{ display:flex; align-items:center; gap:.7vh; margin-top:auto; }
+#nona-hud .iCoin{ width:1.6vh; height:1.6vh; background-size:100% 100%;
   filter:drop-shadow(0 .15vh .3vh rgba(0,0,0,.8)); }
-#sanctum-hud .iGold{ font-size:1.30vh; color:#33240d;
+#nona-hud .iGold{ font-size:1.30vh; color:#33240d;
   text-shadow:0 1px 0 rgba(255,246,214,.55),0 -1px 0 rgba(90,70,32,.35); }
-#sanctum-hud .iCap{ margin-left:auto; font-size:.84vh; letter-spacing:.14em; color:#584422;
+#nona-hud .iCap{ margin-left:auto; font-size:.84vh; letter-spacing:.14em; color:#584422;
   text-shadow:0 1px 0 rgba(255,246,214,.42); padding-right:.4vh; }
 `;
     document.head.appendChild(s);

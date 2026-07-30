@@ -37,14 +37,14 @@ The headline defect, and the reason the hero and enemies were reported as "not
 showing". Large, straight-sided, un-feathered black polygons cross the play
 area and swallow whatever is behind them.
 
-This turned out to be **three stacked causes**, not one. The first is fixed;
-two remain.
+This turned out to be **four stacked causes**, not one. 1a and 1d are fixed;
+1b and 1c remain.
 
 ### 1a. Four sun cascades in a sunless interior — FIXED (`d2aad35`)
 
 `crypt`/`hell`/`arena` are `sunless`, but their fictional "skylight" key was
 casting four CSM cascades through a real ceiling at ~7.3 m. Confirmed by
-toggling `castShadow` on the four `sanctum.csm.*` lights on a live frame:
+toggling `castShadow` on the four `nona.csm.*` lights on a live frame:
 solid-black frame area fell from 14.9 % to 11.3 % and the wedges disappeared
 outright (`shots/_debug/wedge_off_ALL_CSM.png` versus `wedge_base.png`).
 
@@ -90,6 +90,53 @@ frame-crossing wedge (`shots/_debug/bw_base.png`).
 few code values. The rubric wants true black *present* in shadows — it does not
 want 6-metre objects rendered as void. Verify `p01` stays at 0 for a small
 fraction of the frame rather than for whole objects.
+
+### 1d. Occlusion was allowed to delete the light — FIXED
+
+The remaining wedges, and all of the *flashing* reported while walking, were
+ambient occlusion rather than any shadow. Proved by ablation on a frozen live
+frame with seven enemies inside 4 m: setting `shadow.intensity = 0` on every
+shadow-casting light left the wedges untouched, while disabling `aoApply` alone
+removed them and took near-black area from 11.7 % to 0.9 %. The wedges are
+visible directly in the AO buffer (`aoDebug = 1`), and entirely in the *contact*
+term — the broad GTAO term is clean.
+
+Two independent faults, both now fixed:
+
+- **No bottom stop on the product.** `aoFloor` (0.17) and `contactFloor` (0.06)
+  each bound their own term, but nothing bounded `ao * cao`, so the multiplier
+  reaching the frame bottomed out at **0.010** — occlusion could remove 99 % of
+  the light from a lit floor. `AOApplyPass` now applies `aoFloorTotal` (0.28)
+  through a C1 soft knee, so the curve is the identity everywhere above
+  ~0.46 and only the crush is removed.
+- **The contact estimator was saturating.** It returns the fraction of 16 taps
+  blocked; a gain of **2.5** saturated it at 0.45, so a boot crease and half an
+  open floor tile both resolved to "fully occluded" and a third of the play area
+  sat pinned in one narrow band. Because the term is also modulated by the *lit*
+  frame's luma, every torch flicker and passing enemy moved that whole band at
+  once — which is why it got worse as enemies closed in. `contactIntensity` is
+  now **1.2**, which keeps headroom to the top of the range.
+
+Measured walking the crypt with the pack engaged, three runs, play area only:
+
+| | p95 frame-to-frame luma jump | near-black, peak frame |
+|---|---|---|
+| before | 0.075 / 0.061 / 0.066 | 43.1 % / 25.4 % / 21.7 % |
+| after | 0.032 / 0.024 / 0.019 | 2.7 % / 4.3 % / 3.8 % |
+| `aoApply` off (reference) | 0.008 / 0.016 / 0.025 | 1.3 % / 1.3 % / 1.5 % |
+
+The fix puts the flashing at the same level as having the pass off entirely,
+while grounding is retained (`shots/combat.png`). All eight scenarios still pass
+`sheet.mjs --analyze` in AAA range.
+
+**Ruled out along the way**, each by measurement rather than inspection: the
+hero grounding pool (`nona.heroPool`) — a 5.6 m quad that does follow the
+player, but whose real footprint is ~3.4 k pixels against a 4.1 k-pixel
+frame-noise floor, i.e. not the "square around the player" it looked like in an
+uncontrolled diff; the `ProbeVolume` irradiance grid, which snaps to whole cells
+and so cannot swim; and `hero_cloak`, whose stale 40 m bounding sphere is a
+culling inefficiency (worth fixing separately) but changes nothing in the
+G-buffer.
 
 ---
 

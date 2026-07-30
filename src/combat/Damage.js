@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Damage model
+ * THE NINTH VIGIL — Damage model
  * ---------------------------------------------------------------------------
  * Pure-ish arithmetic layer for combat. No THREE, no scene access, no bus: the
  * resolver takes an attacker, a defender and an ability, and returns a fully

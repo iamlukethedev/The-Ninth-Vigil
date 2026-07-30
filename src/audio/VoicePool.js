@@ -1,5 +1,5 @@
 /**
- * SANCTUM — spatial voice pool.
+ * THE NINTH VIGIL — spatial voice pool.
  * ---------------------------------------------------------------------------
  * Panner nodes (especially HRTF ones) are the expensive part of Web Audio, so
  * they are pooled and reused. Generators (oscillators / buffer sources) are

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — the market, the well, and the street furniture.
+ * THE NINTH VIGIL — the market, the well, and the street furniture.
  *
  * This is the layer that carries craft density in the plaza — the thing the
  * captured `hub` frame had none of. Everything here is a composed set piece with

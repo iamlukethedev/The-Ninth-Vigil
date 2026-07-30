@@ -30,7 +30,7 @@ page.on('console', (m) => {
 page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 
 await page.goto(url, { waitUntil: 'load', timeout: 60000 });
-await page.waitForFunction(() => window.__SANCTUM__?.ready === true, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__NONA__?.ready === true, null, { timeout: 120000 });
 await new Promise((r) => setTimeout(r, wait));
 
 const state = await page.evaluate(() => {
@@ -48,9 +48,9 @@ const state = await page.evaluate(() => {
       fov: e?.camera?.fov,
     },
     hero: e?.get?.('hero')?.position?.toArray?.().map((v) => +v.toFixed(2)) ?? null,
-    loaded: window.__SANCTUM__?.loaded,
-    missing: window.__SANCTUM__?.missing,
-    stats: window.__SANCTUM__?.stats?.() ?? null,
+    loaded: window.__NONA__?.loaded,
+    missing: window.__NONA__?.missing,
+    stats: window.__NONA__?.stats?.() ?? null,
   };
 });
 
