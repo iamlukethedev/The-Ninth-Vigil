@@ -20,8 +20,20 @@
  * generation-stamped and reused, and paths are written into pooled arrays.
  */
 
+import { K_PROP } from '../../combat/physics/World.js';
+
 const SQ2 = Math.SQRT2;
 const FAR = 1e6;
+
+/**
+ * A* step multiplier for a cell with `m` metres of clearance. Strongest right
+ * against a wall and gone by 1.6 m out, so paths prefer the middle of a corridor
+ * without refusing a tight one.
+ */
+function wallCost(m) {
+  const t = m < 1.6 ? 1 - m / 1.6 : 0;
+  return 1 + t * t * 2.2;
+}
 
 export class NavGrid {
   /**
@@ -38,6 +50,8 @@ export class NavGrid {
     this.walk = new Uint8Array(n);
     this.clear = new Float32Array(n);
     this.cost = new Float32Array(n);          // 1 + wall-proximity penalty
+    /** Clearance measured against the collision world — see `_refineClearance`. */
+    this.tight = new Float32Array(n).fill(Infinity);
 
     // A* scratch (generation-stamped so we never clear a 44 k array)
     this._g = new Float32Array(n);
@@ -59,11 +73,17 @@ export class NavGrid {
     this.ready = false;
 
     this._lastBuildFrame = -9999;
+    /** Physics static-world revision the prop stamps came from. See `_stampSolidProps`. */
+    this.staticRevision = -1;
     this._stamps = [];                        // dynamic obstacles, replayed on rebuild
     this._cache = new Map();                  // path cache
     this._cacheOrder = [];
     this.nodeBudget = 0;                      // reset per frame by AI
-    this.stats = { builds: 0, buildMs: 0, astar: 0, cacheHits: 0, expansions: 0, deferred: 0 };
+    this.stats = { builds: 0, buildMs: 0, astar: 0, cacheHits: 0, expansions: 0, deferred: 0, tightened: 0 };
+    /** Scratch contact for `_refineClearance`, so the band scan allocates nothing. */
+    this._fit = {
+      dx: 0, dy: 0, dz: 0, depth: 0, nx: 0, ny: 0, nz: 0, kind: -1, hit: false, ground: false,
+    };
 
     this._scratchA = new Float64Array(1024);  // raw A* polyline
     this._scratchB = new Float64Array(1024);  // string-pulled polyline
@@ -109,6 +129,9 @@ export class NavGrid {
     this.originX = centerX - this.span * 0.5;
     this.originZ = centerZ - this.span * 0.5;
     this._lastBuildFrame = this.engine.clock.frame;
+
+    // Measured clearances belong to the geometry under the OLD tile.
+    this.tight.fill(Infinity);
 
     const terrain = this._terrain();
     const dungeon = this._dungeon();
@@ -161,13 +184,17 @@ export class NavGrid {
       }
     }
 
-    // dynamic obstacles (props, hazards, corpses) stamped by other modules
+    // solid props, read back from the collision world they already feed
+    this._stampSolidProps();
+
+    // dynamic obstacles (hazards, shrines, corpses) stamped by other modules
     for (let s = 0; s < this._stamps.length; s++) {
       const st = this._stamps[s];
       this._stampNow(st.x, st.z, st.r, st.blocked);
     }
 
     this._distanceTransform();
+    this._refineClearance();
     this.built = true;
     this.ready = true;
     this.version++;
@@ -221,11 +248,97 @@ export class NavGrid {
       let m = d[k] * cell;
       if (m > cap) m = cap;
       d[k] = m;
-      // Penalty is strongest right against a wall and gone by 1.6 m out. Paths
-      // therefore prefer the middle of a corridor without refusing a tight gap.
-      const t = m < 1.6 ? 1 - m / 1.6 : 0;
-      cost[k] = 1 + t * t * 2.2;
+      cost[k] = wallCost(m);
     }
+    this._applyTight();
+  }
+
+  /**
+   * Fold the measured clearances back over the chamfer's guesses.
+   *
+   * Every path back into this function recomputes `clear` from `walk` alone, and
+   * `addObstacle` takes one on each hazard or rescue stamp — so without this the
+   * measurements survived exactly until the first stamp, after which the tight
+   * gaps read as passable again and the hero went back to walking into them. The
+   * probes stay valid across stamps because they measure the collision world,
+   * and any change THERE rebuilds the tile outright (see `staticRevision`).
+   */
+  _applyTight() {
+    const clear = this.clear, tight = this.tight, cost = this.cost;
+    for (let k = 0; k < clear.length; k++) {
+      const t = tight[k];
+      if (!(t < clear[k])) continue;
+      clear[k] = t;
+      cost[k] = wallCost(t);
+    }
+  }
+
+  /**
+   * Replace the chamfer's guess near geometry with the gap the collision world
+   * actually leaves. Lowers clearance only; never raises it, never edits `walk`.
+   *
+   * The transform above cannot express "tight". It seeds blocked cells at zero
+   * and adds a whole cell per step, so its smallest non-zero answer is 0.55 m
+   * however close the wall really is — which is why a measured 0.50 m slot
+   * between two crypt walls read as a passable channel with 0.55 m of room. A*
+   * planned through it, and the 0.68 m hero wedged in the slot while Physics
+   * shoved back: a destination reachable by a longer way round looked, to the
+   * pathfinder, like a short walk in a straight line.
+   *
+   * So ask Physics. `solveSphere` reports the deepest penetration of a probe
+   * sphere, so `probe − depth` IS the distance to the nearest surface, and it
+   * comes from the same boxes that stop the hero rather than from a second
+   * opinion that can drift.
+   *
+   * Sample nine positions and keep the BEST, because the question A* needs
+   * answered is "can a body get through this cell", not "does one fit dead
+   * centre". The difference decides real corridors: in a 1.1 m passage both
+   * cell centres sit 0.275 m off a wall, so a centre-only probe would tighten
+   * the whole passage below hero width and wall off ground that is walked every
+   * day — the exact overreach that, when it was `walk` being cleared instead of
+   * `clear` being lowered, left brutes and ghouls standing still. Nine samples
+   * keep that passage at 0.55 and still close the 0.50 m slot, where no
+   * position in the cell fits.
+   *
+   * Only cells the transform already calls tight are probed — a thin band round
+   * the walls, not all 44 100 — and only up to the widest body that has to
+   * squeeze (a brute, 0.96 m). Bosses are wider still but only ever fight in
+   * open rooms, where the chamfer is honest anyway.
+   */
+  _refineClearance() {
+    const world = this._physWorld();
+    if (!world || typeof world.solveSphere !== 'function' || typeof world.heightAt !== 'function') return;
+    const W = this.W, cell = this.cell, walk = this.walk, clear = this.clear, tight = this.tight;
+    const probe = 1.15;                       // ≥ band, so "no contact" cannot tighten
+    const band = cell * 2.05;                 // 1.13 m — covers the widest squeezer
+    const o = cell * 0.45;                    // how far off centre a sample may sit
+    const c = this._fit;
+    let tightened = 0;
+    for (let j = 0; j < W; j++) {
+      const wz = this.originZ + (j + 0.5) * cell;
+      const row = j * W;
+      for (let i = 0; i < W; i++) {
+        const k = row + i;
+        if (!walk[k] || clear[k] <= 0 || clear[k] > band) continue;
+        const wx = this.originX + (i + 0.5) * cell;
+        let best = 0;
+        for (let s = 0; s < 9 && best < clear[k]; s++) {
+          const sx = wx + (s % 3 - 1) * o;
+          const sz = wz + (((s / 3) | 0) - 1) * o;
+          let gap = probe;
+          try {
+            const y = world.heightAt(sx, sz) + 0.95;
+            if (world.solveSphere(sx, y, sz, probe, c)) gap = probe - c.depth;
+          } catch { gap = probe; }
+          if (gap > best) best = gap;
+        }
+        if (best >= clear[k]) continue;
+        tight[k] = best < 0 ? 0 : best;
+        tightened++;
+      }
+    }
+    this._applyTight();
+    this.stats.tightened = tightened;
   }
 
   /* ---- dynamic obstacles ---- */
@@ -242,18 +355,107 @@ export class NavGrid {
     if (this.built) this.rebuild(this.originX + this.span * 0.5, this.originZ + this.span * 0.5);
   }
 
+  /**
+   * Blocking a circle is unconditional; UNBLOCKING one may not delete
+   * architecture.
+   *
+   * An unblock stamp means "this ground is walkable after all" — a hazard that
+   * expired, or `AI._rescueNav` overriding a terrain mask that calls flat floor
+   * unwalkable. Applied blindly it means something much larger, because the
+   * stamp is a circle several metres across and the grid is the only record of
+   * where the walls are: one 16 m rescue pocket, centred on a pack's centroid
+   * that happened to average out inside a crypt wall, erased every wall around
+   * it. The pathfinder then had line of sight through solid masonry, so a click
+   * on the far side was answered with a straight line into the stone — the
+   * player wedged against a wall the route insisted was not there.
+   *
+   * So consult the collision world, which is the thing that actually stops a
+   * body: restore only cells something could stand in. With no collision world
+   * (open field, no interior) every cell qualifies and this is the old
+   * behaviour, which is what the terrain-mask rescue needs.
+   */
   _stampNow(x, z, r, blocked) {
     const c = this.cell, W = this.W;
     const i0 = Math.max(0, this.ix(x - r)), i1 = Math.min(W - 1, this.ix(x + r));
     const j0 = Math.max(0, this.iz(z - r)), j1 = Math.min(W - 1, this.iz(z + r));
     const r2 = r * r;
+    const world = blocked ? null : this._physWorld();
+    const solid = world && typeof world.solveSphere === 'function' && typeof world.heightAt === 'function'
+      ? world : null;
     for (let j = j0; j <= j1; j++) {
       const wz = this.originZ + (j + 0.5) * c;
       const row = j * W;
       for (let i = i0; i <= i1; i++) {
         const wx = this.originX + (i + 0.5) * c;
         const dx = wx - x, dz = wz - z;
-        if (dx * dx + dz * dz <= r2) this.walk[row + i] = blocked ? 0 : 1;
+        if (dx * dx + dz * dz > r2) continue;
+        if (blocked) { this.walk[row + i] = 0; continue; }
+        if (!solid) { this.walk[row + i] = 1; continue; }
+        // Smallest thing that walks. A cell no body can occupy is not ground.
+        let fits = true;
+        try { fits = !solid.solveSphere(wx, solid.heightAt(wx, wz) + 0.95, wz, 0.3, this._fit); } catch { fits = true; }
+        if (fits) this.walk[row + i] = 1;
+      }
+    }
+  }
+
+  /**
+   * Stamp solid dressing — boulders, columns, sarcophagi, carts — as blocked.
+   *
+   * Walls reach the grid through `dungeon.isWalkable`, but props appear in no
+   * walkability mask at all: they are placement records that Physics turns into
+   * collision boxes. So before this pass the grid called a 1 m boulder open
+   * floor, planned straight through it, and every walker — the player included —
+   * ground to a halt against something the pathfinder was certain was not there.
+   *
+   * Read from Physics' static box soup rather than from Props directly. Its
+   * boxes are already filtered through `props.blocksAt` and sized by the
+   * per-kind footprint table (a dead tree's collision radius is its trunk, not
+   * its canopy), so taking them at face value keeps ONE definition of "solid"
+   * instead of a second copy here that would quietly drift. `K_PROP` only: wall
+   * and boundary boxes are the mask we already sampled, and the boundary ring is
+   * sized to Physics' own bounds, which need not match this tile.
+   */
+  _stampSolidProps() {
+    const world = this._physWorld();
+    if (!world) return;
+    const x0 = this.originX, z0 = this.originZ;
+    let n = 0;
+    try { n = world.query(x0, z0, x0 + this.span, z0 + this.span); } catch { return; }
+    /* Record the revision even with nothing to stamp: an empty tile is a valid
+       answer for this revision, and leaving the field stale makes AI's "have the
+       props changed?" test read true forever, rebuilding the grid every frame. */
+    this.staticRevision = world.revision;
+    if (!n) return;
+
+    const hits = world.hits, boxes = world.boxes;
+    const W = this.W, cell = this.cell, walk = this.walk;
+    /* Blank a cell when a BODY STANDING AT ITS CENTRE would collide — the same
+       question `walk` already answers for terrain, asked with a footprint. The
+       tempting shortcut, blanking every cell the box touches, inflates each prop
+       by up to a full cell on all four sides; measured, that grew a 0.7 m boulder
+       into a 1.8 m no-go zone and walled a 2.1 m-wide brute into place, which
+       renders as a statue mid-fight. Radius is the smallest walker, so the grid
+       stays a statement about ground rather than about one actor. */
+    const hero = this.engine.get?.('hero');
+    const r = Number.isFinite(hero?.radius) ? hero.radius : 0.34;
+    const r2 = r * r;
+    for (let h = 0; h < n; h++) {
+      const b = boxes[hits[h]];
+      if (!b || b.kind !== K_PROP) continue;
+      const i0 = Math.max(0, Math.floor((b.minX - r - x0) / cell));
+      const i1 = Math.min(W - 1, Math.floor((b.maxX + r - x0) / cell));
+      const j0 = Math.max(0, Math.floor((b.minZ - r - z0) / cell));
+      const j1 = Math.min(W - 1, Math.floor((b.maxZ + r - z0) / cell));
+      for (let j = j0; j <= j1; j++) {
+        const wz = z0 + (j + 0.5) * cell;
+        const dz = wz < b.minZ ? b.minZ - wz : wz > b.maxZ ? wz - b.maxZ : 0;
+        const row = j * W;
+        for (let i = i0; i <= i1; i++) {
+          const wx = x0 + (i + 0.5) * cell;
+          const dx = wx < b.minX ? b.minX - wx : wx > b.maxX ? wx - b.maxX : 0;
+          if (dx * dx + dz * dz < r2) walk[row + i] = 0;
+        }
       }
     }
   }
@@ -383,6 +585,21 @@ export class NavGrid {
       }
     }
     return status;
+  }
+
+  /**
+   * Guarantee `n` expansions for one query that matters more than the pack's.
+   *
+   * The per-frame budget is shared and deliberately small, which is right for
+   * thirty monsters re-routing at a target that moved half a metre and wrong for
+   * the player's click: a route the long way round a crypt wall cost 2814
+   * expansions, more than a whole frame's allowance, so the hero's ask came back
+   * `partial` every time, aimed at the closest point on the wrong side of the
+   * wall, and the walk ended against the stone. One agent asking at most every
+   * sixth frame can afford to jump the queue.
+   */
+  reserve(n) {
+    if (this.nodeBudget < n) this.nodeBudget = n;
   }
 
   _cacheKey(sx, sz, gx, gz, r) {
@@ -590,6 +807,11 @@ export class NavGrid {
   _dungeon() {
     const d = this.engine.get?.('dungeon');
     return d && !d.__dead ? d : null;
+  }
+  _physWorld() {
+    const p = this.engine.get?.('physics');
+    const w = p && !p.__dead ? p.world : null;
+    return w && typeof w.query === 'function' && Array.isArray(w.boxes) ? w : null;
   }
 
   /** Debug: walkable-boundary segments near a point, for the AI overlay. */

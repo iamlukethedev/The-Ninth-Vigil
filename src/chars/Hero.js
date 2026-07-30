@@ -57,6 +57,15 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (e0, e1, x) => { const t = clamp01((x - e0) / (e1 - e0 || 1e-6)); return t * t * (3 - 2 * t); };
 const wrapPi = (a) => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+/**
+ * Line-of-sight is asked with slightly LESS than the body radius, so the string
+ * pull may straighten a leg the plan already proved walkable. Planning itself
+ * uses the true radius: the grid's clearance is measured against the collision
+ * world now (`NavGrid._refineClearance`), so asking for room the hero does not
+ * need only refuses doorways it fits through — which cost a destination when the
+ * ask was padded to 0.46 m for a 0.34 m body.
+ */
+const LOS_TRIM = 0.95;
 /** Exponential smoothing with a real time constant — frame-rate independent. */
 const expo = (cur, target, dt, tau) => cur + (target - cur) * (1 - Math.exp(-dt / Math.max(1e-4, tau)));
 
@@ -188,7 +197,23 @@ export class Hero {
     this.state = 'idle';
 
     /* ---- movement ---- */
+    /**
+     * Click-to-move. `moveGoal` is where the player asked to go; `moveTarget` is
+     * the leg being walked right now. They are the same point in the open and
+     * differ whenever something is in the way — see `_followGoal`.
+     */
+    this.moveGoal = null;
     this.moveTarget = null;
+    /** Current A* route to `moveGoal`, flat [x,z,x,z,...], and our cursor into it. */
+    this.navPath = [];
+    this.navCursor = 0;
+    this._navVersion = -1;
+    this._navAskFrame = -1;
+    /** Stall watchdog: window timer, failed replans, and where the window opened. */
+    this._stallT = 0;
+    this._stallTries = 0;
+    this._stallX = 0;
+    this._stallZ = 0;
     this.accel = 24;
     this.decel = 32;
     this._desired = new THREE.Vector3();
@@ -351,7 +376,7 @@ export class Hero {
     this.root.rotation.set(0, this.yaw, 0);
     this.velocity.set(0, 0, 0);
     this.speed = 0;
-    this.moveTarget = null;
+    this._clearOrder();
   }
 
   /** Camera-relative forward on the ground plane. */
@@ -379,9 +404,20 @@ export class Hero {
 
   /* =========================================================== public API */
 
+  /** Walk to a world point, routing around anything solid on the way. */
   moveTo(x, z) {
     if (this.isDead) return;
-    (this.moveTarget ??= new THREE.Vector3()).set(x, this._groundY(x, z), z);
+    const y = this._groundY(x, z);
+    (this.moveGoal ??= new THREE.Vector3()).set(x, y, z);
+    (this.moveTarget ??= new THREE.Vector3()).set(x, y, z);
+    this.navPath.length = 0;
+    this.navCursor = 0;
+    this._navVersion = -1;
+    this._navAskFrame = -1;
+    this._stallT = 0;
+    this._stallTries = 0;
+    this._stallX = this.position.x;
+    this._stallZ = this.position.z;
   }
 
   /** Advance the three-hit combo, or start it. */
@@ -488,7 +524,7 @@ export class Hero {
   _die(src, point) {
     this.isDead = true;
     this.state = 'dead';
-    this.moveTarget = null;
+    this._clearOrder();
     this.velocity.set(0, 0, 0);
     this.graph.clearAction(0.10);
     this.graph.playBase('death', { fade: 0.12, restart: true });
@@ -663,7 +699,7 @@ export class Hero {
     this._scriptT = 0;
     this._scriptI = 0;
     this._lookTarget = null;
-    this.moveTarget = null;
+    this._clearOrder();
   }
 
   _readInput() {
@@ -685,7 +721,7 @@ export class Hero {
     if (ix || iz) {
       this._desired.set(_fwd.x * iz + _v2.x * ix, 0, _fwd.z * iz + _v2.z * ix);
       if (this._desired.lengthSq() > 1e-6) this._desired.normalize();
-      this.moveTarget = null;
+      this._clearOrder();
       this._inputHeld = true;
       return;
     }
@@ -716,11 +752,8 @@ export class Hero {
     if (!locked) {
       if (this._inputHeld) {
         want = 1;
-      } else if (this.moveTarget) {
-        _v1.set(this.moveTarget.x - this.position.x, 0, this.moveTarget.z - this.position.z);
-        const d = _v1.length();
-        if (d < 0.28) { this.moveTarget = null; }
-        else { this._desired.copy(_v1).multiplyScalar(1 / d); want = clamp01(d / 0.9); }
+      } else if (this.moveGoal) {
+        want = this._followGoal(dt);
       }
     }
 
@@ -764,6 +797,160 @@ export class Hero {
     this.footY = gy;
   }
 
+  /* ------------------------------------------------------- click-to-move */
+
+  /** The AI's nav grid, if there is one and it has been built. */
+  _nav() {
+    const ai = this.engine.get?.('ai');
+    const nav = ai && !ai.__dead ? ai.nav : null;
+    return nav && nav.built && typeof nav.findPath === 'function' ? nav : null;
+  }
+
+  /**
+   * Steer toward `moveGoal`, going around whatever is in the way.
+   *
+   * A click used to set one straight-line target, which is fine in the open and
+   * useless anywhere else: the hero drove into the first boulder on the line and
+   * stayed there, because the only two things `_step` could do were slide along
+   * an axis and give up. Measured before this: an order 9.4 m away past a 1 m
+   * boulder walked 6.3 m, then stood still for five seconds 4 m short.
+   *
+   * So plan through the AI's nav grid — the same A* the monsters use — and walk
+   * its legs. The waypoint logic mirrors `ai/Brain.js` on purpose: line-of-sight
+   * shortcut first, then a cursor that skips waypoints we have reached or can
+   * already see past. Two walkers doing the same job should not disagree about
+   * what a corner looks like.
+   *
+   * With no nav grid (AI off in a low tier, or the frames before its first
+   * build) this is exactly the old straight line — no worse than before, and the
+   * stall watchdog now stops the hero grinding at geometry forever.
+   *
+   * @returns {number} 0..1 throttle for `_move`
+   */
+  _followGoal(dt) {
+    const goal = this.moveGoal;
+    let dx = goal.x - this.position.x, dz = goal.z - this.position.z;
+    const dGoal = Math.hypot(dx, dz);
+    if (dGoal < 0.28) { this._clearOrder(); return 0; }
+
+    const nav = this._nav();
+    if (nav && !nav.lineOfSight(this.position.x, this.position.z, goal.x, goal.z, this.radius)) {
+      this._ensurePath(nav, goal);
+      const legs = this.navPath.length >> 1;
+      if (legs >= 2) {
+        const p = this.navPath;
+        let c = this.navCursor;
+        const tol = Math.max(0.42, this.radius * 1.35);
+        let guard = 0;
+        while (c < legs - 1 && guard++ < 24) {
+          if (Math.hypot(p[c * 2] - this.position.x, p[c * 2 + 1] - this.position.z) < tol) { c++; continue; }
+          // Skip ahead whenever the NEXT leg is already visible: that is the
+          // string pull, and it is what keeps a path from reading as a series of
+          // right-angle turns around cell corners.
+          if (nav.lineOfSight(this.position.x, this.position.z, p[(c + 1) * 2], p[(c + 1) * 2 + 1], this.radius * LOS_TRIM)) { c++; continue; }
+          break;
+        }
+        this.navCursor = c;
+        dx = p[c * 2] - this.position.x;
+        dz = p[c * 2 + 1] - this.position.z;
+      }
+    }
+
+    this._watchProgress(dt);
+    if (!this.moveGoal) return 0;                        // watchdog gave up
+
+    const d = Math.hypot(dx, dz);
+    if (d < 1e-4) return 0;
+    this._desired.set(dx / d, 0, dz / d);
+    (this.moveTarget ??= new THREE.Vector3()).set(
+      this.position.x + dx, this.position.y, this.position.z + dz,
+    );
+    /* Ease into the DESTINATION, never into a corner: braking at every waypoint
+       turns one walk into a string of hesitations. */
+    return clamp01(dGoal / 0.9);
+  }
+
+  /** (Re)plan the route to `goal` when the one we are walking no longer fits. */
+  _ensurePath(nav, goal) {
+    const frame = this.engine.clock?.frame ?? 0;
+    const legs = this.navPath.length >> 1;
+    const stale = legs < 2
+      || this._navVersion !== nav.version
+      || this.navCursor >= legs - 1
+      || Math.hypot(this.navPath[(legs - 1) * 2] - goal.x, this.navPath[(legs - 1) * 2 + 1] - goal.z) > 0.75;
+    if (!stale) return;
+    /* At most one ask every 6 frames, and the ask gets a budget of its own. A*
+       is budgeted per frame across every agent, and a route that has to go the
+       long way round can cost more than the pack's whole allowance: without the
+       reservation the answer came back `partial`, aiming at the nearest point on
+       the wrong side of a wall. A failed ask leaves the old path in place on
+       purpose — stale legs still point roughly the right way. */
+    if (this._navAskFrame >= 0 && frame - this._navAskFrame < 6) return;
+    this._navAskFrame = frame;
+    let status = 'fail';
+    try {
+      nav.reserve?.(3600);
+      status = nav.findPath(
+        this.position.x, this.position.z, goal.x, goal.z, this.radius, this.navPath,
+      );
+    } catch { status = 'fail'; }
+    if (status === 'direct' || status === 'ok' || status === 'partial') {
+      this._navVersion = nav.version;
+      this.navCursor = 0;
+    }
+  }
+
+  /**
+   * Notice when an order is not going anywhere, and escalate: replan first,
+   * give up last.
+   *
+   * Something has to own "is this destination still worth walking to?", and it
+   * cannot be the collision code: being blocked for one frame is normal — it is
+   * what walking along a wall feels like — while being blocked for two seconds
+   * is a wrong plan.
+   *
+   * The measure is GROUND COVERED, not the gap to the destination, which is only
+   * the same thing when the route is straight. Going round a wall means walking
+   * away from where you were told to go, sometimes for tens of metres: a watchdog
+   * fed distance-to-goal reads an 80 m detour as failure and cancels it a couple
+   * of seconds in, which is exactly what it did to the one crypt destination that
+   * needs the long way round. Displacement also stays honest across replans, and
+   * it still terminates the hopeless case, where a partial route runs out and the
+   * hero stands at the end of it covering no ground at all.
+   *
+   * Only ticks while the hero is actually trying to walk — `_move` skips
+   * `_followGoal` entirely when an attack or a stagger owns the body — so an
+   * animation lock cannot be mistaken for being stuck.
+   */
+  _watchProgress(dt) {
+    this._stallT += dt;
+    if (this._stallT < 0.55) return;
+    this._stallT = 0;
+    const moved = Math.hypot(this.position.x - this._stallX, this.position.z - this._stallZ);
+    this._stallX = this.position.x;
+    this._stallZ = this.position.z;
+    // A walking hero clears metres in half a second; 0.12 m is a body that is
+    // being held in place, not one taking a corner slowly.
+    if (moved > 0.12) { this._stallTries = 0; return; }
+    // Force a fresh plan: the grid may have been rebuilt around us, or a body
+    // we were routed through has moved.
+    this._navVersion = -1;
+    this._navAskFrame = -1;
+    if (++this._stallTries >= 4) this._clearOrder();     // ~2.2 s of trying
+  }
+
+  /** Drop the walk order and everything cached for it. */
+  _clearOrder() {
+    this.moveGoal = null;
+    this.moveTarget = null;
+    this.navPath.length = 0;
+    this.navCursor = 0;
+    this._navVersion = -1;
+    this._navAskFrame = -1;
+    this._stallT = 0;
+    this._stallTries = 0;
+  }
+
   /** Move on the ground plane, refusing to leave walkable terrain. */
   _step(dx, dz) {
     const t = this._terrain();
@@ -772,7 +959,10 @@ export class Hero {
       // slide along whichever axis still works, so a wall does not stop dead
       if (t.isWalkable(nx, this.position.z)) { this.position.x = nx; return; }
       if (t.isWalkable(this.position.x, nz)) { this.position.z = nz; return; }
-      this.moveTarget = null;
+      /* Cornered — but do NOT cancel the walk order here. One blocked frame is
+         not a failed journey, and cancelling on the first one is what made a
+         click with anything solid on the line read as "take two steps, stop".
+         Whether the order is hopeless is `_watchProgress`'s call. */
       this.speed *= 0.25;
       return;
     }

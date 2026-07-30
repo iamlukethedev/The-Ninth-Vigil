@@ -474,6 +474,80 @@ and were not — verify these in pixels with extra suspicion.
 
 ## Recently fixed — do not regress these
 
+### 2026-07-30 — the player getting stuck on obstacles
+
+Reported as "when I click to move and there is an obstacle, the player gets stuck — the player
+should be smart enough to go around the obstacle." It was **six** separate faults on one path,
+and the interesting ones are not in `Hero.js` at all: three of them made the nav grid **lie
+about where the walls are**, and the hero was obediently walking into stone that the pathfinder
+was certain did not exist. Fixing only the visible half — teaching the hero to path — would have
+looked right on an empty floor and still failed in a dressed crypt.
+
+Measured, click-to-move arrival across three scenarios: **20 of 21 destinations**, every one
+with something solid on the straight line to it (`hub` 3/3, a 7-goal crypt set 7/7, an 11-goal
+crypt set 10/11), median detour ×1.03, and zero stalled frames on every goal that arrives. The
+one failure is a corner of the procedural crypt reachable only by threading several ~0.5 m gaps;
+the hero now walks as far as it can and stops, instead of grinding forever.
+
+- **🔴 `AI._rescueNav` was erasing the crypt's walls from the nav grid.** The single biggest
+  cause, and it has nothing to do with movement code. The rescue exists for terrain masks that
+  call flat ground unwalkable (`hell`'s fissure basin), and it fires when the pack's **centroid**
+  reads as blocked — but average a pack spread through a crypt and the mean lands *inside a
+  wall*, routinely. It then carved a walkable pocket of up to **16 m radius**, validated only
+  against terrain *slope*, which interior walls pass perfectly because they stand on a flat slab.
+  Every wall within the pocket vanished from `walk`, clearance came back **4.4 m** (the wide-open
+  cap) half a metre from solid masonry, `lineOfSight` returned true straight through it, and the
+  hero was handed a beeline into the stone. Two guards now: the rescue asks the collision world
+  whether a body could stand at the centre before carving at all, and `NavGrid._stampNow` will
+  not unblock a cell the collision world says is solid, so no future stamp can delete
+  architecture either. *Symptom if this regresses: the grid's `version` climbs with no rebuild
+  and clearance jumps to 4.4 next to a wall.*
+- **🔴 Solid props were in no walkability mask.** Walls reach the grid through
+  `dungeon.isWalkable`; boulders, columns and sarcophagi are placement records that only Physics
+  turns into boxes. So a 1 m boulder was open floor to A*. `NavGrid._stampSolidProps` now reads
+  `K_PROP` boxes back out of Physics' own box soup — one definition of "solid", not a second copy
+  that drifts — and `AI._ensureNav` rebuilds whenever the collision world's revision moves.
+  Blank the cells a *body* could not stand in, not every cell a box touches: the latter inflates
+  each prop by a cell on all four sides, which grew a 0.7 m boulder into a 1.8 m no-go zone and
+  walled a brute in place.
+- **The clearance field could not say "tight".** The chamfer transform seeds blocked cells at
+  zero and adds a whole cell per step, so its smallest non-zero answer is **0.55 m** however
+  close the wall really is. A measured 0.50 m slot between two crypt walls therefore read as a
+  passable channel with room to spare, and the 0.68 m hero wedged in it at full throttle while
+  Physics shoved back. `NavGrid._refineClearance` now measures the real gap with `solveSphere`
+  (`probe − depth` is the distance to the nearest surface) over a thin band near geometry, nine
+  samples per cell keeping the **best** — because the question is "can a body get through this
+  cell", not "does one fit dead centre", and a centre-only test walls off every 1.1 m corridor in
+  the building. It lowers `clear` only and never touches `walk`: an earlier attempt that cleared
+  `walk` instead left brutes and ghouls standing still for entire fights.
+  Measurements are cached in `NavGrid.tight` and re-applied after **every** distance transform,
+  because `addObstacle` runs one on each stamp and silently discarded them otherwise.
+- **The hero had no pathfinder.** `moveTo` set one straight-line target, and the only things
+  `_step` could do at a wall were slide along an axis or give up. It now plans through the same
+  A* the monsters use and walks the legs, with the string-pull and cursor logic mirroring
+  `ai/Brain.js` so two walkers cannot disagree about what a corner looks like. Plan for the
+  **true** body radius: padding the ask to 0.46 m for a 0.34 m body refuses doorways the hero
+  fits through, and cost a destination when it was tried.
+- **Two modules were cancelling the walk order behind the hero's back.** `Physics._pinActor`
+  dropped `moveTarget` on any firm shove and `Hero._step` dropped it the first time a step was
+  refused — so a click past an obstacle read as "take two steps, stop". Neither has the history
+  to judge a destination unreachable. `Hero._watchProgress` owns that now, and it measures
+  **ground covered**, not distance to the goal: going round a wall means walking *away* from
+  where you were told to go, and a watchdog fed distance-to-goal cancels an 80 m detour a couple
+  of seconds in. It replans three times before giving up, and only ticks while the hero is
+  actually trying to walk, so an attack animation is never mistaken for being stuck.
+- **The hero's A* ask was starved by the pack's budget.** A route the long way round a crypt
+  wall costs ~2814 expansions, more than a whole frame's shared allowance, so the answer came
+  back `partial` — aimed at the nearest point on the *wrong side* of the wall, which is a
+  straight line into it. `NavGrid.reserve(n)` guarantees a floor for one query that matters more
+  than thirty monsters re-routing at a target that moved half a metre; the hero asks at most once
+  every six frames.
+
+Monster mobility was the regression risk throughout, since all of this is shared state: zero
+frozen agents, every actor covering 5.8–13.2 m in the `combat` scenario, and they close on the
+hero slightly *better* than before (mean 2.97 m against 2.14 m). `npm run smoke` is still
+deterministic — the simulation hash matches across runs.
+
 ### 2026-07-30 — the walking flashes, finally closed
 
 - **🔴 No pooled practical casts a shadow any more.** `TIER` in `render/Lighting.js` sets
