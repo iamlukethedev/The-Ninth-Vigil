@@ -1723,7 +1723,13 @@ export class Loot {
   }
 
   _servicePickups(hx, hz, input) {
-    const clicked = !!input?.justPressed?.('mouse0');
+    /* The RAW press, not `justPressed('mouse0')`: Input now resolves the left
+       button into an attack or a move order, and a drop lying on open floor
+       resolves as a move order — which is correct, you walk to what you clicked.
+       Picking it up is a separate interaction that rides along with that walk,
+       so it has to see the physical button. The `??` fallback keeps this working
+       against an Input build without the raw accessors. */
+    const clicked = !!(input?.rawJustPressed?.('mouse0') ?? input?.justPressed?.('mouse0'));
     const keyed = !!(input?.justPressed?.('KeyE') || input?.justPressed?.('Space'));
     const gp = input?.mouse?.worldGround;
 

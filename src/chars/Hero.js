@@ -577,6 +577,17 @@ export class Hero {
     this._flash = Math.max(0, this._flash - dt * 5.2);
     this.mesh.setFlash(this._flash * this._flash);
 
+    /* Hand the body back to the player the moment a human touches the controls.
+       `applyScenario` installs a performance with `suppressInput: true` and
+       nothing ever took it off again — and `main.js` applies a scenario on EVERY
+       live boot, so `_readInput` (which holds both WASD and click-to-move) was
+       never called once in a real session. Attacks still fired because they are
+       routed by CombatSystem, which already drops its own script on first input;
+       that asymmetry is exactly why every click read as "attack, never move".
+       Latched on `Input.userActed`, which only the real DOM listeners set, so a
+       posed harness capture — which never dispatches an event — is untouched. */
+    if (this._script && this.engine.input?.userActed) this._releaseScript();
+
     this._runScript(dt);
     if (!this._script?.suppressInput) this._readInput();
     this._move(dt);
@@ -639,6 +650,22 @@ export class Hero {
 
   /* -------------------------------------------------------- movement */
 
+  /**
+   * Drop the scenario performance and give the player the body. The look target
+   * and the walk-speed override go with it: both are direction for a still
+   * frame, and leaving them on would pin the hero's head to a fixed point and
+   * cap it at `walkSpeed` (1.92 m/s) for the rest of the session. The authored
+   * destination goes too — the player's first click must not have to out-argue a
+   * leftover waypoint from the script's path.
+   */
+  _releaseScript() {
+    this._script = null;
+    this._scriptT = 0;
+    this._scriptI = 0;
+    this._lookTarget = null;
+    this.moveTarget = null;
+  }
+
   _readInput() {
     const input = this.engine.input;
     if (!input || this.isDead) return;
@@ -664,8 +691,13 @@ export class Hero {
     }
     this._inputHeld = false;
 
-    /* click to move */
-    if (input.down?.(0)) {
+    /* Click to move. Reads the resolved MOVE order rather than the raw button:
+       the left button is also the basic-attack bind, so testing `down(0)` here
+       meant a click on a body set a destination the attack then locked out, and
+       holding the button to run kept the combo re-arming so the hero never took
+       a step. `Input.moveOrder()` is true only over open floor. The `?? down(0)`
+       keeps this working against an Input build without order resolution. */
+    if (input.moveOrder?.() ?? input.down?.(0)) {
       const g = input.mouse?.worldGround;
       if (g && finite(g.x)) {
         const dx = g.x - this.position.x, dz = g.z - this.position.z;

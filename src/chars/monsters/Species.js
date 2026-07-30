@@ -236,6 +236,76 @@ function tatters(A, slot, o) {
   });
 }
 
+/**
+ * One armour lame: a closed elliptical hoop, flattened into a band.
+ *
+ * CLOSED on purpose. An open swept shell is the obvious way to make a lame and
+ * it is wrong here: SkinBuilder emits single-sided geometry, so the inside of an
+ * open band renders black and the piece reads as a paper cut-out the moment the
+ * animation swings it past the camera. A squashed torus is closed, costs 320
+ * triangles, and its rolled top and bottom edges are exactly the proud arrises
+ * the curvature wear pass needs to find (see RigKit.curvatureAttr).
+ *
+ * @param {number} rx,rz  ellipse radii, metres
+ * @param {number} h      band height
+ * @param {number} t      band thickness
+ */
+function lameGeo(rx, rz, h, t, o = {}) {
+  const tub = o.tub ?? 18;     // segments around the ring
+  const seg = o.seg ?? 6;      // segments around the elliptical cross-section
+  // `spread` flares the band's lower edge outward, which is what makes a stack
+  // of lames read as a fauld rather than as a set of identical rings.
+  const spread = o.spread ?? 0;
+  const pos = [], idx = [];
+  for (let i = 0; i < tub; i++) {
+    const a = (i / tub) * Math.PI * 2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const cx = ca * rx, cz = sa * rz;
+    // Outward normal of the ELLIPSE (not of the circle) at this station.
+    let ux = ca / rx, uz = sa / rz;
+    const ul = Math.hypot(ux, uz) || 1;
+    ux /= ul; uz /= ul;
+    for (let j = 0; j < seg; j++) {
+      const b = (j / seg) * Math.PI * 2;
+      const cb = Math.cos(b), sb = Math.sin(b);
+      const rad = t * cb - spread * sb;
+      pos.push(cx + ux * rad, h * 0.5 * sb, cz + uz * rad);
+    }
+  }
+  for (let i = 0; i < tub; i++) {
+    const i2 = (i + 1) % tub;
+    for (let j = 0; j < seg; j++) {
+      const j2 = (j + 1) % seg;
+      const a = i * seg + j, b = i * seg + j2, c = i2 * seg + j, d = i2 * seg + j2;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  // No duplicated seam column, so smooth normals come out exact all the way
+  // round and the band has no visible join.
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A row of dome rivets around the front arc of a lame. */
+function rivetRing(sb, bone, o) {
+  const n = o.n ?? 7;
+  const a0 = o.a0 ?? -1.30, a1 = o.a1 ?? 1.30;
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (a1 - a0) * (n > 1 ? i / (n - 1) : 0.5);
+    const g = new THREE.SphereGeometry(o.r ?? 0.045, 6, 4);
+    g.scale(1, 0.62, 1);
+    sb.rigid(g, bone, {
+      at: bone,
+      off: [Math.sin(a) * o.rx, o.y, Math.cos(a) * o.rz],
+      uvScale: o.uv, color: o.color,
+    });
+    g.dispose();
+  }
+}
+
 /** Two glowing points sunk into a skull's sockets. */
 function eyeLights(A, slot, bone, o) {
   A.part(slot, (sb, uv) => {
@@ -1004,16 +1074,38 @@ function buildBoss(seed) {
       '.R': { shoulder: [0.680, 0.070, 0], elbow: [0.070, -1.120, 0.026], wrist: [0.045, -1.010, 0.032] },
     },
   });
+  /* MATERIAL SLOTS — rebuilt, because what the warden was wearing is most of
+     why it read as "an untextured plastic mannequin".
+       char   charred (kind flesh, albedo target 0.012) on the whole body. That
+              is the darkest recipe in the library by a factor of five and it is
+              a BURNT-HELLHOUND skin; on a 322 px armoured giant it meant only
+              39 % of the torso's measured value came from the albedo map at all
+              (ablation: torso display luma 0.325 -> 0.199 with map diffuse off),
+              the rest being rim, aura, floor and specular, none of which carry
+              any structure. -> wardenHide, a leather solved against the hero
+              cuirass reference rather than against a hellhound.
+       basalt stone (5-cycle ashlar coursing) on a SKULL. -> wardenBone.
+       metal  correct family but at a 0.38 m repeat authored for a 1.8 m enemy.
+              -> wardenIron, same family, boss-scale repeat.
+       plate  NEW. Armour is the one thing this creature is supposed to be made
+              of and it had none: the lamed, riveted `plate` kind on a cuirass,
+              a fauld, cuisses, greaves and a faceplate. One extra slot is one
+              extra draw call, on a single actor, against a 900 budget. */
   const slots = [
-    { name: 'char', recipe: 'charred' },
-    { name: 'basalt', recipe: 'basalt' },
-    { name: 'metal', recipe: 'metal' },
+    { name: 'char', recipe: 'wardenHide' },
+    { name: 'basalt', recipe: 'wardenBone' },
+    { name: 'metal', recipe: 'wardenIron' },
+    { name: 'plate', recipe: 'wardenPlate' },
     { name: 'core', recipe: 'ember' },
     { name: 'cloth', recipe: 'cloth' },
   ];
   const A = new Assembly(rig, seed, slots);
   const gr = grimeFn({ lo: 0.1, hi: 5.6, dark: 0.64, mottle: 0.22, seed: 641, freq: 1.7, cav: 0.28, tintLow: [0.66, 0.58, 0.56] });
   const grS = grimeFn({ lo: 0.2, hi: 6.0, dark: 0.72, mottle: 0.20, seed: 683, freq: 2.2 });
+  // Plate sits in the light and is the one material meant to READ, so its grime
+  // ramp is shallower than the body's — a warden's armour is filthy in the laps,
+  // not uniformly dimmed.
+  const grP = grimeFn({ lo: 0.4, hi: 6.2, dark: 0.80, mottle: 0.16, seed: 727, freq: 1.9, cav: 0.34 });
 
   /* --- torso --- */
   spine(A, 'char', [
@@ -1025,6 +1117,34 @@ function buildBoss(seed) {
   ball(A, 'char', 'chest', 0.470, { seg: 16, seg2: 12, scale: [1.24, 0.84, 1.00], off: [-0.360, 0.290, -0.050], color: gr });
   ball(A, 'char', 'chest', 0.400, { seg: 15, seg2: 11, scale: [1.16, 0.84, 1.00], off: [0.380, 0.230, -0.030], color: gr });
   hard(A, 'basalt', pelvisGeo(0.98, 0.62, 0.56), 'hips', { off: [0, -0.150, 0.020], color: grS });
+
+  /* --- ARMOUR: cuirass band + fauld lames ---
+     The review's exact words were "no mid-frequency forms". Texture alone
+     cannot supply those: a mid-frequency FORM has to be in the silhouette and
+     in the self-shadowing, which means geometry. Five hoops and two rivet rows
+     cost ~2.4 k triangles on a 4.4 M frame and zero extra draw calls beyond the
+     one new material slot, and they give the curvature wear pass real proud
+     arrises and real laps to work with. */
+  A.part('plate', (sb, uv) => {
+    // cuirass: one deep band across the lower chest, under the torn ribcage
+    const cu = lameGeo(0.760, 0.610, 0.500, 0.055, { tub: 22, seg: 7, spread: 0.030 });
+    sb.rigid(cu, 'spine', { at: 'spine', off: [0, 0.030, 0.020], uvScale: uv, color: grP });
+    cu.dispose();
+    rivetRing(sb, 'spine', { rx: 0.775, rz: 0.630, y: 0.235, n: 7, r: 0.048, uv, color: grP });
+    // fauld: four lames stepping down and flaring off the hips
+    for (let i = 0; i < 4; i++) {
+      const t = i / 3;
+      const g = lameGeo(0.700 + t * 0.115, 0.560 + t * 0.100, 0.230, 0.048,
+        { tub: 20, seg: 6, spread: 0.040 + t * 0.028 });
+      sb.rigid(g, i < 2 ? 'spine' : 'hips', {
+        at: i < 2 ? 'spine' : 'hips',
+        off: [0, (i < 2 ? -0.245 - i * 0.175 : 0.135 - (i - 2) * 0.180), 0.010],
+        uvScale: uv, color: grP,
+      });
+      g.dispose();
+    }
+    rivetRing(sb, 'hips', { rx: 0.845, rz: 0.700, y: 0.215, n: 9, r: 0.042, uv, color: grP });
+  });
 
   /* --- ribcage torn open over a molten core: the primary weak point --- */
   ribCage(A, 'basalt', { y0: 4.00, y1: 4.72, halfW: 0.72, depth: 0.60, count: 6, r: 0.062, bind: 'chest', drop: 0.24, color: grS, backZ: -0.02 });
@@ -1053,11 +1173,60 @@ function buildBoss(seed) {
     }
   });
 
-  /* --- head: horned, jawless-looking, sunk between the shoulders --- */
-  ball(A, 'char', 'head', 0.400, { seg: 16, seg2: 12, scale: [0.94, 1.00, 1.08], off: [0, 0.060, -0.020], color: gr });
+  /* --- head: horned, jawless-looking, sunk between the shoulders ---
+     THE HEAD WAS TWO OVERLAPPING SPHERES AND THE SKULL LOST.
+     `ball('char','head',0.400)` is an ellipsoid of radii (0.376, 0.400, 0.432)
+     centred at head+(0,0.06,-0.02); the skull's cranium, after its own scale and
+     offset, is (0.314, 0.350, 0.434) centred at head+(0,0.180,0.007). The ball
+     therefore swallowed the brow, the muzzle, the cheekbones and the jaw, and
+     left a bare charred sphere with a 30-70 mm crescent of skull showing — about
+     4 px of it at the boss camera. That is the "featureless white ovoid".
+     Worse, `eyeLights` sat at head+(0.170,0.230,0.190) with r 0.105, and the
+     ball's surface on that ray is at z = 0.319: the warden's eyes were INSIDE
+     its own head. Measured on the skull-only mask: mean display luma 0.791
+     (near clipping) at a post-downsample deviation of 0.018 — a white blob.
+
+     So the ball is demoted to the occiput-and-neck mass it should always have
+     been, the carved skull (see RigKit.skullGeo) becomes the face, and the eye
+     lights move out to the floor of the carved orbits. */
+  ball(A, 'char', 'head', 0.300, { seg: 14, seg2: 10, scale: [0.88, 0.86, 0.92], off: [0, -0.020, -0.160], color: gr });
   hard(A, 'basalt', skullGeo(0.760, {}), 'head', { off: [0, -0.030, 0.030], scale: [0.96, 0.92, 1.02], color: grS });
   hard(A, 'basalt', jawGeo(0.640), 'jaw', { rot: [0.22, 0, 0], color: grS });
-  eyeLights(A, 'core', 'head', { r: 0.105, dx: 0.170, dy: 0.230, dz: 0.190 });
+  /* Solved against the carved orbit rather than guessed, which is what the old
+     placement was: skullGeo's orbit axis (0.50,-0.02,0.87) meets the cranium
+     ellipsoid at (0.258, 0.290, 0.418) x size and the dish floor is 0.125 x size
+     further in along the surface normal (0.698,-0.021,0.716); through this
+     part's own 0.76 size, its (0.96,0.92,1.02) scale and its (0,-0.030,0.030)
+     offset the floor lands at (0.124, 0.174, 0.285) in head-local metres. The
+     light sits 30 mm proud of that, at a radius that brings its front flush with
+     the orbit rim — it fills the socket and does not bulge out of it. */
+  eyeLights(A, 'core', 'head', { r: 0.062, dx: 0.145, dy: 0.174, dz: 0.306 });
+  /* Faceplate: a riveted brow band and a nasal bar. "No plate seams" was called
+     out by name, and a helm band is the cheapest thing that answers it — it also
+     gives the head a hard horizontal accent against all those curved masses. */
+  A.part('plate', (sb, uv) => {
+    /* Helm band round the brow line. Radii follow the cranium ellipsoid at that
+       latitude (0.306 x 0.424 head-local) so it grips the skull instead of
+       floating; it crosses the TOP of the orbits only, leaving the socket and
+       the eye light below it clear. */
+    /* Sized 20 % clear of the cranium ellipsoid at this latitude (0.298 x 0.412
+       head-local at y = 0.30). A first pass hugged it at 0.322 x 0.430 and
+       measured 13 painted pixels — a band you cannot see is only triangles. */
+    const band = lameGeo(0.368, 0.478, 0.150, 0.046, { tub: 18, seg: 6, spread: 0.018 });
+    sb.rigid(band, 'head', { at: 'head', off: [0, 0.300, 0.015], rot: [0.07, 0, 0], uvScale: uv, color: grP });
+    band.dispose();
+    // Nasal bar. The muzzle's own front surface is at z 0.605 head-local at this
+    // height, so the bar has to reach 0.65 to stand proud of it at all.
+    const bar = roundedBox(0.090, 0.300, 0.110, 0.030);
+    sb.rigid(bar, 'head', { at: 'head', off: [0, 0.140, 0.600], rot: [0.24, 0, 0], uvScale: uv, color: grP });
+    bar.dispose();
+    for (const sg of [1, -1]) {
+      const r = new THREE.SphereGeometry(0.046, 6, 4);
+      r.scale(1, 0.62, 1);
+      sb.rigid(r, 'head', { at: 'head', off: [sg * 0.300, 0.312, 0.300], uvScale: uv, color: grP });
+      r.dispose();
+    }
+  });
   A.part('basalt', (sb, uv) => {
     for (const sg of [1, -1]) {
       const g = hornGeo(0.98, 0.115, 0.016, -0.72, { steps: 9, seg: 8, lateral: 0.30 * sg, taper: 0.75 });
@@ -1079,17 +1248,30 @@ function buildBoss(seed) {
     seg(A, 'char', `elbow${side}`, `wrist${side}`, 0.230 * s, 0.170 * s, { color: gr, noise: 0.18, seg: 12 });
     hard(A, 'char', roundedBox(0.360 * s, 0.380 * s, 0.215 * s, 0.060), `hand${side}`, { off: [0, -0.090, 0.040], color: gr });
     claws(A, 'basalt', `hand${side}`, { n: 4, len: 0.235, r0: 0.042, r1: 0.010, spread: 0.098, off: [0, -0.230, 0.060], pitch: 2.9, color: grS });
-    // layered pauldron: three overlapping bevelled plates
-    A.part('metal', (sb, uv) => {
+    /* Layered pauldron: three overlapping bevelled plates. Moved from `metal`
+       to `plate` — these are the largest flat surfaces on the model and the
+       review called them "flat purple-white with a hard unshaded edge", which
+       is what a 0.38 m hammer-facet repeat looks like when it is stretched over
+       a 0.6 m shell and then minified. The lame kind carries a 113 mm band
+       instead, and the rivet row gives the hard edge something to end on. */
+    A.part('plate', (sb, uv) => {
+      const sg = side === '.L' ? 1 : -1;
       for (let i = 0; i < 3; i++) {
         const g = pauldronGeo(0.60 - i * 0.10, 0.30 - i * 0.05);
         sb.rigid(g, `shoulder${side}`, {
           at: `shoulder${side}`,
-          off: [(side === '.L' ? 1 : -1) * (0.02 + i * 0.05), 0.16 - i * 0.19, 0.02 - i * 0.03],
-          rot: [0.14 + i * 0.10, 0, (side === '.L' ? 1 : -1) * (0.24 + i * 0.06)], uvScale: uv,
+          off: [sg * (0.02 + i * 0.05), 0.16 - i * 0.19, 0.02 - i * 0.03],
+          rot: [0.14 + i * 0.10, 0, sg * (0.24 + i * 0.06)], uvScale: uv, color: grP,
         });
         g.dispose();
       }
+      rivetRing(sb, `shoulder${side}`, {
+        rx: 0.300, rz: 0.315, y: 0.205, n: 5, r: 0.040, a0: -1.05, a1: 1.05, uv, color: grP,
+      });
+      // rerebrace: a band round the upper arm so the pauldron ends on something
+      const rb = lameGeo(0.320, 0.305, 0.230, 0.042, { tub: 14, seg: 6, spread: 0.024 });
+      sb.rigid(rb, `shoulder${side}`, { at: `shoulder${side}`, off: [sg * 0.020, -0.400, 0.010], uvScale: uv, color: grP });
+      rb.dispose();
     });
   }
 
@@ -1103,6 +1285,20 @@ function buildBoss(seed) {
     hard(A, 'char', roundedBox(0.400, 0.180, 0.340, 0.065), `toe${side}`, { off: [0, 0.035, -0.040], color: gr });
     claws(A, 'basalt', `toe${side}`, { n: 3, len: 0.160, r0: 0.038, r1: 0.009, spread: 0.115, off: [0, -0.020, 0.150], pitch: 1.62, color: grS });
     hard(A, 'metal', new THREE.TorusGeometry(0.250, 0.050, 8, 14), `ankle${side}`, { at: `ankle${side}`, off: [0, 0.060, 0], rot: [Math.PI * 0.5, 0, 0] });
+    // cuisse over the thigh and a greave over the shin: two more lames, so the
+    // legs are not one smooth taper from hip to ankle.
+    A.part('plate', (sb, uv) => {
+      const cu = lameGeo(0.395, 0.365, 0.300, 0.046, { tub: 16, seg: 6, spread: 0.028 });
+      sb.rigid(cu, `hip${side}`, { at: `hip${side}`, off: [0, -0.290, 0.020], uvScale: uv, color: grP });
+      cu.dispose();
+      const gv = lameGeo(0.290, 0.275, 0.290, 0.042, { tub: 14, seg: 6, spread: 0.022 });
+      sb.rigid(gv, `knee${side}`, { at: `knee${side}`, off: [0, -0.330, 0.015], uvScale: uv, color: grP });
+      gv.dispose();
+      const kn = new THREE.SphereGeometry(0.215, 10, 7);
+      kn.scale(1.02, 0.80, 0.86);
+      sb.rigid(kn, `knee${side}`, { at: `knee${side}`, off: [0, 0.020, 0.085], uvScale: uv, color: grP });
+      kn.dispose();
+    });
   }
 
   /* --- the cleaver: 2.6 m of pitted iron --- */
@@ -1626,10 +1822,27 @@ export const SPECIES = {
     height: 6.50, radius: 2.35, mass: 2600, hover: 0,
     hint: { speed: 3.00, radius: 2.35, height: 6.50, turnRate: 2.0 },
     accent: ACCENT.hellcore, aura: ACCENT.hellfire, rim: 0xd0a06e, dissolveEdge: 0x6e4014,
+    /* Tints are the DENOMINATOR of MonsterMaterials' value-trim gain, so a dark
+       tint no longer costs brightness — it costs saturation only. These are
+       pulled back toward neutral iron and warm bone: the old 0x74605a on a
+       recipe already tinted (0.30,0.26,0.25) was a double multiply, which is
+       part of how the body ended up carrying so little of its own map.
+       `metal`/`plate` keep `rough` unset so the map's own roughness — which is
+       where the lame kind puts most of its macro contrast — survives. */
     slotMat: {
-      char: { tint: 0x74605a, emiss: 0xff6a22, emissI: 0.45 },
-      basalt: { tint: 0x8d8481 },
-      metal: { tint: 0x8b7c6d, rough: 0.66 },
+      char: { tint: 0x9a8b80, emiss: 0xff6a22, emissI: 0.45 },
+      basalt: { tint: 0xa9a094 },
+      /* Metalness well below bare iron's 1.0, and that is a material claim, not
+         a cheat: this armour is more oxide than steel, and oxide is a
+         dielectric. It also matters mechanically — the standard BRDF scales
+         diffuse by (1 - metalness), so at 0.86 the albedo map, the textured
+         pedestal and the whole wear layer were 86 % cancelled and the plate was
+         lit almost entirely by an untextured environment reflection. That is
+         precisely the "flat purple-white" the review saw on the pauldrons. The
+         curvature wear pass puts metalness back up to ~0.95 on the abraded
+         arrises, so bare steel still appears exactly where it should. */
+      metal: { tint: 0x968779, metal: 0.58 },
+      plate: { tint: 0x9c9288, metal: 0.38 },
       core: { tint: 0x2a1810, emiss: ACCENT.hellfire, emissI: 2.6 },
       cloth: { tint: 0x54424a },
     },

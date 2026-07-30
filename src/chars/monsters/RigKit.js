@@ -169,6 +169,103 @@ export class RigDef {
 }
 
 /* ------------------------------------------------------------------ *
+ * per-vertex curvature → the coupled wear channel
+ * ------------------------------------------------------------------ */
+
+/**
+ * Signed discrete mean curvature per vertex, gated per piece, packed into ONE
+ * float: positive = a proud edge, negative = a cavity, zero = body curvature.
+ *
+ * WHY THIS EXISTS. The rubric asks every surface for "a wear/grime layer that
+ * darkens, roughens, and occludes together", and metal specifically for "edge
+ * wear to bright material and tarnish in cavities". The hero already has this:
+ * `CharacterMesh.edgeCavity` measures curvature per authored piece and feeds an
+ * `aSurf` attribute the hero shader couples into albedo, roughness and metalness
+ * at once. The bestiary had NOTHING equivalent — only `grimeFn`, which is a
+ * height-and-normal ramp in world space and therefore cannot know where an edge
+ * or a hollow is. So an enemy's rims never wore bright and its hollows never
+ * tarnished, which is precisely the "untextured, uniform-roughness" read the
+ * critic flagged on the warden.
+ *
+ * It is a VERTEX ATTRIBUTE and not a map on purpose. The scene sits at the
+ * 16-fragment-sampler ceiling — Bestiary already deletes each body's metalness
+ * and AO maps to buy two units back — so any solution that costs a sampler is
+ * not deployable. This costs 4 bytes per vertex and zero texture units.
+ *
+ * Method and its two non-obvious parts, both inherited from the hero pass
+ * because they were paid for there in visible defects:
+ *
+ *  1. TWO JACOBI SMOOTHING PASSES before gating. A one-ring difference alternates
+ *     sign column to column on any dense parametric patch, in the pattern of the
+ *     MESH rather than of the shape; thresholding that raw draws one bright line
+ *     per meridian. Two passes at 0.65 neighbour weight kill the alternation and
+ *     leave coherent features intact.
+ *  2. A PERCENTILE GATE WITH A DEAD ZONE. Below ~5 /m (a radius over 200 mm)
+ *     nothing is an edge — that is the body curvature of the limb itself, and
+ *     treating it as a rim is what turns a whole arm bright.
+ */
+function curvatureAttr(pos, nor, idx, spans) {
+  const n = pos.length / 3;
+  const out = new Float32Array(n);
+  if (!n || !idx.length) return out;
+
+  const acc = new Float32Array(n);
+  const cnt = new Float32Array(n);
+  const pair = (a, b) => {
+    const ao = a * 3, bo = b * 3;
+    const dx = pos[bo] - pos[ao], dy = pos[bo + 1] - pos[ao + 1], dz = pos[bo + 2] - pos[ao + 2];
+    const l2 = dx * dx + dy * dy + dz * dz;
+    if (l2 < 1e-12) return;
+    // (Δn · Δp)/|Δp|² — positive where the normals splay apart, i.e. convex.
+    const k = ((nor[bo] - nor[ao]) * dx + (nor[bo + 1] - nor[ao + 1]) * dy
+      + (nor[bo + 2] - nor[ao + 2]) * dz) / l2;
+    acc[a] += k; cnt[a] += 1; acc[b] += k; cnt[b] += 1;
+  };
+  for (let i = 0; i + 2 < idx.length; i += 3) {
+    pair(idx[i], idx[i + 1]); pair(idx[i + 1], idx[i + 2]); pair(idx[i + 2], idx[i]);
+  }
+  const cv = new Float32Array(n);
+  for (let i = 0; i < n; i++) cv[i] = cnt[i] > 0 ? acc[i] / cnt[i] : 0;
+
+  {
+    const sm = new Float32Array(n), c2 = new Float32Array(n);
+    const addp = (a, b) => { sm[a] += cv[b]; c2[a] += 1; sm[b] += cv[a]; c2[b] += 1; };
+    for (let it = 0; it < 2; it++) {
+      sm.fill(0); c2.fill(0);
+      for (let i = 0; i + 2 < idx.length; i += 3) {
+        addp(idx[i], idx[i + 1]); addp(idx[i + 1], idx[i + 2]); addp(idx[i + 2], idx[i]);
+      }
+      for (let i = 0; i < n; i++) if (c2[i] > 0) cv[i] = cv[i] * 0.35 + (sm[i] / c2[i]) * 0.65;
+    }
+  }
+
+  const ranges = spans.length ? spans : [0, n];
+  const pos_ = [], neg_ = [];
+  for (let s = 0; s < ranges.length; s += 2) {
+    const a = ranges[s], b = ranges[s + 1];
+    pos_.length = 0; neg_.length = 0;
+    for (let i = a; i < b; i++) {
+      if (cv[i] > 0) pos_.push(cv[i]); else if (cv[i] < 0) neg_.push(-cv[i]);
+    }
+    const pct = (arr, p) => {
+      if (!arr.length) return 0;
+      arr.sort((x, y) => x - y);
+      return arr[Math.min(arr.length - 1, Math.floor(arr.length * p))];
+    };
+    const hi = pct(pos_, 0.88), lo = pct(neg_, 0.88);
+    const hiOK = hi > 5, loOK = lo > 5;
+    for (let i = a; i < b; i++) {
+      const e = hiOK ? smoothstep(hi * 0.60, hi * 1.02, cv[i]) : 0;
+      const c = loOK ? smoothstep(lo * 0.44, lo * 0.98, -cv[i]) : 0;
+      // One channel, because curvature has one sign at a vertex: the two can
+      // never both be non-zero, so packing them costs no information.
+      out[i] = e - c;
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
  * SkinBuilder
  * ------------------------------------------------------------------ */
 
@@ -188,10 +285,26 @@ export class SkinBuilder {
     this.sw = [];
     this.msk = [];
     this.idx = [];
+    /**
+     * Vertex ranges of the individual primitives, [start, end) pairs.
+     *
+     * The curvature pass in `build()` normalises PER PIECE, not per body. A
+     * warden carries claws at ~90 /m and a thigh at ~3 /m in one buffer, so one
+     * global percentile is set by the claws and everything else falls under the
+     * gate — which is how you get a body with wear on nothing but its fingertips.
+     */
+    this.spans = [];
     /** default vertex tint function: (x,y,z,nx,ny,nz)=>[r,g,b] */
     this.colorFn = null;
     /** emissive mask for the *next* primitive added (0..1, or a fn) */
     this.mask = 0;
+  }
+
+  /** Close the vertex range opened by a primitive. */
+  _mark(start) {
+    const end = this.vertexCount;
+    if (end > start) this.spans.push(start, end);
+    return this;
   }
 
   get vertexCount() { return this.pos.length / 3; }
@@ -407,7 +520,7 @@ export class SkinBuilder {
         this.idx.push(a, b, cc, b, d, cc);
       }
     }
-    return this;
+    return this._mark(base);
   }
 
   /**
@@ -453,7 +566,7 @@ export class SkinBuilder {
     const idx = geo.getIndex();
     if (idx) for (let i = 0; i < idx.count; i++) this.idx.push(base + idx.getX(i));
     else for (let i = 0; i < posA.count; i++) this.idx.push(base + i);
-    return this;
+    return this._mark(base);
   }
 
   /**
@@ -510,7 +623,7 @@ export class SkinBuilder {
       this.idx.push(a, b, c, b, d, c);
       if (o.doubleSided !== false) this.idx.push(c, b, a, c, d, b);
     }
-    return this;
+    return this._mark(base);
   }
 
   build(o = {}) {
@@ -522,6 +635,8 @@ export class SkinBuilder {
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(this.si, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.sw, 4));
     g.setAttribute('aMask', new THREE.Float32BufferAttribute(this.msk, 1));
+    g.setAttribute('aWear', new THREE.Float32BufferAttribute(
+      curvatureAttr(this.pos, this.nor, this.idx, this.spans), 1));
     const n = this.vertexCount;
     g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1)
       : new THREE.Uint16BufferAttribute(this.idx, 1));
@@ -675,39 +790,150 @@ export function extrudeProfile(pts2, thick, o = {}) {
   return g;
 }
 
-/** A skull: cranium + brow ridge + muzzle + mandible. Origin at the atlas. */
+/**
+ * Press concave features into a closed convex shell by displacing its vertices
+ * along their own normals, then re-deriving the normals.
+ *
+ * WHY THIS AND NOT MORE PRIMITIVES. `mergeGeos` is a buffer concatenation, not
+ * a CSG union: a shape pushed into another shape does not subtract from it, it
+ * simply ends up sealed inside it and contributes nothing but triangles. That is
+ * exactly what happened to the skull's eye sockets — two cones sat entirely
+ * within the cranium ellipsoid (MEASURED: cone tip at z = 0.41 x size, cranium
+ * surface at that latitude z = 0.458 x size), so every skull in the bestiary
+ * rendered as a blank ovoid and the critic called the boss's head "a featureless
+ * white ovoid ... no eyes, no jaw, no plate seams, nothing".
+ *
+ * A socket has to be a real dish in the surface, and a real dish brings the
+ * three things the flat version could not: a normal that turns away from the
+ * key light, a concavity the curvature pass reads as a cavity (which then
+ * darkens/roughens/occludes together — see `curvatureAttr`), and a brow that
+ * physically overhangs it.
+ *
+ * Each feature is a CONE OF DIRECTIONS from the shell's centre rather than a
+ * sphere in space, because on an ellipsoid that is the only parameterisation
+ * that stays the same shape as the shell is scaled non-uniformly by the caller.
+ *
+ * @param {THREE.BufferGeometry} geo   shell to carve, IN PLACE
+ * @param {number[]} c                 shell centre in the geometry's own space
+ * @param {Array<{dir:number[],ang:number,depth:number,rim?:number}>} feats
+ *        dir   axis of the feature (need not be normalised)
+ *        ang   half-angle of the dish, radians
+ *        depth how far in the floor of the dish sits, metres
+ *        rim   how far the surrounding ring stands proud, metres — this is what
+ *              turns a dent into an orbit with a brow over it
+ */
+function carveDishes(geo, c, feats) {
+  const pa = geo.getAttribute('position');
+  const na = geo.getAttribute('normal');
+  const P = pa.array, N = na.array;
+  const F = feats.map((f) => {
+    const l = Math.hypot(f.dir[0], f.dir[1], f.dir[2]) || 1;
+    return { x: f.dir[0] / l, y: f.dir[1] / l, z: f.dir[2] / l, ang: f.ang, d: f.depth, rim: f.rim ?? 0 };
+  });
+  for (let i = 0; i < pa.count; i++) {
+    const o = i * 3;
+    const dx = P[o] - c[0], dy = P[o + 1] - c[1], dz = P[o + 2] - c[2];
+    const l = Math.hypot(dx, dy, dz) || 1;
+    const ux = dx / l, uy = dy / l, uz = dz / l;
+    let disp = 0;
+    for (const f of F) {
+      const cosA = ux * f.x + uy * f.y + uz * f.z;
+      if (cosA <= 0) continue;                       // never reach round the back
+      const q = Math.acos(Math.min(1, cosA)) / f.ang;
+      if (q >= 1.6) continue;
+      // Dish floor: flat-bottomed rather than conical, so it reads as an orbit
+      // and not as a drilled hole.
+      const dish = 1 - smoothstep(0.30, 1.0, q);
+      // Rampart just outside the dish — the brow/orbital margin.
+      const ring = smoothstep(0.82, 1.06, q) * (1 - smoothstep(1.06, 1.55, q));
+      disp += -f.d * dish + f.rim * ring;
+    }
+    if (disp === 0) continue;
+    P[o] += N[o] * disp; P[o + 1] += N[o + 1] * disp; P[o + 2] += N[o + 2] * disp;
+  }
+  pa.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * A skull: cranium + brow ridge + muzzle + mandible. Origin at the atlas.
+ *
+ * The cranium and muzzle are carved (see `carveDishes`) rather than decorated,
+ * so the orbits, the temporal fossae, the parietal hollows either side of the
+ * sagittal line and the nasal aperture are genuine concavities in the shell.
+ *
+ * The tessellation is raised from 16x12 to 26x18 (34x24 above 0.4 m, i.e. for
+ * the warden) because a carved feature cannot be finer than the mesh it is
+ * carved into: a 0.42 rad orbit on a 12-ring sphere spans two rings, which is a
+ * crease, not a socket. Cost is ~+560 triangles per skull at the small size and
+ * ~+1230 at the large one, on a 4.4 M frame — and the skull geometry is built
+ * once per archetype and shared by every instance of it.
+ */
 export function skullGeo(size, o = {}) {
   const parts = [];
-  const cran = new THREE.SphereGeometry(size * 0.5, 16, 12);
+  const seg = o.seg ?? (size > 0.4 ? 34 : 26);
+  const rings = Math.max(10, Math.round(seg * 0.69));
+
+  const cran = new THREE.SphereGeometry(size * 0.5, seg, rings);
   cran.scale(0.86, 1.0, 1.12);
   cran.translate(0, size * 0.30, -size * 0.03);
+  carveDishes(cran, [0, size * 0.30, -size * 0.03], [
+    /* Orbits — deep, forward, outboard and aimed slightly BELOW the equator.
+       The elevation matters: at +0.13 the dish landed at y = 0.367 x size, which
+       is inside the brow block below, so the brow filled the socket back in and
+       the skull still read as an ovoid. At -0.02 the socket sits at y = 0.29 and
+       the brow becomes what it is on a real skull — a shelf overhanging it. */
+    { dir: [0.50, -0.02, 0.87], ang: 0.42, depth: size * 0.125, rim: size * 0.040 },
+    { dir: [-0.50, -0.02, 0.87], ang: 0.42, depth: size * 0.125, rim: size * 0.040 },
+    // temporal fossae — the wide shallow hollow behind each orbit
+    { dir: [0.96, 0.10, 0.26], ang: 0.50, depth: size * 0.045, rim: size * 0.012 },
+    { dir: [-0.96, 0.10, 0.26], ang: 0.50, depth: size * 0.045, rim: size * 0.012 },
+    // parietal hollows — carved in PAIRS so the untouched strip between them is
+    // left standing as a sagittal crest, which costs no extra geometry at all
+    { dir: [0.34, 0.92, 0.20], ang: 0.40, depth: size * 0.038, rim: 0 },
+    { dir: [-0.34, 0.92, 0.20], ang: 0.40, depth: size * 0.038, rim: 0 },
+    // occipital dish at the back of the vault
+    { dir: [0, -0.06, -1.0], ang: 0.46, depth: size * 0.040, rim: size * 0.010 },
+  ]);
   parts.push(cran);
 
-  const brow = roundedBox(size * 0.80, size * 0.16, size * 0.30, size * 0.055);
-  brow.translate(0, size * 0.33, size * 0.40);
+  // Supraorbital shelf. Raised from y 0.345 to 0.400 so its underside clears the
+  // carved orbits and it overhangs them instead of plugging them.
+  const brow = roundedBox(size * 0.72, size * 0.150, size * 0.290, size * 0.055);
+  brow.translate(0, size * 0.400, size * 0.400);
   parts.push(brow);
 
-  const muzzle = new THREE.SphereGeometry(size * 0.30, 12, 9);
+  const muzzle = new THREE.SphereGeometry(size * 0.30, 16, 12);
   muzzle.scale(0.80, 0.72, 1.25);
   muzzle.translate(0, size * 0.14, size * 0.40);
+  carveDishes(muzzle, [0, size * 0.14, size * 0.40], [
+    // nasal aperture — the single most recognisable hole in a skull
+    { dir: [0, 0.16, 0.99], ang: 0.36, depth: size * 0.085, rim: size * 0.016 },
+    // maxillary fossae either side of it
+    { dir: [0.72, -0.10, 0.68], ang: 0.30, depth: size * 0.030, rim: 0 },
+    { dir: [-0.72, -0.10, 0.68], ang: 0.30, depth: size * 0.030, rim: 0 },
+  ]);
   parts.push(muzzle);
 
   const jaw = roundedBox(size * 0.56, size * 0.13, size * 0.56, size * 0.05);
   jaw.translate(0, size * (o.jawOpen ?? 0.02) - size * 0.03, size * 0.30);
   parts.push(jaw);
 
-  // recessed eye sockets: dark cones pressed into the cranium
-  for (const sx of [-1, 1]) {
-    const soc = new THREE.ConeGeometry(size * 0.155, size * 0.22, 10);
-    soc.rotateX(Math.PI * 0.5);
-    soc.translate(sx * size * 0.21, size * 0.32, size * 0.30);
-    parts.push(soc);
-  }
-  // cheekbone struts
+  /* NO backing shell inside the orbit, deliberately. The first attempt put one
+     there to make the socket read black, and it did the opposite: the cranium is
+     a CLOSED shell, so a carved dish is a bowl and not a hole, and a sphere
+     placed at the bowl's floor protruded 0.10 x size back out through the
+     opening and filled the socket in. The darkness has to come from the dish
+     itself — its normals turn away from the key light, and the curvature pass
+     reads it as a cavity and darkens, roughens and occludes it together (see
+     RECIPES.wear). That is also the only version of it that stays correct when
+     the light moves. */
+  // cheekbone struts — the zygomatic arch bridging orbit to temporal fossa
   for (const sx of [-1, 1]) {
     const z = roundedBox(size * 0.10, size * 0.09, size * 0.34, size * 0.035);
     z.rotateY(sx * 0.24);
-    z.translate(sx * size * 0.31, size * 0.20, size * 0.20);
+    z.translate(sx * size * 0.315, size * 0.175, size * 0.215);
     parts.push(z);
   }
   return mergeGeos(parts);

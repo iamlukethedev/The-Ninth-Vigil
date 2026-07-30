@@ -60,6 +60,10 @@ import { Shrines } from './director/Shrines.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+/** Shared "the cursor is over open floor" answer — see `Director._pickAt`. */
+const GROUND_PICK = Object.freeze({ kind: 'ground', entity: null });
 
 /** The single record the Director keeps inside CombatSystem's buff list. */
 const BUFF_RECORD_ID = 'director.shrine';
@@ -109,6 +113,10 @@ export class Director {
     this._scratch = [];
     this._toastGate = new Map();
     this._stats = { encounters: 0, armed: 0, active: 0, cleared: 0, bodies: 0, drawCalls: 0 };
+    /** Reused answer for the cursor resolver — this runs inside the input tick. */
+    this._pick = { kind: 'attack', entity: null };
+    /** Latched once the player takes the controls. See `_handOverToPlayer`. */
+    this._handedOver = false;
   }
 
   /* ================================================================ *
@@ -121,6 +129,9 @@ export class Director {
       this._bind();
       this.world.reset({ depth: 1 });
       this.objectives.reset();
+      /* Input owns the left mouse button but must not know what a monster is, so
+         it asks us what the cursor is over. See `_pickAt` and the Input header. */
+      try { this.engine.input?.setPickProvider?.((ray, ground) => this._pickAt(ray, ground)); } catch { /* optional */ }
     } catch (e) {
       this.failed = true;
       console.error('[director] init failed — module disabled', e);
@@ -315,6 +326,7 @@ export class Director {
 
   update(dt, elapsed) {
     if (this.failed) return;
+    if (!this._handedOver && this.engine.input?.userActed) this._handOverToPlayer();
     const hero = this._hero();
     if (hero?.position) {
       this._heroXZ.x = hero.position.x;
@@ -351,6 +363,38 @@ export class Director {
     if (this.pacing.shouldPublish(this.engine.clock.frame)) this._publishIntensity();
     if (this.world.revision !== this._pubState) this._publishState(false);
     if (this.objectives.revision !== this._pubObj) this._publishObjectives(false);
+  }
+
+  /**
+   * Take every scenario performance off the board, once, the first time a human
+   * touches the controls. `applyScenario` poses the whole game for a still
+   * frame, and one of those poses is CombatSystem's damage GOVERNOR: while
+   * `_govern` is set, `_governDamage` clamps every hit so no body ever dies and
+   * the hero never drops below `heroFloor` — correct for a capture, fatal for
+   * play, because monsters are effectively immortal.
+   *
+   * CombatSystem drops it itself, but only inside its `_readInput` bind loop, so
+   * it needs a *bound ability key* to have been pressed. A player who walks with
+   * the left button and never presses an ability key — or who plays on the
+   * keyboard — never released it, and now that a click on open floor correctly
+   * resolves to a move order rather than the LMB attack bind, that gap is easy
+   * to fall into. Latching on `Input.userActed` closes it for every input route.
+   *
+   * This reaches into CombatSystem's scenario state, which properly belongs to
+   * CombatSystem: the durable fix is for `CombatSystem._readInput` to latch on
+   * `input.userActed` instead of on a BINDS press (src/combat/CombatSystem.js,
+   * the `_govern = false` line). Guarded and idempotent until then.
+   */
+  _handOverToPlayer() {
+    this._handedOver = true;
+    try {
+      const combat = this.engine.get('combat');
+      if (combat && !combat.__dead) {
+        combat._govern = false;
+        combat._script = null;
+        combat._userInput = true;      // enables held-button chaining and cursor aim
+      }
+    } catch { /* combat may be absent or refactored — never fail the frame for this */ }
   }
 
   /* ------------------------------------------------------------ threat */
@@ -815,6 +859,73 @@ export class Director {
     if (!list) return null;
     for (const en of list) if (!en.dead && (en.isBoss || en.rank === 'boss')) return en;
     return null;
+  }
+
+  /**
+   * What the cursor is over, so `Input` can tell an attack order from a move
+   * order. Called at most once a frame and only while the left button is down.
+   *
+   * This is a RAY-vs-CAPSULE test against the bodies, deliberately not a
+   * distance test against the cursor's ground point. Under a 56-degree top-down
+   * camera the ground plane beneath a monster's chest projects several metres
+   * BEHIND its feet — a dead-centre click on a tall body lands its ground pick
+   * on open floor — so a ground-distance test would classify the most obvious
+   * attack in the game as "walk over there" and send the hero through the body.
+   *
+   * The capsule is vertical, which collapses the general segment test to a ray /
+   * upright-cylinder intersection: solve the 2D circle in XZ for the entry and
+   * exit parameters, then check the height the ray spans between them overlaps
+   * the body. Exact, branch-light, and allocation-free.
+   *
+   * @param {{origin:{x:number,y:number,z:number},direction:{x:number,y:number,z:number}}} ray
+   * @returns {{kind:'attack'|'ground', entity:*}}
+   */
+  _pickAt(ray, ground) {
+    const bes = this.engine.get('bestiary');
+    const list = bes && !bes.__dead ? bes.entities : null;
+    if (!list || !list.length || !ray) return GROUND_PICK;
+
+    const ox = ray.origin.x, oy = ray.origin.y, oz = ray.origin.z;
+    const dx = ray.direction.x, dy = ray.direction.y, dz = ray.direction.z;
+    const a = dx * dx + dz * dz;
+    if (a < 1e-9) return GROUND_PICK;             // looking straight down: no cylinder to enter
+
+    let hit = null, hitT = Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const en = list[i];
+      if (!en || en.dead || en.isDead) continue;
+      const p = en.position;
+      if (!p) continue;
+
+      /* The body's own collision radius plus a small forgiveness margin. Wide
+         enough that clicking a moving target feels fair, tight enough that a
+         click a metre off the silhouette still walks you there. */
+      const r = Math.max(0.45, num(en.radius, 0.5)) + 0.28;
+      const h = Math.max(0.9, num(en.height, 1.8));
+
+      const fx = ox - p.x, fz = oz - p.z;
+      const b = fx * dx + fz * dz;
+      const c = fx * fx + fz * fz - r * r;
+      const disc = b * b - a * c;
+      if (disc < 0) continue;                     // the ray misses the footprint entirely
+      const sq = Math.sqrt(disc);
+      let t0 = (-b - sq) / a, t1 = (-b + sq) / a;
+      if (t1 < 0) continue;                       // the body is behind the lens
+      if (t0 < 0) t0 = 0;
+
+      /* Height the ray occupies while inside the footprint, against the body's
+         own slab. Testing the interval rather than a single point is what makes
+         a click on the top of a skull count and a click on the floor past its
+         feet not. */
+      const ya = oy + dy * t0, yb = oy + dy * t1;
+      if (Math.max(ya, yb) < p.y || Math.min(ya, yb) > p.y + h) continue;
+
+      if (t0 < hitT) { hitT = t0; hit = en; }     // nearest body to the lens wins
+    }
+    void ground;
+    if (!hit) return GROUND_PICK;
+    this._pick.entity = hit;
+    return this._pick;
   }
 
   get intensity() { return this.pacing.value; }

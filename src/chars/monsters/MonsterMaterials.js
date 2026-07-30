@@ -111,19 +111,66 @@ import { fbm3, smoothstep } from './RigKit.js';
  * separation from the floor is a different critic axis and the enemies used to
  * fail it: at these gains the measured enemy-to-floor luma separation is still
  * 0.16-0.30 against tools/actors.mjs's 0.05 invisibility threshold.
+ *
+ * `wear` = [edgeGain, cavityGain, edgeRoughness, cavityRoughAdd] for the
+ * curvature-driven coupled wear layer, and `wearCol` is the material UNDER the
+ * finish. See the wear block in FRAG_EFFECTS and RigKit.curvatureAttr. The
+ * coupling is a material property, so the numbers are per recipe: iron polishes
+ * to a bright specular and tarnishes nearly black, bone chalks to a dull pale
+ * and only stains, cloth does neither and is left at zero.
  */
 export const RECIPES = {
-  bone:   { kind: 'bone',    uv: 0.42, seed: 611,  normalScale: 1.15, env: 0.75, rough: 1.0, floor: 0.024, albedo: 0.061, rim: 0.50 },
-  boneOld:{ kind: 'bone',    uv: 0.46, seed: 977,  normalScale: 1.25, env: 0.55, rough: 1.0, tint: [0.78, 0.74, 0.66], floor: 0.024, albedo: 0.052, rim: 0.50 },
-  flesh:  { kind: 'flesh',   uv: 0.42, seed: 233,  normalScale: 1.1,  env: 0.6,  floor: 0.026, albedo: 0.066, rim: 0.65 },
-  rot:    { kind: 'flesh',   uv: 0.44, seed: 809,  normalScale: 1.25, env: 0.5,  tint: [0.70, 0.78, 0.62], floor: 0.026, albedo: 0.044, rim: 0.65 },
-  charred:{ kind: 'flesh',   uv: 0.36, seed: 1471, normalScale: 1.35, env: 0.45, tint: [0.30, 0.26, 0.25], floor: 0.022, albedo: 0.012, rim: 0.80 },
-  cloth:  { kind: 'cloth',   uv: 0.50, seed: 353,  normalScale: 1.0,  env: 0.45, floor: 0.028, albedo: 0.072, rim: 0.85 },
-  hide:   { kind: 'leather', uv: 0.46, seed: 457,  normalScale: 1.1,  env: 0.55, floor: 0.026, albedo: 0.068, rim: 0.75 },
-  metal:  { kind: 'metal',   uv: 0.38, seed: 733,  normalScale: 0.95, env: 1.15, floor: 0.018, rim: 0.80 },
-  brass:  { kind: 'gold',    uv: 0.26, seed: 1093, normalScale: 0.8,  env: 1.3,  floor: 0.018, rim: 0.70 },
-  basalt: { kind: 'stone',   uv: 0.48, seed: 1279, normalScale: 1.2,  env: 0.7,  tint: [0.55, 0.50, 0.52], floor: 0.024, albedo: 0.058, rim: 0.72 },
+  /* Bone's cavity gain is the highest of the non-metals, and that is aimed at
+     one feature: skullGeo now carves real orbits, and an orbit that is not
+     markedly darker than the cheek beside it is a dimple, not an eye socket.
+     The skeletons are only ~14 px tall on screen, so the socket has to win on
+     VALUE — there is no room for it to win on shape. */
+  bone:   { kind: 'bone',    uv: 0.42, seed: 611,  normalScale: 1.15, env: 0.75, rough: 1.0, floor: 0.024, albedo: 0.061, rim: 0.50, wear: [0.34, 0.76, 0.62, 0.24], wearCol: [0.190, 0.184, 0.166] },
+  boneOld:{ kind: 'bone',    uv: 0.46, seed: 977,  normalScale: 1.25, env: 0.55, rough: 1.0, tint: [0.78, 0.74, 0.66], floor: 0.024, albedo: 0.052, rim: 0.50, wear: [0.30, 0.78, 0.68, 0.26], wearCol: [0.160, 0.152, 0.132] },
+  flesh:  { kind: 'flesh',   uv: 0.42, seed: 233,  normalScale: 1.1,  env: 0.6,  floor: 0.026, albedo: 0.066, rim: 0.65, wear: [0.16, 0.46, 0.42, 0.12], wearCol: [0.150, 0.086, 0.078] },
+  rot:    { kind: 'flesh',   uv: 0.44, seed: 809,  normalScale: 1.25, env: 0.5,  tint: [0.70, 0.78, 0.62], floor: 0.026, albedo: 0.044, rim: 0.65, wear: [0.16, 0.50, 0.42, 0.12], wearCol: [0.120, 0.106, 0.070] },
+  charred:{ kind: 'flesh',   uv: 0.36, seed: 1471, normalScale: 1.35, env: 0.45, tint: [0.30, 0.26, 0.25], floor: 0.022, albedo: 0.012, rim: 0.80, wear: [0.30, 0.55, 0.50, 0.18], wearCol: [0.115, 0.090, 0.074] },
+  cloth:  { kind: 'cloth',   uv: 0.50, seed: 353,  normalScale: 1.0,  env: 0.45, floor: 0.028, albedo: 0.072, rim: 0.85, wear: [0.20, 0.40, 0.78, 0.10], wearCol: [0.135, 0.126, 0.112] },
+  hide:   { kind: 'leather', uv: 0.46, seed: 457,  normalScale: 1.1,  env: 0.55, floor: 0.026, albedo: 0.068, rim: 0.75, wear: [0.28, 0.48, 0.44, 0.16], wearCol: [0.150, 0.122, 0.094] },
+  metal:  { kind: 'metal',   uv: 0.38, seed: 733,  normalScale: 0.95, env: 1.15, floor: 0.018, rim: 0.80, wear: [0.52, 0.66, 0.17, 0.26], wearCol: [0.330, 0.334, 0.348], wearM: [1.0, 0.14] },
+  brass:  { kind: 'gold',    uv: 0.26, seed: 1093, normalScale: 0.8,  env: 1.3,  floor: 0.018, rim: 0.70, wear: [0.46, 0.62, 0.16, 0.24], wearCol: [0.380, 0.300, 0.150], wearM: [1.0, 0.18] },
+  basalt: { kind: 'stone',   uv: 0.48, seed: 1279, normalScale: 1.2,  env: 0.7,  tint: [0.55, 0.50, 0.52], floor: 0.024, albedo: 0.058, rim: 0.72, wear: [0.30, 0.50, 0.66, 0.18], wearCol: [0.165, 0.158, 0.162] },
   ember:  { kind: 'ash',     uv: 0.26, seed: 1613, normalScale: 0.9,  env: 0.5,  floor: 0.022, albedo: 0.038, rim: 0.60 },
+
+  /* ---------------------------------------------------------------------- *
+   * WARDEN SET — boss-scale materials.
+   *
+   * The warden is 5.4 m tall and 322 px on screen in the `boss` capture, three
+   * to four times any other enemy, and it was wearing recipes authored for a
+   * burnt hellhound (`charred`) and for crypt masonry (`basalt`). Two separate
+   * failures came out of that:
+   *
+   *  1. `charred` targets albedo 0.012 — by a factor of five the darkest recipe
+   *     in the library. ABLATION on the live boss frame: zeroing the diffuse
+   *     contribution from the albedo map moved the torso's display luma from
+   *     0.325 to 0.199, i.e. only 39 % of what the torso reads came from the one
+   *     term that can carry surface structure at all. The other 61 % was rim,
+   *     aura, albedo floor and specular, none of which has any texture in it.
+   *     That ratio IS the "untextured flat-colour geometry" flag.
+   *  2. Every recipe's `uv` is authored for a 1.7-2.2 m enemy. At 0.36 m per
+   *     repeat the warden's torso carries 9 repeats across a 1.9 m chest, so the
+   *     largest thing the texture can say lands at ~7 px on a 322 px figure.
+   *
+   * These four fix both: a much larger share of the value comes from the map,
+   * and the repeats are scaled to the body carrying them, so the macro tier
+   * lands at 20-30 px where the eye reads it as forged plate rather than noise.
+   *
+   * The albedo targets are solved against the HERO CUIRASS, which is this
+   * project's known-good reference surface: masked mean display luma 0.400 in
+   * `shots/closeup.png`. A first pass at hide 0.046 / bone 0.070 fixed the
+   * structure but measured the torso at 0.644 and the thigh at 0.607 — a 60 %
+   * overshoot of the reference, which is just the opposite failure. At the
+   * values below the torso measures 0.442 against the hero's 0.400.
+   * ------------------------------------------------------------------------ */
+  wardenPlate: { kind: 'plate', uv: 0.62, seed: 2141, normalScale: 1.30, env: 0.92, floor: 0.020, albedo: 0.138, rim: 0.42, wear: [0.62, 0.72, 0.15, 0.30], wearCol: [0.355, 0.360, 0.375], wearM: [0.95, 0.12] },
+  wardenIron:  { kind: 'plate', uv: 0.40, seed: 2273, normalScale: 1.20, env: 1.00, floor: 0.018, rim: 0.50, wear: [0.58, 0.70, 0.16, 0.28], wearCol: [0.340, 0.344, 0.360], wearM: [1.00, 0.14] },
+  wardenBone:  { kind: 'bone',  uv: 0.30, seed: 2311, normalScale: 1.35, env: 0.62, rough: 1.0, tint: [0.74, 0.71, 0.66], floor: 0.022, albedo: 0.039, rim: 0.38, wear: [0.40, 0.80, 0.60, 0.28], wearCol: [0.215, 0.206, 0.184] },
+  wardenHide:  { kind: 'leather', uv: 0.54, seed: 2377, normalScale: 1.30, env: 0.50, tint: [0.62, 0.56, 0.52], floor: 0.024, albedo: 0.020, rim: 0.44, wear: [0.34, 0.56, 0.40, 0.20], wearCol: [0.150, 0.120, 0.098] },
 };
 
 /**
@@ -296,6 +343,14 @@ uniform float uMonEmiss;
 uniform vec3  uMonEmissColor;
 uniform vec2  uMonFade;
 uniform vec3  uMonAlbFloor;
+varying float vMonWear;
+uniform vec4  uMonWear;
+uniform vec3  uMonWearCol;
+uniform vec2  uMonWearM;
+/* Carried from the effects block (which runs at emissivemap_fragment, long
+   before the lighting accumulates) down to aomap_fragment, where the indirect
+   lobes can still be attenuated. Same trick as the hero's heroOcclusion. */
+float monOcc = 1.0;
 ${NOISE_GLSL}
 `;
 
@@ -365,6 +420,51 @@ const FRAG_EFFECTS = /* glsl */`
        damage tint the bestiary applies. */
     diffuseColor.rgb = uMonAlbFloor * monStruct + diffuseColor.rgb * uMonAlbGain * ( 1.0 - uMonAlbFloor );
 
+    /* ---- COUPLED WEAR AND TARNISH, off measured curvature ----
+       The rubric's surface bar is "a wear/grime layer that darkens, roughens,
+       and occludes together", and for metal specifically "edge wear to bright
+       material and tarnish in cavities". Every enemy in the bestiary failed
+       that outright: the only per-vertex signal a monster carried was grimeFn,
+       a world-space height-and-normal ramp, which by construction cannot know
+       where a rim or a hollow is. So nothing on a monster ever wore.
+
+       vMonWear is signed per-vertex curvature, gated per authored piece — see
+       RigKit.curvatureAttr for the estimator and for why it is an attribute
+       rather than a map (the scene is at the 16-sampler ceiling; Bestiary
+       already deletes each body's metalness and AO maps to buy two units back,
+       so a wear map is simply not affordable).
+
+         > 0  a proud edge   → toward bare material, SMOOTHER, more metallic
+         < 0  a cavity       → DARKER, ROUGHER, and occluded via monOcc
+
+       Applied AFTER the albedo floor on purpose. The floored value is what the
+       eye actually receives — on a monster the textured pedestal is the majority
+       of it — so wear applied before the floor would be diluted by the same
+       48:1 factor that made the flat pedestal a bug in the first place.
+
+       The four gains are per recipe (RECIPES.wear) because the coupling is a
+       material property: iron polishes to a bright specular and tarnishes almost
+       black, bone chalks to a dull pale and merely stains, cloth does neither. */
+    float monEdgeW = clamp(  vMonWear, 0.0, 1.0 ) * uMonWear.x;
+    float monCavW  = clamp( -vMonWear, 0.0, 1.0 ) * uMonWear.y;
+    diffuseColor.rgb = mix( diffuseColor.rgb, uMonWearCol, monEdgeW );
+    diffuseColor.rgb *= 1.0 - 0.62 * monCavW;
+    roughnessFactor = clamp(
+      mix( roughnessFactor, uMonWear.z, monEdgeW ) + uMonWear.w * monCavW, 0.04, 1.0 );
+    /* Metalness moves with the other three, in both directions. An abraded
+       arris is BARE metal, so it goes up; oxide and packed dirt are dielectrics,
+       so a tarnished hollow goes down. Skipping this is what leaves a "worn"
+       plate reading as a uniformly polished one with a paint job on it, and
+       leaves a tarnished cavity reading as a dark mirror.
+       Non-metals declare (0, 1) and their metalness is <= 0.02, so this is a
+       no-op for bone, hide, cloth and flesh. */
+    metalnessFactor = mix( metalnessFactor, uMonWearM.x, monEdgeW )
+      * mix( 1.0, uMonWearM.y, monCavW );
+    // "Occludes" is the third leg and the one that is usually skipped. Without
+    // it the environment probe puts back in indirect specular exactly what the
+    // albedo darkening just removed, and the cavity stops reading as a cavity.
+    monOcc = 1.0 - 0.72 * monCavW;
+
     totalEmissiveRadiance *= uMonEmiss;
     // per-vertex emissive mask: eye sockets, runes, ember cores, weak points.
     // Lets every glow detail share the body material instead of costing a draw.
@@ -431,24 +531,39 @@ const FRAG_EFFECTS = /* glsl */`
   }
 `;
 
+/** Cavity occlusion reaching the indirect lobes. See `monOcc` in FRAG_HEAD. */
+const FRAG_AO = /* glsl */`
+  {
+    reflectedLight.indirectDiffuse *= monOcc;
+    #if defined( USE_ENVMAP ) && defined( STANDARD )
+      reflectedLight.indirectSpecular *= monOcc;
+    #endif
+    #ifdef USE_SHEEN
+      sheenSpecularIndirect *= monOcc;
+    #endif
+  }
+`;
+
 /** Attach the shared monster shader to any Standard/Physical material. */
 export function injectMonsterShader(mat, u) {
   mat.userData.monU = u;
   mat.onBeforeCompile = (shader) => {
     for (const k in u) shader.uniforms[k] = u[k];
-    shader.vertexShader = 'varying vec3 vMonPos;\nvarying float vMonMask;\nattribute float aMask;\n' +
-      shader.vertexShader.replace(
+    shader.vertexShader = 'varying vec3 vMonPos;\nvarying float vMonMask;\n'
+      + 'varying float vMonWear;\nattribute float aMask;\nattribute float aWear;\n'
+      + shader.vertexShader.replace(
         '#include <skinning_vertex>',
-        '#include <skinning_vertex>\n\tvMonPos = transformed;\n\tvMonMask = aMask;'
+        '#include <skinning_vertex>\n\tvMonPos = transformed;\n\tvMonMask = aMask;\n\tvMonWear = aWear;'
       );
     shader.fragmentShader = FRAG_HEAD + shader.fragmentShader
       .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>' + FRAG_DISSOLVE)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>' + FRAG_EFFECTS);
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>' + FRAG_EFFECTS)
+      .replace('#include <aomap_fragment>', '#include <aomap_fragment>' + FRAG_AO);
   };
-  // v3: albedo floor + three-lobe aura + map-modulated pedestal. Defines are part
-  // of three's own cache key so this is belt-and-braces, but it documents that
-  // the source changed shape.
-  mat.customProgramCacheKey = () => 'sanctum-monster-v4';
+  // v5: adds the curvature-driven coupled wear/tarnish layer and its cavity
+  // occlusion. Defines are part of three's own cache key so this is
+  // belt-and-braces, but it documents that the source changed shape.
+  mat.customProgramCacheKey = () => 'sanctum-monster-v5';
   return mat;
 }
 
@@ -473,6 +588,16 @@ export function makeMonsterUniforms(o = {}) {
     uMonEmiss: { value: 1 },
     uMonEmissColor: { value: new THREE.Color(0, 0, 0) },
     uMonFade: { value: new THREE.Vector2(0, 0) },
+    /* (edgeGain, cavityGain, edgeRoughness, cavityRoughAdd) — see RECIPES.wear.
+       Defaults to zero on both gains so any material built without a wear
+       profile behaves exactly as it did before this layer existed. */
+    uMonWear: { value: new THREE.Vector4(
+      o.wear?.[0] ?? 0, o.wear?.[1] ?? 0, o.wear?.[2] ?? 0.3, o.wear?.[3] ?? 0.22) },
+    /* The material UNDER the finish, in the same post-floor scene-linear space
+       the wear mix happens in: bare steel, chalked bone, scuffed leather. */
+    uMonWearCol: { value: new THREE.Vector3().fromArray(o.wearCol ?? [0.30, 0.30, 0.32]) },
+    /* (metalness at full edge wear, metalness multiplier at full cavity). */
+    uMonWearM: { value: new THREE.Vector2(o.wearM?.[0] ?? 0, o.wearM?.[1] ?? 1) },
   };
 }
 
@@ -613,7 +738,11 @@ export class MonsterMaterials {
     mat.userData.recipe = key;
     const floor = r.albedo ? Math.min(r.floor ?? 0.075, r.albedo * 0.28) : (r.floor ?? 0.075);
     const u = makeMonsterUniforms(Object.assign(
-      { albFloor: floor, albNorm: maps ? 1 / this.mid(key) : (1 / 0.06) }, o));
+      {
+        albFloor: floor,
+        albNorm: maps ? 1 / this.mid(key) : (1 / 0.06),
+        wear: r.wear, wearCol: r.wearCol, wearM: r.wearM,
+      }, o));
     injectMonsterShader(mat, u);
     this.trim(mat);
     this._owned.push(mat);
