@@ -400,12 +400,11 @@ short version is:
 
 Run `npm run guard && npm run smoke` before pushing — those are what CI checks.
 
-A note on provenance, since it is relevant to how you read the code: this project was built
-largely by AI coding agents working against `ENGINE_CONTRACT.md` and `CRITIC_RUBRIC.md`, with the
-screenshot harness as the objective function. The unusually dense explanatory comments — many of
-which record a measurement, a rejected approach, or why an apparently redundant line is load
-bearing — are a deliberate part of that process, and the documents above are written as briefings
-because that is what they were.
+One note on house style, since it will strike you immediately: the comments are unusually dense,
+and most of them record a measurement, an approach that was tried and rejected, or why an
+apparently redundant line is load bearing. That is deliberate. On a project whose defects are
+visual and whose fixes are easy to get wrong twice, the reasoning behind a line is worth more than
+a restatement of what it does. Please write them the same way.
 
 ## License
 

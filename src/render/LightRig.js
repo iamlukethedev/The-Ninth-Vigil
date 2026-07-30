@@ -298,6 +298,11 @@ const _steady = { mul: 1, hot: 0.35, jx: 0, jy: 0, jz: 0 };
 
 const _sphere = new THREE.Sphere();
 
+/* How much better a challenger has to be to take a settled shadow slot, and how
+ * long the incumbent is protected for. See the tier split in `select()`. */
+const SHADOW_EVICT_MARGIN = 1.6;
+const SHADOW_MIN_TENURE = 2.5;    // seconds
+
 /**
  * WebGL can only afford a handful of real lights, and — critically — changing
  * how many lights are in the scene rebuilds every shader program. So the pool
@@ -411,14 +416,63 @@ export class LightPool {
 
     cand.sort(_byScoreDesc);
 
-    // Split the ranked list into the shadow tier and the plain tier.
+    /* Shadow tier first, and it is deliberately sticky.
+     *
+     * Ranking both tiers off one continuous score, with only the multiplicative
+     * incumbency bonus above to separate them, lets a light sitting near the
+     * shadow/plain boundary cross it on almost every frame. That is not a
+     * cosmetic wobble: crossing it hands a shadow slot to a different practical,
+     * so the light teleports across the room (measured: mean 36 cm per frame,
+     * peak 20.9 m) and its depth cube is rasterised again from the new place,
+     * while the cross-fade takes it down to zero and back up (0 -> 150 cd).
+     * The room's whole shadow pattern reshuffles a few times a second, which is
+     * what read as hard-edged black wedges flashing near the hero.
+     *
+     * So a challenger does not get a shadow slot by being marginally better. It
+     * has to beat the weakest incumbent by `SHADOW_EVICT_MARGIN`, and that
+     * incumbent has to have held the slot for `SHADOW_MIN_TENURE` seconds. The
+     * plain tier keeps the cheap ranking — swapping an unshadowed slot only
+     * cross-fades an intensity, it does not restructure the frame.
+     */
+    const holdsShadow = (p) => !!p._slot?.shadowed;
+
+    // Rank first, exactly as before, then hand the incumbents their veto.
     const wantShadow = [];
+    for (let i = 0; i < cand.length && wantShadow.length < this.shadowSlots; i++) {
+      if (cand[i].allowShadow) wantShadow.push(cand[i]);
+    }
+    for (let i = 0; i < this.shadowSlots; i++) {
+      const inc = this.slots[i].owner;
+      if (!inc || inc._score <= 0 || !inc.allowShadow) continue;
+      if (wantShadow.includes(inc)) continue;
+
+      // Displace the weakest challenger, never another incumbent.
+      let wIdx = -1;
+      for (let j = 0; j < wantShadow.length; j++) {
+        if (holdsShadow(wantShadow[j])) continue;
+        if (wIdx < 0 || wantShadow[j]._score < wantShadow[wIdx]._score) wIdx = j;
+      }
+      if (wIdx < 0) continue;
+
+      // Tenure has to be unconditional for its first seconds, not merely a
+      // stronger margin. Gate it on age alone and the protection can never
+      // switch on: eviction resets the age, so an incumbent that is being
+      // swapped every few frames never reaches the threshold that would have
+      // stopped the swapping. A fresh incumbent is therefore untouchable, and
+      // only once it is past `SHADOW_MIN_TENURE` does it fall back to needing
+      // `SHADOW_EVICT_MARGIN`.
+      const locked = inc._slotAge < SHADOW_MIN_TENURE;
+      if (locked || wantShadow[wIdx]._score <= inc._score * SHADOW_EVICT_MARGIN) {
+        wantShadow[wIdx] = inc;
+      }
+    }
+
+    // Plain tier takes the best of what is left.
     const wantPlain = [];
-    for (let i = 0, ns = 0, np = 0; i < cand.length; i++) {
+    const plainSlots = this.size - this.shadowSlots;
+    for (let i = 0; i < cand.length && wantPlain.length < plainSlots; i++) {
       const p = cand[i];
-      if (ns < this.shadowSlots && p.allowShadow) { wantShadow.push(p); ns++; }
-      else if (np < this.size - this.shadowSlots) { wantPlain.push(p); np++; }
-      if (ns >= this.shadowSlots && np >= this.size - this.shadowSlots) break;
+      if (!wantShadow.includes(p)) wantPlain.push(p);
     }
 
     this._assign(0, this.shadowSlots, wantShadow);
@@ -431,7 +485,9 @@ export class LightPool {
         s.fade -= dt * this.fadeRate;
         if (s.fade <= 0) {
           s.fade = 0;
-          if (s.owner) { s.owner._slot = null; s.owner._live = 0; }
+          // Clear the age too, or an evicted practical carries a stale tenure
+          // back in and is treated as settled the moment it is re-seated.
+          if (s.owner) { s.owner._slot = null; s.owner._live = 0; s.owner._slotAge = 0; }
           s.owner = s.want;
           if (s.owner) { s.owner._slot = s; s.owner._slotAge = 0; }
         }

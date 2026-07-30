@@ -1,6 +1,6 @@
 # THE NINTH VIGIL — Engine Contract (v1)
 
-**Every agent MUST read this before writing code. It is the integration boundary.**
+**Read this before writing code. It is the integration boundary.**
 
 Project: a Diablo 4–class isometric action RPG in Three.js. Dark gothic, grounded,
 physically-based, heavy atmosphere. No external asset downloads — **all textures,
@@ -9,8 +9,8 @@ meshes, animations, and audio are generated procedurally at runtime or build tim
 ## Hard rules
 
 1. **ES modules only.** `import * as THREE from 'three';` — three is in node_modules.
-2. **You own only the files assigned to you.** Never edit another module's files,
-   never edit `src/main.js`, `src/core/Engine.js`, `index.html`, or `tools/*`.
+2. **Stay inside your own module.** Avoid editing another module's files, and do
+   not edit `src/main.js`, `src/core/Engine.js`, `index.html`, or `tools/*`.
 3. **No new npm dependencies.** three + vite + playwright only.
 4. **No network fetches at runtime.** No CDNs, no remote textures, no fonts.
    Everything procedural or inlined as data URIs.
@@ -82,9 +82,8 @@ Emit these; don't reach into other modules.
 
 ## AssetForge (`engine.assets`)
 
-Procedural asset factory. Extend it in your module only via
-`engine.assets.register('name', fn)`; the core factory file is owned by the
-Rendering agent.
+Procedural asset factory. Extend it from your own module via
+`engine.assets.register('name', fn)` rather than editing the core factory file.
 
 ```js
 engine.assets.pbr({ kind:'stone'|'wood'|'metal'|'cloth'|'flesh'|'dirt'|'gold',

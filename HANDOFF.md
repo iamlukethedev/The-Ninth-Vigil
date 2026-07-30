@@ -1,6 +1,6 @@
-# THE NINTH VIGIL — Continuation Prompt (paste this into Cursor)
+# THE NINTH VIGIL — Continuation Brief
 
-Everything below the line is a self-contained brief. It assumes zero prior conversation.
+Everything below the line is a self-contained brief. It assumes zero prior context.
 
 ---
 
@@ -90,21 +90,18 @@ wave-2 frames. **Do not compare or A/B anything until you recapture all eight:**
 node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze
 ```
 
-### One live bug still open, plus one loose end to route
+### The live bugs are fixed; one loose end left to route
 
-Click-to-move is **fixed** (see "Recently fixed"). The flashes are not. They were reproduced by
-the user in the browser, not in the harness, so **verify on the live path** — `npm run dev`,
-then walk around. The harness cannot see them.
+Click-to-move is **fixed**, and so are the walking flashes (both in "Recently fixed").
 
-1. **Black/white triangular flashes while the player walks.** Transient hard-edged polygons
-   that appear only during locomotion, so every static screenshot misses them. The agent
-   investigating this wrote **no files** — its analysis is gone and this restarts from zero.
-   *Leading hypothesis, unconfirmed:* the LightPool reassigns importance-selected shadow-casting
-   practicals as the hero moves, and a slot reused on the same frame renders one frame with a
-   stale shadow camera. Reproduce by driving the hero with Playwright, capturing **every**
-   frame, and diffing consecutive frames for a sudden solid-black area spike — a flash that
-   lasts one frame will never show up in a normal capture.
-   *Owner:* `src/render/Lighting.js` (LightPool slot reuse), `src/game/CameraRig.js` occluder fade.
+1. ~~**Black/white triangular flashes while the player walks.**~~ **FIXED 2026-07-30.** It was
+   never one bug: five stacked causes, the last two only findable on the live path. The final
+   one was the pooled point practicals casting shadows — see `KNOWN_ISSUES.md` §1e for the
+   measurements and, importantly, for the long list of plausible causes that were *ruled out*,
+   so nobody spends another day on them. Standing-still churn went 10.5 % → 0.41 %.
+   The leading hypothesis recorded here previously (LightPool reusing a slot with a stale
+   shadow camera) was **wrong**: slot ownership really was thrashing and that is now fixed in
+   `LightRig.select()`, but fixing it did not move the flashing at all.
 2. **One follow-up left over from the click-to-move fix, in a file that lane did not own.**
    `Director._handOverToPlayer()` currently reaches into `CombatSystem._govern` / `_script` /
    `_userInput` to release the capture-time damage governor. That governor belongs to
@@ -122,9 +119,13 @@ waves of parallel, file-partitioned lanes have run. Confirmed fixed and measured
 the grade's toe crushing darks to absolute black, blown additive discs, the halftone dither
 from contact AO, the untextured boss, and the featureless moor.
 
-What remains before the final review: the two live bugs above, then a clean recapture, then a
-hostile pass over all eight frames against the 15 instant-fail flags. `KNOWN_ISSUES.md` is the
+What remains before the final review: the CombatSystem governor loose end above, then a hostile
+pass over all eight frames against the 15 instant-fail flags. `KNOWN_ISSUES.md` is the
 authoritative open list and is more current than the queue in this file.
+
+As of 2026-07-30 all eight scenarios have been recaptured and pass `sheet.mjs --analyze` in AAA
+range, the actor oracle shows all eight actors drawing and in frame at 51-67 px, and a full
+walking lap of the live crypt has no wedge in any frame (worst frame 4.2 % near-black).
 
 ### One environment note
 
@@ -251,7 +252,7 @@ Run it three times and require every run to pass.
   budget (~1300–1700 calls vs 900; 8–12 M tris vs 3.5 M) — mostly shadow passes, but worth
   reducing.
 
-## Two process rules that were learned the hard way
+## Three process rules that were learned the hard way
 
 **1. Serialize by file ownership.** When six fixers ran in parallel, two both owned
 `Decals.js` and two both owned `Lighting.js`. Whoever wrote last won, and a reviewer then
@@ -263,6 +264,15 @@ changing code, reasoning that it should work, and reporting success while the de
 untouched. For every fix: capture the affected scenario, `crop.mjs`-zoom the exact region,
 **look at it**, make the change, re-capture the identical crop, look again. If the defect is
 still visible, you are not done. State measured values (luma, pixel size) in your report.
+
+**3. On the live path, A/B must be interleaved and counterbalanced.** Anything measured while
+the game is running drifts by several percent on its own as combat state changes, which is far
+larger than most effects you are chasing. Measuring arm A, then arm B, then comparing, will
+hand you a confident answer that is pure drift — this happened repeatedly while hunting the
+walking flashes, and once produced a clean-looking "5 of 5 blocks" result from two arms that
+were *byte-identical*. Alternate the arms in short blocks, alternate which arm goes first, and
+report how many blocks each arm won rather than the pooled mean. Freeze the camera too: with
+the camera moving, everything translates and the frame-to-frame metric saturates.
 
 ## Current state — what works
 
@@ -464,6 +474,27 @@ and were not — verify these in pixels with extra suspicion.
 
 ## Recently fixed — do not regress these
 
+### 2026-07-30 — the walking flashes, finally closed
+
+- **🔴 No pooled practical casts a shadow any more.** `TIER` in `render/Lighting.js` sets
+  `pointShadows: 0` and `spotShadows: 0` at every tier. A shadowed pooled slot is temporally
+  unstable in a way none of its knobs reach: with a static camera and stable slot ownership it
+  put **10.5 %** of the play area into >0.15 luma movement per frame against **0.41 %** with the
+  slots not casting, 6 of 6 interleaved blocks — and the frame is *brighter* without them
+  (mean 0.319 → 0.362), because what the cubes mostly produced was a smear of self-shadowing
+  over the party. Grounding never came from these maps; it comes from the contact-AO stage, the
+  hero pool and inverse-square falloff. **The sun/CSM path is untouched — exteriors still cast.**
+  `KNOWN_ISSUES.md` §1e lists everything that was ruled out; read it before re-opening this.
+- **Shadow slot ownership no longer thrashes.** `LightRig.select()` used to rank both tiers off
+  one continuous score with only a multiplicative incumbency nudge, so a practical near the
+  shadow/plain boundary crossed it every few frames, handing the slot to a different owner and
+  re-rasterising its cube from a new position. The shadow tier now gives a fresh incumbent
+  unconditional protection for `SHADOW_MIN_TENURE`, after which a challenger must beat it by
+  `SHADOW_EVICT_MARGIN`. The gate has to be unconditional at first or it can never engage —
+  eviction resets the age, so a slot being swapped constantly never reaches the threshold that
+  would stop the swapping. *This was not the cause of the flashing* (fixing it moved the metric
+  not at all), but it is correct on its own merits and ownership is now stable indefinitely.
+
 ### Waves 1–3 (2026-07-29). Commits `d2aad35`, `a4a9118`, `b2a0838`, plus uncommitted work.
 
 - **🔴 Sunless interiors were casting four directional CSM cascades through the ceiling.** This
@@ -579,8 +610,8 @@ The one open user-reported bug is the black flashes that appear only while walki
 live-path bug that no static screenshot can catch, so budget time for driving the browser
 rather than reading canonical frames.
 
-**Before you start, sanity-check the build**, because several waves of parallel agents were
-mid-flight when this document was written and some of their work may be partially landed:
+**Before you start, sanity-check the build**, because several waves of parallel work were
+mid-flight when this document was written and some of it may be only partially landed:
 
 ```bash
 node tools/debug.mjs --scenario=combat --frames=40   # all 21 modules must appear in "modules loaded"
@@ -593,7 +624,7 @@ silently disable an entire module rather than throwing something obvious:
 - **A backtick inside a GLSL comment** terminates the surrounding JS template literal. The
   module then fails to parse and is skipped with a one-line warning. This killed all of
   `Weather.js` once.
-- **A file truncated mid-function** (from an agent interrupted by a usage limit) 500s the Vite
+- **A file truncated mid-function** (from a write interrupted partway) 500s the Vite
   dev server for that path. This killed all of `physics/` once. If a module is missing from
   "modules loaded", check the console for a 500 and parse the file before assuming a logic bug.
 
