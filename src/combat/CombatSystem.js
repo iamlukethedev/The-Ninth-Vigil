@@ -1,5 +1,5 @@
 /**
- * SANCTUM — CombatSystem
+ * THE NINTH VIGIL — CombatSystem
  * ---------------------------------------------------------------------------
  * The moment-to-moment layer: what the player presses, what the blade touches,
  * what the number says, and how the world flinches.
@@ -519,7 +519,7 @@ export class CombatSystem {
       if (hero?.stats) hero.stats.health = h;
     }
 
-    /* fury: trickles in combat, bleeds away out of it */
+    /* zeal: trickles in combat, bleeds away out of it */
     const inCombat = elapsed - P.lastHitAt < 5 || elapsed - P.lastSpendAt < 5 || !!this.target;
     if (inCombat) P.resource = Math.min(P.maxResource, P.resource + RESOURCE.regen * dt);
     else if (elapsed - P.lastSpendAt > RESOURCE.decayDelay) {
@@ -1148,7 +1148,7 @@ export class CombatSystem {
       mul: 1 + Math.min(0.28, this.player.combo * 0.035),
     });
 
-    /* fury on connect, never on cast: the resource follows the hit */
+    /* zeal on connect, never on cast: the resource follows the hit */
     const gain = num(inst.ability.gain, 0);
     if (gain > 0) {
       this.player.resource = Math.min(this.player.maxResource, this.player.resource + gain * 0.5);

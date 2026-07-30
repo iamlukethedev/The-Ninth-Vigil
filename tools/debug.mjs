@@ -33,19 +33,19 @@ await page.goto(`http://127.0.0.1:${PORT}/?shot=${scenario}&headless=1`, { waitU
 await new Promise((r) => setTimeout(r, 6000));
 
 const state = await page.evaluate(() => ({
-  hasHarness: !!window.__SANCTUM__,
-  ready: window.__SANCTUM__?.ready,
-  error: window.__SANCTUM__?.error,
-  loaded: window.__SANCTUM__?.loaded,
-  missing: window.__SANCTUM__?.missing,
+  hasHarness: !!window.__NONA__,
+  ready: window.__NONA__?.ready,
+  error: window.__NONA__?.error,
+  loaded: window.__NONA__?.loaded,
+  missing: window.__NONA__?.missing,
 }));
 console.log('STATE:', JSON.stringify(state, null, 2));
 
 if (state.ready) {
   try {
-    await page.evaluate(async (s) => { await window.__SANCTUM__.scenario(s); }, scenario);
-    await page.evaluate(async (f) => { await window.__SANCTUM__.step(f, 1 / 60); }, frames);
-    console.log('STATS:', JSON.stringify(await page.evaluate(() => window.__SANCTUM__.stats()), null, 2));
+    await page.evaluate(async (s) => { await window.__NONA__.scenario(s); }, scenario);
+    await page.evaluate(async (f) => { await window.__NONA__.step(f, 1 / 60); }, frames);
+    console.log('STATS:', JSON.stringify(await page.evaluate(() => window.__NONA__.stats()), null, 2));
   } catch (e) { console.log('RUN ERROR:', e.message); }
 }
 

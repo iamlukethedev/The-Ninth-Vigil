@@ -1,5 +1,5 @@
 /**
- * SANCTUM — shared GLSL for the post pipeline.
+ * THE NINTH VIGIL — shared GLSL for the post pipeline.
  *
  * Everything here is deterministic: no time-based hashing, no frame-varying
  * dither unless the caller explicitly feeds a frame seed it owns. three
@@ -19,8 +19,8 @@ void main() {
 
 /** Colour / depth / hash helpers shared by every custom pass. */
 export const GLSL_COMMON = /* glsl */ `
-#ifndef SANCTUM_COMMON
-#define SANCTUM_COMMON
+#ifndef NONA_COMMON
+#define NONA_COMMON
 
 const vec3 LUMA_W = vec3( 0.2126, 0.7152, 0.0722 );
 float luma( vec3 c ) { return dot( max( c, vec3( 0.0 ) ), LUMA_W ); }
@@ -152,8 +152,8 @@ vec3 linearToSrgb( vec3 c ) {
  *     the low tiers produces the same image.
  */
 export const GLSL_GRADE = /* glsl */ `
-#ifndef SANCTUM_GRADE
-#define SANCTUM_GRADE
+#ifndef NONA_GRADE
+#define NONA_GRADE
 
 uniform sampler3D uLut;
 uniform float uLutSize;
@@ -206,7 +206,7 @@ vec3 contrastToe( vec3 x, float pivot, float g, float knee ) {
 }
 
 // Input and output are display-referred (sRGB encoded) values.
-vec3 sanctumGrade( vec3 c ) {
+vec3 nonaGrade( vec3 c ) {
 
   // --- 3D LUT look (tetrahedral-free hardware trilinear, half-texel inset) ---
   if ( uLutStrength > 0.0 ) {
@@ -271,8 +271,8 @@ vec3 sanctumGrade( vec3 c ) {
 
 /** Animated, luminance-weighted film grain. Frame seed is supplied by the CPU. */
 export const GLSL_GRAIN = /* glsl */ `
-#ifndef SANCTUM_GRAIN
-#define SANCTUM_GRAIN
+#ifndef NONA_GRAIN
+#define NONA_GRAIN
 
 uniform float uGrainAmount;
 uniform float uGrainSize;
@@ -280,7 +280,7 @@ uniform float uGrainChroma;
 uniform float uGrainSeed;
 uniform float uGrainShadowBias;
 
-vec3 sanctumGrain( vec3 c, vec2 fragCoord ) {
+vec3 nonaGrain( vec3 c, vec2 fragCoord ) {
   if ( uGrainAmount <= 0.0 ) return c;
 
   vec2 p = fragCoord / max( uGrainSize, 0.35 );
@@ -303,8 +303,8 @@ vec3 sanctumGrain( vec3 c, vec2 fragCoord ) {
 
 /** Radial chromatic aberration + soft natural vignette with barrel falloff. */
 export const GLSL_CAVIGNETTE = /* glsl */ `
-#ifndef SANCTUM_CAVIG
-#define SANCTUM_CAVIG
+#ifndef NONA_CAVIG
+#define NONA_CAVIG
 
 uniform float uCaAmount;
 uniform float uCaBarrel;
@@ -315,7 +315,7 @@ uniform float uVigPower;
 uniform float uVigRound;
 uniform float uAspect;
 
-vec3 sanctumChroma( sampler2D tex, vec2 uv ) {
+vec3 nonaChroma( sampler2D tex, vec2 uv ) {
   vec2 d = uv - 0.5;
   float r2 = dot( d, d ) * 4.0;              // 0 at centre, ~1 at the edge midpoints
   if ( uCaAmount <= 0.0 ) return texture2D( tex, uv ).rgb;
@@ -329,7 +329,7 @@ vec3 sanctumChroma( sampler2D tex, vec2 uv ) {
   return vec3( cr, cg, cb );
 }
 
-float sanctumVignette( vec2 uv ) {
+float nonaVignette( vec2 uv ) {
   vec2 d = ( uv - 0.5 ) * vec2( mix( 1.0, uAspect, uVigRound ), 1.0 );
   float r = length( d ) * 2.0;
   float v = smoothstep( uVigOuter, uVigInner, r );
@@ -342,8 +342,8 @@ float sanctumVignette( vec2 uv ) {
 
 /** Depth-aware 4-tap bilateral upsample of a low resolution buffer. */
 export const GLSL_BILATERAL = /* glsl */ `
-#ifndef SANCTUM_BILATERAL
-#define SANCTUM_BILATERAL
+#ifndef NONA_BILATERAL
+#define NONA_BILATERAL
 
 vec4 bilateralUpsample( sampler2D tLow, sampler2D tDepthTex, vec2 uv, vec2 lowTexel,
                         float centerDist, float sigma, float near, float far ) {

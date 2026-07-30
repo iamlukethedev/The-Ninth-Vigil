@@ -17,7 +17,7 @@ veil.style.cssText = `position:fixed;inset:0;z-index:50;display:flex;align-items
   color:#b99a63;letter-spacing:.34em;font-size:13px;text-transform:uppercase;
   transition:opacity .9s ease;font-family:Georgia,serif`;
 veil.innerHTML = `<div style="font-size:30px;letter-spacing:.5em;color:#c9a86a;
-    text-shadow:0 0 34px rgba(190,120,40,.6),0 2px 0 #000">SANCTUM</div>
+    text-shadow:0 0 34px rgba(190,120,40,.6),0 2px 0 #000">THE NINTH VIGIL</div>
   <div id="ldbar" style="width:340px;height:2px;background:#241d17;position:relative;overflow:hidden">
     <div id="ldfill" style="position:absolute;inset:0 100% 0 0;
       background:linear-gradient(90deg,#6b3d12,#d99a3c,#f3d08a);transition:right .25s ease"></div>
@@ -37,8 +37,8 @@ const setProgress = (p, label) => {
 
 const boot = (async () => {
   const { loaded, missing } = await loadModules(engine, (p, id) => setProgress(p * 0.4, id));
-  console.info(`[sanctum] modules loaded: ${loaded.join(', ') || '(none)'}`);
-  if (missing.length) console.info(`[sanctum] modules pending: ${missing.join(', ')}`);
+  console.info(`[nona] modules loaded: ${loaded.join(', ') || '(none)'}`);
+  if (missing.length) console.info(`[nona] modules pending: ${missing.join(', ')}`);
 
   await engine.initAll((p, id) => setProgress(0.4 + p * 0.6, id));
 
@@ -52,7 +52,7 @@ const boot = (async () => {
   try {
     await applyScenario(engine, startScenario);
   } catch (e) {
-    console.error('[sanctum] scenario failed', e);
+    console.error('[nona] scenario failed', e);
   }
 
   // Warm shader compilation so the first real frames aren't a hitch.
@@ -73,7 +73,7 @@ const boot = (async () => {
 })();
 
 /* ---------- screenshot harness contract ---------- */
-window.__SANCTUM__ = {
+window.__NONA__ = {
   ready: false,
   version: '1.0.0',
   engine,
@@ -93,12 +93,12 @@ window.__SANCTUM__ = {
 
 boot
   .then(({ loaded, missing }) => {
-    window.__SANCTUM__.loaded = loaded;
-    window.__SANCTUM__.missing = missing;
-    window.__SANCTUM__.ready = true;
+    window.__NONA__.loaded = loaded;
+    window.__NONA__.missing = missing;
+    window.__NONA__.ready = true;
   })
   .catch((e) => {
-    console.error('[sanctum] boot failed', e);
-    window.__SANCTUM__.error = String(e?.stack ?? e);
-    window.__SANCTUM__.ready = true; // let the harness capture the failure state
+    console.error('[nona] boot failed', e);
+    window.__NONA__.error = String(e?.stack ?? e);
+    window.__NONA__.ready = true; // let the harness capture the failure state
   });

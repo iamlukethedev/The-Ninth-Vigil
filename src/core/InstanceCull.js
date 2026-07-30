@@ -1,5 +1,5 @@
 /**
- * SANCTUM — per-instance frustum culling for InstancedMesh batches.
+ * THE NINTH VIGIL — per-instance frustum culling for InstancedMesh batches.
  *
  * THE PROBLEM THIS SOLVES
  * -----------------------

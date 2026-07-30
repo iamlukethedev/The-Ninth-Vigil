@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Hero
+ * THE NINTH VIGIL — Hero
  * ---------------------------------------------------------------------------
  * The player character, and the scale reference for the entire game: exactly
  * HERO_HEIGHT (1.85 m) tall, standing on the terrain surface, so every material

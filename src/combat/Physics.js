@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Physics.
+ * THE NINTH VIGIL — Physics.
  *
  * There is no third-party physics engine in this project and there is not going
  * to be one. What the game actually needs is four specific things, and a general

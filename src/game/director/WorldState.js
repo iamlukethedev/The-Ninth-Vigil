@@ -1,12 +1,12 @@
 /**
- * SANCTUM — world state.
+ * THE NINTH VIGIL — world state.
  *
  * The persistent, serialisable truth about a run: which level we are on, how
  * hard it is, which rooms the player has seen and emptied, how many times they
  * have died, and the monster-level curve every spawn is scaled through.
  *
  * Nothing here touches THREE or the scene. It is pure data plus the curves that
- * turn "depth 4, player level 17, Nightmare" into concrete multipliers, so both
+ * turn "depth 4, player level 17, Nocturn" into concrete multipliers, so both
  * the Director and any HUD can read the same numbers.
  */
 
@@ -14,27 +14,47 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
- * Difficulty tiers. `hp`/`dmg` scale the bodies, `density` scales how many of
- * them an encounter authors, `loot`/`xp` are reward multipliers, `lvl` is the
- * monster-level offset, `elite` biases how often a pack gets a champion.
+ * Difficulty tiers, named for the canonical hours of the night office and
+ * ordered the way a vigil actually runs: evening prayer, nightfall, the deep
+ * night, the dead of night, then the psalms sung at first light.
+ *
+ * The ladder therefore climbs *toward dawn* — the hardest tier is the one named
+ * for sunrise, not for damnation. That inversion is the premise of the game and
+ * this table is where it is stated in data.
+ *
+ * `hp`/`dmg` scale the bodies, `density` scales how many of them an encounter
+ * authors, `loot`/`xp` are reward multipliers, `lvl` is the monster-level
+ * offset, `elite` biases how often a pack gets a champion. `colour` walks the
+ * same arc as the names: dusk blue, indigo, violet, the last dark, dawn gold.
  */
 export const DIFFICULTY = [
-  { id: 'adventurer', label: 'Adventurer', hp: 0.78, dmg: 0.80, density: 0.86, loot: 1.00, xp: 1.00, lvl: -2, elite: 0.80, colour: 0x9aa7b4 },
-  { id: 'veteran',    label: 'Veteran',    hp: 1.00, dmg: 1.00, density: 1.00, loot: 1.18, xp: 1.15, lvl: 0,  elite: 1.00, colour: 0xc9a86a },
-  { id: 'nightmare',  label: 'Nightmare',  hp: 1.66, dmg: 1.42, density: 1.14, loot: 1.46, xp: 1.45, lvl: 3,  elite: 1.22, colour: 0xa26bd4 },
-  { id: 'torment',    label: 'Torment',    hp: 2.62, dmg: 2.05, density: 1.28, loot: 1.88, xp: 1.90, lvl: 7,  elite: 1.48, colour: 0xd8632c },
-  { id: 'abyssal',    label: 'Abyssal',    hp: 4.10, dmg: 2.95, density: 1.42, loot: 2.45, xp: 2.55, lvl: 12, elite: 1.78, colour: 0xb01f24 },
+  { id: 'vespers',  label: 'Vespers',  hp: 0.78, dmg: 0.80, density: 0.86, loot: 1.00, xp: 1.00, lvl: -2, elite: 0.80, colour: 0x9aa7b4 },
+  { id: 'compline', label: 'Compline', hp: 1.00, dmg: 1.00, density: 1.00, loot: 1.18, xp: 1.15, lvl: 0,  elite: 1.00, colour: 0x6d7fa8 },
+  { id: 'nocturn',  label: 'Nocturn',  hp: 1.66, dmg: 1.42, density: 1.14, loot: 1.46, xp: 1.45, lvl: 3,  elite: 1.22, colour: 0x8a6adf },
+  { id: 'matins',   label: 'Matins',   hp: 2.62, dmg: 2.05, density: 1.28, loot: 1.88, xp: 1.90, lvl: 7,  elite: 1.48, colour: 0xb01f24 },
+  { id: 'lauds',    label: 'Lauds',    hp: 4.10, dmg: 2.95, density: 1.42, loot: 2.45, xp: 2.55, lvl: 12, elite: 1.78, colour: 0xf2c25a },
 ];
 
 export const LOOT_TIERS = ['common', 'magic', 'rare', 'legendary', 'mythic'];
 
-/** Named levels, so a toast never reads "Dungeon 3". */
+/**
+ * The nine vigils, so a toast never reads "Dungeon 3".
+ *
+ * Nine because the ninth hour is the one the game is named for, and because the
+ * loot has been foreshadowing it since the first build — "Nine were made. Eight
+ * are accounted for." Every name here is already somewhere in the item
+ * vocabulary; the ninth is the title, and it is where the light comes back.
+ */
 const LEVEL_NAMES = [
   'The Forsaken Ossuary',
   'Halls of the Weeping Saint',
   'Cistern of Ash',
   'The Bonewright Vaults',
   'Sanctum of the Third Seal',
+  'The Drowned Choir',
+  'Gallery of the Nine Wounds',
+  'The Low Door',
+  'The Ninth Vigil',
 ];
 
 const BOSS_NAMES = [
@@ -43,6 +63,10 @@ const BOSS_NAMES = [
   'Ashmaw, Cinder of the Deep',
   'Bonewright Prime',
   'Herald of the Third Seal',
+  'Legion, Who Is Many',
+  'Moloch of the Ash Throne',
+  'Warden of the Low Door',
+  'Apollyon, the Ninth Hour',
 ];
 
 /** Rank weights used everywhere a "how much threat is this" number is needed. */
@@ -87,7 +111,7 @@ export class WorldState {
   get tier() { return DIFFICULTY[clamp(this.tierIndex | 0, 0, DIFFICULTY.length - 1)]; }
   get tierId() { return this.tier.id; }
   get levelName() {
-    return LEVEL_NAMES[this.depth - 1] ?? `The Abyss — Depth ${this.depth}`;
+    return LEVEL_NAMES[this.depth - 1] ?? `Beyond the Ninth — Depth ${this.depth}`;
   }
   get bossName() {
     return BOSS_NAMES[(this.depth - 1) % BOSS_NAMES.length];

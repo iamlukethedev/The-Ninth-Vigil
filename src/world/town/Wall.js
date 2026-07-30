@@ -1,5 +1,5 @@
 /**
- * SANCTUM — the curtain wall and its gate.
+ * THE NINTH VIGIL — the curtain wall and its gate.
  *
  * A waypoint is a place that survived, and what makes that read is a defence
  * that was built in a hurry out of whatever was to hand: a low stone footing

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Town: the waypoint settlement.
+ * THE NINTH VIGIL — Town: the waypoint settlement.
  *
  * Owns everything built by human hands in the `town` biome: the buildings, the
  * curtain wall and its gate, the market, the street network, the waypoint shrine

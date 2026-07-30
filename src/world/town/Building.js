@@ -1,5 +1,5 @@
 /**
- * SANCTUM — timber-framed building generator.
+ * THE NINTH VIGIL — timber-framed building generator.
  *
  * One `buildHouse()` call produces a whole structure as material piles ready to
  * merge: rubble plinth, box-framed walls with real studs and St-Andrew braces,

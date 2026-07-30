@@ -1,4 +1,4 @@
-# SANCTUM — Engine Contract (v1)
+# THE NINTH VIGIL — Engine Contract (v1)
 
 **Every agent MUST read this before writing code. It is the integration boundary.**
 
@@ -55,7 +55,7 @@ Register in `src/game/modules.js` (owned by the integrator).
 
 ## Determinism (non-negotiable — the screenshot critic depends on it)
 
-The screenshot harness calls `window.__SANCTUM__.step(frames, dt)`. During a step
+The screenshot harness calls `window.__NONA__.step(frames, dt)`. During a step
 the engine advances every module with a **fixed dt** and renders. Therefore:
 
 - No `Math.random()` anywhere. Use `engine.rand(seed)`.

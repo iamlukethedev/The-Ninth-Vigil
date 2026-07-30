@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Loot
+ * THE NINTH VIGIL — Loot
  * ---------------------------------------------------------------------------
  * The compulsion loop: what drops, how it looks when it hits the floor, and
  * what happens when you take it.
@@ -854,7 +854,7 @@ export class Loot {
           '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += max(vec3(0.0), vColor.rgb - 1.0) * 1.35;'
         );
       };
-      m.customProgramCacheKey = () => `sanctumLootBody:${kind}`;
+      m.customProgramCacheKey = () => `nonaLootBody:${kind}`;
       m.name = `loot:${kind}`;
       m.needsUpdate = true;
       return m;

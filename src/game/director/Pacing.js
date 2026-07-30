@@ -1,5 +1,5 @@
 /**
- * SANCTUM — pacing and combat intensity.
+ * THE NINTH VIGIL — pacing and combat intensity.
  *
  * Two jobs.
  *

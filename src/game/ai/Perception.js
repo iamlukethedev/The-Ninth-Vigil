@@ -1,5 +1,5 @@
 /**
- * SANCTUM — perception.
+ * THE NINTH VIGIL — perception.
  *
  * Enemies that snap to full aggro the instant the player is in range read as
  * scripted. Enemies that *accumulate* awareness — glimpse, turn, confirm,

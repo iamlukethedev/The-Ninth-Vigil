@@ -110,7 +110,7 @@ export class DOFPass extends QuadPass {
         uMaxRadius: { value: 2.0 },
       },
       { DOF_TAPS: Math.max(6, taps | 0) },
-      'Sanctum.DOF'
+      'Nona.DOF'
     );
     this.camera = camera;
     this.params = params;

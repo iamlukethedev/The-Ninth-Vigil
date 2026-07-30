@@ -1,5 +1,5 @@
 /**
- * SANCTUM — AI agent record + entity adapter.
+ * THE NINTH VIGIL — AI agent record + entity adapter.
  *
  * The AI owns *decisions and motion*; Bestiary owns *bodies and animation*. This
  * file is the seam. Because Bestiary is written by another agent and may expose

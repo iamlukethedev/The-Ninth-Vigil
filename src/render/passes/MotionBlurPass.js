@@ -76,7 +76,7 @@ export class MotionBlurPass extends QuadPass {
         uFar: { value: camera.far },
       },
       { MB_TAPS: taps },
-      'Sanctum.MotionBlur'
+      'Nona.MotionBlur'
     );
     this.camera = camera;
     this.params = params;

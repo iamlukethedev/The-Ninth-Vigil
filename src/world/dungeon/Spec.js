@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Dungeon dimensional specification.
+ * THE NINTH VIGIL — Dungeon dimensional specification.
  *
  * EVERY number in this file is metres. 1 world unit = 1 metre (KNOWN_ISSUES.md).
  * Nothing in the dungeon kit is allowed to invent its own scale; if a piece needs

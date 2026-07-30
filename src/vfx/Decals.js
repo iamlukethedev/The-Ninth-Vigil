@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Decals.
+ * THE NINTH VIGIL — Decals.
  *
  * The layer that makes a fight leave a mark on the world: blood, scorch, rime,
  * craters, footprints, ritual sigils, and the gameplay-critical ground
@@ -934,7 +934,7 @@ const _cv = new THREE.Vector3();
  */
 function makeContactShadowMaterial(uTime) {
   const mat = new THREE.ShaderMaterial({
-    name: 'SanctumContactShadow',
+    name: 'NonaContactShadow',
     uniforms: {
       uTime: uTime ?? { value: 0 },
       uGain: { value: 1.0 },

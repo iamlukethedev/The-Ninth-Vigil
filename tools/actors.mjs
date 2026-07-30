@@ -25,7 +25,7 @@ const W = 1600, H = 900;
 const browser = await chromium.launch({ args: ['--use-angle=metal', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 await page.goto(url, { waitUntil: 'load', timeout: 60000 });
-await page.waitForFunction(() => window.__SANCTUM__?.ready === true, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__NONA__?.ready === true, null, { timeout: 120000 });
 await new Promise((r) => setTimeout(r, 7000));
 
 const actors = await page.evaluate((dims) => {

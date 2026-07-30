@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Sky, atmosphere, clouds, aerial-perspective fog and horizon depth.
+ * THE NINTH VIGIL — Sky, atmosphere, clouds, aerial-perspective fog and horizon depth.
  *
  * What this module owns:
  *
@@ -566,7 +566,7 @@ export class Sky {
       /* --- shared fog uniforms (one object graph, referenced by every patched material) --- */
       const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
       white.needsUpdate = true;
-      white.name = 'sanctum.whiteFallback';
+      white.name = 'nona.whiteFallback';
       this._white = white;
       this._disposables.push(white);
 
@@ -610,7 +610,7 @@ export class Sky {
       this._disposables.push(geo);
 
       this.skyMat = new THREE.ShaderMaterial({
-        name: 'SanctumSky',
+        name: 'NonaSky',
         vertexShader: SKY_VERT,
         fragmentShader: SKY_FRAG,
         side: THREE.BackSide,
@@ -695,7 +695,7 @@ export class Sky {
       this.skyMat.userData.skyNoFog = true;
 
       this.mesh = new THREE.Mesh(geo, this.skyMat);
-      this.mesh.name = 'sanctum.skyDome';
+      this.mesh.name = 'nona.skyDome';
       this.mesh.scale.setScalar(this._skyRadius);
       this.mesh.frustumCulled = false;
       this.mesh.renderOrder = 90;
@@ -803,7 +803,7 @@ export class Sky {
   }
 
   /**
-   * Inject sanctum height fog + aerial perspective (and the cloud-shadow
+   * Inject nona height fog + aerial perspective (and the cloud-shadow
    * modulation) into a material. Safe to call repeatedly.
    * @returns {THREE.Material} the same material
    */
@@ -820,7 +820,7 @@ export class Sky {
     const U = this.fogU;
     const prev = material.onBeforeCompile;
 
-    material.onBeforeCompile = function sanctumFogInject(shader, renderer) {
+    material.onBeforeCompile = function nonaFogInject(shader, renderer) {
       try {
         if (typeof prev === 'function' && prev !== THREE.Material.prototype.onBeforeCompile) {
           prev.call(this, shader, renderer);
@@ -850,10 +850,10 @@ export class Sky {
        key to describe their variants, and replacing it would let two different
        programs collide on one cache entry. */
     const prevKey = material.customProgramCacheKey;
-    material.customProgramCacheKey = function sanctumFogKey() {
+    material.customProgramCacheKey = function nonaFogKey() {
       let base = '';
       try { base = typeof prevKey === 'function' ? String(prevKey.call(this)) : ''; } catch { base = ''; }
-      return `${base}|sanctum-fog-v1`;
+      return `${base}|nona-fog-v1`;
     };
     material.fog = false;
     material.needsUpdate = true;

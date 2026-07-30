@@ -1,5 +1,5 @@
 /**
- * SANCTUM — shared Verlet / position-based constraint solver.
+ * THE NINTH VIGIL — shared Verlet / position-based constraint solver.
  *
  * One solver, three customers: ragdolls (bone chains with joint limits), cloth
  * (cloaks, banners, webs) and rope (chains, hanging lanterns). Exposed on the

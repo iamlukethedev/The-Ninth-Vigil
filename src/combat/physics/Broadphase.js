@@ -1,5 +1,5 @@
 /**
- * SANCTUM — broadphase.
+ * THE NINTH VIGIL — broadphase.
  *
  * A uniform 2D grid over the play area (XZ), holding indices into a flat AABB
  * soup. Chosen over `three/addons/math/Octree` deliberately, and the reason is

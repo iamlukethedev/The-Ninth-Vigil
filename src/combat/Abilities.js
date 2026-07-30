@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Ability table + hit-shape kernels
+ * THE NINTH VIGIL — Ability table + hit-shape kernels
  * ---------------------------------------------------------------------------
  * Data, not behaviour. Every ability is a plain record describing *timing*,
  * *cost* and *shape*; CombatSystem owns the state machine that walks it and
@@ -33,10 +33,10 @@
  * ------------------------------------------------------------------ */
 
 export const RESOURCE = Object.freeze({
-  id: 'fury',
-  label: 'Fury',
+  id: 'zeal',
+  label: 'Zeal',
   max: 100,
-  /** Fury bleeds away out of combat; it is a momentum resource, not a pool. */
+  /** Zeal bleeds away out of combat; it is a momentum resource, not a pool. */
   decay: 5.5,
   decayDelay: 2.6,
   /** Passive trickle while in combat so a rotation never fully stalls. */

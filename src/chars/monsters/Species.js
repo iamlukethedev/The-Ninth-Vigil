@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Species
+ * THE NINTH VIGIL — Species
  *
  * Per-archetype *assembly*: the rig proportions, the skinned surface, the clip
  * table and the material slots that turn RigKit/Rigs/Clips/MonsterMaterials
@@ -1818,7 +1818,7 @@ export const SPECIES = {
   },
 
   boss: {
-    id: 'boss', label: 'Sanctum Warden', ai: 'boss',
+    id: 'boss', label: 'Apollyon', ai: 'boss',
     height: 6.50, radius: 2.35, mass: 2600, hover: 0,
     hint: { speed: 3.00, radius: 2.35, height: 6.50, turnRate: 2.0 },
     accent: ACCENT.hellcore, aura: ACCENT.hellfire, rim: 0xd0a06e, dissolveEdge: 0x6e4014,

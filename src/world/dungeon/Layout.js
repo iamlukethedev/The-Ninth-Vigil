@@ -1,5 +1,5 @@
 /**
- * SANCTUM — dungeon layout generation.
+ * THE NINTH VIGIL — dungeon layout generation.
  *
  * A deterministic, seeded generator that produces the *occupancy* of a crypt
  * level and everything the architecture builder needs to dress it:

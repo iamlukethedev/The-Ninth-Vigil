@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * SANCTUM — ground-projected reads: telegraphs and stains.
+ * THE NINTH VIGIL — ground-projected reads: telegraphs and stains.
  *
  * This is the layer that tells the player where an attack is going to land, and
  * the layer that remembers a fight happened. Both are flat quads lying on the
@@ -249,7 +249,7 @@ export class GroundFX {
       blending: THREE.NormalBlending,
       side: THREE.DoubleSide,
     });
-    this.material.name = 'Sanctum.vfxGround';
+    this.material.name = 'Nona.vfxGround';
     this.material.userData.noCSM = true;
 
     this.mesh = new THREE.Mesh(geo, this.material);

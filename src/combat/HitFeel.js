@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Hit feel
+ * THE NINTH VIGIL — Hit feel
  * ---------------------------------------------------------------------------
  * The difference between a tech demo and a game is almost entirely in this file.
  * Nothing here decides *whether* a blow lands — CombatSystem does that. This is

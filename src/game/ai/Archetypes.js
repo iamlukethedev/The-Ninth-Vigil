@@ -1,5 +1,5 @@
 /**
- * SANCTUM — AI archetype tuning tables.
+ * THE NINTH VIGIL — AI archetype tuning tables.
  *
  * Every number here is authored to the canonical world scale (1 unit = 1 metre,
  * hero = 1.85 m tall, brute = 3.2 m, boss = 6–7 m). Speeds are m/s, durations
@@ -207,7 +207,7 @@ export const ARCHETYPES = {
   },
 
   boss: {
-    id: 'boss', label: 'Sanctum Warden',
+    id: 'boss', label: 'Apollyon',
     radius: 2.35, height: 6.50, mass: 2600,
     speed: 3.05, sprintMul: 1.05, accel: 5.4, decel: 7.0, turnRate: 2.0,
     attacks: [A.bossCleave, A.bossSlam, A.bossCharge, A.bossQuake, A.bossMeteor],

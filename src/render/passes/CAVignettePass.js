@@ -40,7 +40,7 @@ varying vec2 vUv;
 
 void main() {
   vec3 ref = texture2D( tDiffuse, vUv ).rgb;
-  vec3 c = sanctumChroma( tDiffuse, vUv );
+  vec3 c = nonaChroma( tDiffuse, vUv );
   // See CA_DEVIATION_CLAMP: bound the per-channel excursion so the fringe
   // survives and the single-pixel rainbow confetti cannot form. The bound is
   // radius-weighted with the same saturated r² the sample offset uses, so the
@@ -49,7 +49,7 @@ void main() {
   float r2 = sat( dot( dv, dv ) * 4.0 );
   vec3 lim = vec3( uCaClamp * r2 );
   c = ref + clamp( c - ref, -lim, lim );
-  c *= sanctumVignette( vUv );
+  c *= nonaVignette( vUv );
   gl_FragColor = vec4( c, 1.0 );
 }
 `;
@@ -91,7 +91,7 @@ export function syncCaVignetteUniforms(u, params) {
  */
 export class CAVignettePass extends QuadPass {
   constructor(params) {
-    super(FRAG, { tDiffuse: { value: null }, ...caVignetteUniforms() }, {}, 'Sanctum.CAVignette');
+    super(FRAG, { tDiffuse: { value: null }, ...caVignetteUniforms() }, {}, 'Nona.CAVignette');
     this.params = params;
     this.needsSwap = true;
   }

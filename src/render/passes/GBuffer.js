@@ -50,7 +50,7 @@ export class GBuffer {
     this.depthTexture.minFilter = THREE.NearestFilter;
     this.depthTexture.magFilter = THREE.NearestFilter;
     this.depthTexture.generateMipmaps = false;
-    this.depthTexture.name = 'Sanctum.gbufferDepth';
+    this.depthTexture.name = 'Nona.gbufferDepth';
 
     this.target = new THREE.WebGLRenderTarget(this.width, this.height, {
       minFilter: THREE.NearestFilter,
@@ -62,11 +62,12 @@ export class GBuffer {
       generateMipmaps: false,
       depthTexture: this.depthTexture,
     });
-    this.target.texture.name = 'Sanctum.gbufferNormal';
+    this.target.texture.name = 'Nona.gbufferNormal';
 
     this.material = new THREE.MeshNormalMaterial();
     this.material.blending = THREE.NoBlending;
     this.material.side = THREE.FrontSide;
+    this.material.onBeforeCompile = GBuffer._guardNormals;
 
     this._hidden = [];
     this._clearColor = new THREE.Color();
@@ -84,6 +85,52 @@ export class GBuffer {
     this.width = w;
     this.height = h;
     this.target.setSize(w, h);
+  }
+
+  /**
+   * NO NON-FINITE NORMAL MAY LEAVE THIS PASS.
+   *
+   * Symptom: hard-edged black wedges flashing across the frame while playing,
+   * reshaping completely between consecutive frames even with the camera still.
+   * They are not a lighting bug. Measured with every pass after `aoApply`
+   * disabled, ~22 % of this buffer was NaN, and the affected area churned frame
+   * to frame; in the real pipeline `aoApply` on vs off changed the frame's
+   * dark-area thrash by 190x (0.0580 -> 0.0003), identical idle and walking.
+   *
+   * Where the NaN comes from. Vertex data, instance matrices and world matrices
+   * are all finite — it is generated in the vertex shader. three's
+   * `<defaultnormal_vertex>` normalises an instanced normal by dividing by the
+   * squared length of each instance-matrix column:
+   *
+   *     transformedNormal /= vec3( dot( m[0], m[0] ), dot( m[1], m[1] ), ... );
+   *
+   * A fully collapsed instance (zero scale, which the dungeon uses to retire a
+   * slot without shrinking `count`) makes every one of those dots zero, so the
+   * division yields Inf and the following `m * transformedNormal` yields
+   * 0 * Inf = NaN. The beauty pass never showed it because nothing there
+   * normalises the result into a consumer that then integrates over a
+   * neighbourhood; AO does exactly that, so one NaN texel poisons every sample
+   * that reaches it and the occlusion collapses over a wide area.
+   *
+   * The guard is written as a rejection rather than an `isnan()` test so it
+   * catches Inf as well, and so it does not depend on GLSL version: a NaN fails
+   * every comparison, so `!(L2 > lo && L2 < hi)` is true for NaN, Inf and zero
+   * alike. View-space +Z is the correct fallback — it is what the pass already
+   * substitutes for pixels with no geometry.
+   */
+  static _guardNormals(shader) {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <defaultnormal_vertex>',
+      [
+        '#include <defaultnormal_vertex>',
+        '{',
+        '  float nonaNL2 = dot( transformedNormal, transformedNormal );',
+        '  if ( ! ( nonaNL2 > 1.0e-16 && nonaNL2 < 1.0e30 ) ) {',
+        '    transformedNormal = vec3( 0.0, 0.0, 1.0 );',
+        '  }',
+        '}',
+      ].join('\n')
+    );
   }
 
   /**

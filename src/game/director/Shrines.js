@@ -1,5 +1,5 @@
 /**
- * SANCTUM — shrines, and the only geometry the Director owns.
+ * THE NINTH VIGIL — shrines, and the only geometry the Director owns.
  *
  * A shrine is an interactable site that grants a timed blessing. It has to *read*
  * as a thing in the world, not as a trigger volume, so each one is:

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Town geometry kit.
+ * THE NINTH VIGIL — Town geometry kit.
  *
  * Every piece of the settlement is built here as plain local-space geometry and
  * handed to an `Assembler`, which transforms it, files it under a material name,

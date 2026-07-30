@@ -199,7 +199,7 @@ const smooth = (a, b, x) => {
 };
 
 /**
- * SANCTUM post-processing pipeline.
+ * THE NINTH VIGIL post-processing pipeline.
  *
  * Owns the whole frame: one shared G-buffer prepass feeds GTAO, screen-space
  * reflections, volumetric shafts, DOF and motion blur, then the HDR buffer runs
@@ -292,6 +292,14 @@ export class RenderPipeline {
       aoIntensity: 0.84,
       aoPower: 1.0,
       aoFloor: 0.17,
+      /*
+       * Bottom stop on the COMBINED occlusion multiplier. `aoFloor` and
+       * `contactFloor` only bound their own term, so their product let occlusion
+       * remove 99 % of the light and crush lit floor to black. Occlusion darkens;
+       * it does not delete. See AOApplyPass for the measurement.
+       */
+      aoFloorTotal: 0.28,
+      aoFloorKnee: 0.18,
       aoLumaProtect: 1.0,
       aoColor: [0.055, 0.062, 0.085],
       aoDenoiseRadius: 5.0,
@@ -302,7 +310,18 @@ export class RenderPipeline {
        * `contactRadius` is metres; the pixel clamp is what makes one number
        * work for a 3 m portrait and a 28 m isometric camera.
        */
-      contactIntensity: 2.5,
+      /*
+       * The estimator returns the FRACTION of 16 taps that are blocked, so a
+       * gain of 2.5 saturated it at 0.45 — a boot crease and half an open floor
+       * tile both resolved to "fully occluded". A third of the play area sat
+       * pinned in one narrow band, and because the term is also modulated by the
+       * lit frame's luma, every torch flicker and passing enemy moved that whole
+       * band at once. Walking the crypt with the pack engaged, the play area
+       * peaked at 43 % near-black and the frame mean moved 0.075 between
+       * consecutive frames (p95). At 1.2 the term keeps headroom to the top of
+       * its range, the tail goes thin and smooth, and those read 4.3 % and 0.024.
+       */
+      contactIntensity: 1.2,
       contactRadius: 0.22,
       contactPower: 2.1,
       contactBias: 0.08,
@@ -592,7 +611,7 @@ export class RenderPipeline {
     const orig = renderer.compile.bind(renderer);
     this._origCompile = orig;
     const self = this;
-    renderer.compile = function sanctumCompile(scene, camera, targetScene) {
+    renderer.compile = function nonaCompile(scene, camera, targetScene) {
       const prev = renderer.getRenderTarget();
       const buf = self.composer?.renderTarget1 ?? null;
       try {
@@ -755,16 +774,16 @@ export class RenderPipeline {
    */
   _clampBloomInput(bloom) {
     const mat = bloom.materialHighPassFilter;
-    if (!mat || !mat.fragmentShader || mat.fragmentShader.includes('sanctumBloomClamp')) return;
-    mat.uniforms.sanctumBloomClamp = { value: this.params.bloomClamp };
+    if (!mat || !mat.fragmentShader || mat.fragmentShader.includes('nonaBloomClamp')) return;
+    mat.uniforms.nonaBloomClamp = { value: this.params.bloomClamp };
     mat.fragmentShader = mat.fragmentShader
-      .replace('void main()', 'uniform float sanctumBloomClamp;\n\t\t\tvoid main()')
+      .replace('void main()', 'uniform float nonaBloomClamp;\n\t\t\tvoid main()')
       .replace(
         'vec4 texel = texture2D( tDiffuse, vUv );',
-        'vec4 texel = texture2D( tDiffuse, vUv );\n\t\t\t\ttexel.rgb = min( texel.rgb, vec3( sanctumBloomClamp ) );'
+        'vec4 texel = texture2D( tDiffuse, vUv );\n\t\t\t\ttexel.rgb = min( texel.rgb, vec3( nonaBloomClamp ) );'
       );
     mat.needsUpdate = true;
-    this._bloomClampU = mat.uniforms.sanctumBloomClamp;
+    this._bloomClampU = mat.uniforms.nonaBloomClamp;
   }
 
   /** Screen-space stage size, expressed against logical (not device) pixels. */
@@ -1011,7 +1030,7 @@ export class RenderPipeline {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.needsUpdate = true;
-    tex.name = 'Sanctum.pdNoise';
+    tex.name = 'Nona.pdNoise';
     try { gtao.pdNoiseTexture.dispose(); } catch (e) { /* ignore */ }
     gtao.pdNoiseTexture = tex;
     gtao.pdMaterial.uniforms.tNoise.value = tex;

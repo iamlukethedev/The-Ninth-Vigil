@@ -1,5 +1,5 @@
 /**
- * SANCTUM — shared procedural clip library for the bestiary.
+ * THE NINTH VIGIL — shared procedural clip library for the bestiary.
  *
  * Every archetype's animation set is assembled from these generators and then
  * re-tuned, which is what keeps a hound feeling fast and a brute feeling heavy

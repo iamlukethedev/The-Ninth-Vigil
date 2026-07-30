@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Dungeon.
+ * THE NINTH VIGIL — Dungeon.
  *
  * Builds the interiors: the crypt level (every `crypt`-biome scenario, which is
  * where the combat frames are captured) and the hell boss arena. This module

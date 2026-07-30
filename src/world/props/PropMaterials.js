@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Props material bank.
+ * THE NINTH VIGIL — Props material bank.
  *
  * Three jobs:
  *
@@ -259,7 +259,7 @@ varying float vPropSeed;
 varying float vPropUp;
 uniform vec4 uPropWind;
 uniform vec2 uPropWindDir;
-#ifdef SANCTUM_PROP_WIND
+#ifdef NONA_PROP_WIND
 attribute float aWindW;
 #endif
 `;
@@ -318,7 +318,7 @@ const VERT_BODY = /* glsl */`
 			transformed += ( sw1 * 0.5 + sw2 * 0.22 ) * sctAmp;
 		}
 	}
-#ifdef SANCTUM_PROP_WIND
+#ifdef NONA_PROP_WIND
 	{
 		#ifdef USE_INSTANCING
 			vec3 sctIO = vec3( instanceMatrix[ 3 ].x, instanceMatrix[ 3 ].y, instanceMatrix[ 3 ].z );
@@ -502,12 +502,12 @@ export function injectProps(mat, {
   };
   mat.userData.propUniforms = u;
   mat.userData.propWind = wind;
-  if (wind > 0) mat.defines = Object.assign(mat.defines || {}, { SANCTUM_PROP_WIND: 1 });
+  if (wind > 0) mat.defines = Object.assign(mat.defines || {}, { NONA_PROP_WIND: 1 });
 
   const prev = mat.onBeforeCompile;
   const hasPrev = typeof prev === 'function' && prev !== THREE.Material.prototype.onBeforeCompile;
 
-  mat.onBeforeCompile = function sanctumPropsInject(shader, renderer) {
+  mat.onBeforeCompile = function nonaPropsInject(shader, renderer) {
     if (hasPrev) { try { prev.call(this, shader, renderer); } catch (e) { console.error('[props:chain]', e); } }
     shader.uniforms.uPropWind = u.uPropWind;
     shader.uniforms.uPropWindDir = u.uPropWindDir;
@@ -539,7 +539,7 @@ export function injectProps(mat, {
   };
 
   const prevKey = mat.customProgramCacheKey;
-  mat.customProgramCacheKey = function sanctumPropsKey() {
+  mat.customProgramCacheKey = function nonaPropsKey() {
     let base = '';
     try { base = typeof prevKey === 'function' ? String(prevKey.call(this)) : ''; } catch { base = ''; }
     return `${base}|sctprops-${tag}-${wind > 0 ? 'w' : 's'}`;
@@ -556,7 +556,7 @@ export function makeWindDepthMaterial(sourceMat) {
   const u = sourceMat.userData.propUniforms;
   if (!u) return null;
   const d = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  d.defines = { SANCTUM_PROP_WIND: 1 };
+  d.defines = { NONA_PROP_WIND: 1 };
   d.userData.propUniforms = u;
   d.onBeforeCompile = (shader) => {
     shader.uniforms.uPropWind = u.uPropWind;

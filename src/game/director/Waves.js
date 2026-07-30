@@ -1,5 +1,5 @@
 /**
- * SANCTUM — wave / horde event.
+ * THE NINTH VIGIL — wave / horde event.
  *
  * A timed survival beat: the room seals, and five escalating waves come in, each
  * one telegraphed before it lands. The telegraph is the whole point — a horde

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — rock dressing. Boulders, clusters, scree, cliff chunks.
+ * THE NINTH VIGIL — rock dressing. Boulders, clusters, scree, cliff chunks.
  *
  * Rule one: **no spheres**. Every boulder is an icosphere pushed around by fbm
  * at three frequencies, sheared so it leans, and flattened on the underside so

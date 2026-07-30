@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Terrain material & procedural layer library.
+ * THE NINTH VIGIL — Terrain material & procedural layer library.
  *
  * Owns:
  *   - tileable noise helpers (built on src/core/Rand.js hash2, so everything is
@@ -663,7 +663,7 @@ export async function buildLayerLibrary(engine, size = 512) {
        * Plus: the bottom ~16 % of slabs by hash are SUNKEN. Their height collapses
        * toward the grout, which (a) reads as subsidence and (b) is what the
        * shader's new depression-localised puddle term pools water into — see
-       * sanctumBlend/oDepth and FRAG_MAP.
+       * nonaBlend/oDepth and FRAG_MAP.
        *
        * Colour is unchanged from round 4 (warm limestone, b/r 0.87, one quarry
        * with the walls); that note was correct and the tint was not the defect.
@@ -1222,7 +1222,7 @@ export const BIOME_PRESETS = {
    * that, not the noise itself, is why the ground read as a single stretched
    * texture. Rebalanced so all four sit in a 0.40-0.60 band under typical
    * playfield geology; slope/flow/bedrock then decide the *tendency* and the
-   * frame-scale zone field (uZone, see sanctumZones) decides the patch.
+   * frame-scale zone field (uZone, see nonaZones) decides the patch.
    */
   moor: {
     slots: [
@@ -1316,7 +1316,7 @@ export const BIOME_PRESETS = {
        beside it were warm tan — the art director's "they do not read as the same
        building", and the reason the whole crypt read cold. Both layers now sit warm
        and the *value* separation is what distinguishes them; the macro band in the
-       generator and sanctumZones supply the warm/cool play inside the family. */
+       generator and nonaZones supply the warm/cool play inside the family. */
     tint: [[1.035, 1.0, 0.95], [1.03, 0.985, 0.94], [0.96, 1.0, 0.95], [1.0, 0.96, 0.94]],
     /* 0.40 put a wetting film on every flat fragment of every crypt floor, which
        drops roughness toward 0.40 across the whole surface. At a 6.5 m closeup
@@ -1419,11 +1419,11 @@ uniform float uDebug;        // 1 = paint the resolved splat weights instead of 
 
 // per-pixel geology, filled once in main() before the plane blends run
 float gSlope, gAlt, gCurv, gMacro, gFlow, gPatch, gCavity, gBedrock;
-// frame-scale zoning (see sanctumZones) and the near-field grit fade
+// frame-scale zoning (see nonaZones) and the near-field grit fade
 float gZ1, gZ2, gZoneT, gGrit;
 
 // fast sRGB EOTF — the layer slab is linear-typed so we decode albedo by hand
-vec3 sanctumSRGB( vec3 c ) {
+vec3 nonaSRGB( vec3 c ) {
   return c * ( c * ( c * 0.305306011 + 0.682171111 ) + 0.012522878 );
 }
 
@@ -1445,37 +1445,37 @@ vec3 sanctumSRGB( vec3 c ) {
  * Pure function of world position, so it costs no texture unit and stays
  * byte-deterministic.
  * ---------------------------------------------------------------- */
-float sanctumHash( vec2 p ) {
+float nonaHash( vec2 p ) {
   vec3 p3 = fract( p.xyx * 0.1031 );
   p3 += dot( p3, p3.yzx + 33.33 );
   return fract( ( p3.x + p3.y ) * p3.z );
 }
 
-float sanctumVN( vec2 p ) {
+float nonaVN( vec2 p ) {
   vec2 i = floor( p ), f = fract( p );
   f = f * f * ( 3.0 - 2.0 * f );
-  float a = sanctumHash( i );
-  float b = sanctumHash( i + vec2( 1.0, 0.0 ) );
-  float c = sanctumHash( i + vec2( 0.0, 1.0 ) );
-  float d = sanctumHash( i + vec2( 1.0, 1.0 ) );
+  float a = nonaHash( i );
+  float b = nonaHash( i + vec2( 1.0, 0.0 ) );
+  float c = nonaHash( i + vec2( 0.0, 1.0 ) );
+  float d = nonaHash( i + vec2( 1.0, 1.0 ) );
   return mix( mix( a, b, f.x ), mix( c, d, f.x ), f.y );
 }
 
-void sanctumZones( vec2 p ) {
+void nonaZones( vec2 p ) {
   // 2 octaves per field: the coarse one places the zone, the finer one breaks
   // its boundary so patches interlock instead of reading as blobs.
   vec2 q = p / max( 4.0, uZone.y );
-  float a = sanctumVN( q ) * 0.66 + sanctumVN( q * 2.31 + 17.3 ) * 0.34;
+  float a = nonaVN( q ) * 0.66 + nonaVN( q * 2.31 + 17.3 ) * 0.34;
   // the second field runs on a rotated frame so the two never line up into a grid
   vec2 r = ( mat2( 0.8253, -0.5647, 0.5647, 0.8253 ) * p ) / max( 3.0, uZone.z );
-  float b = sanctumVN( r ) * 0.62 + sanctumVN( r * 2.07 - 9.1 ) * 0.38;
+  float b = nonaVN( r ) * 0.62 + nonaVN( r * 2.07 - 9.1 ) * 0.38;
   // sharp enough to read as a zone with a boundary, soft enough to blend
   gZ1 = smoothstep( 0.38, 0.62, a );
   gZ2 = smoothstep( 0.38, 0.62, b );
   gZoneT = clamp( a * 0.62 + b * 0.38, 0.0, 1.0 );
 }
 
-float sanctumCloudShadow() {
+float nonaCloudShadow() {
 #ifdef TERRAIN_CLOUD
   vec2 cuv = vTerrW.xz * uCloudXf.xy + uCloudXf.zw;
   float c = texture2D( tCloud, cuv ).r;
@@ -1485,7 +1485,7 @@ float sanctumCloudShadow() {
 #endif
 }
 
-void sanctumBlend( vec2 uvw, vec2 ddx, vec2 ddy, float detailFade,
+void nonaBlend( vec2 uvw, vec2 ddx, vec2 ddy, float detailFade,
                    out vec3 oAlb, out vec3 oTn, out float oRgh, out float oAo, out float oLava,
                    out vec4 oW, out float oH ) {
   float hv[4];
@@ -1528,8 +1528,8 @@ void sanctumBlend( vec2 uvw, vec2 ddx, vec2 ddy, float detailFade,
    * the UNWARPED derivatives.
    */
   vec2 wq = uvw * uWarp.y;
-  vec2 warpM = vec2( sanctumVN( wq ), sanctumVN( wq + 19.7 ) ) - 0.5;
-  warpM += ( vec2( sanctumVN( wq * 2.7 - 5.3 ), sanctumVN( wq * 2.7 + 31.1 ) ) - 0.5 ) * 0.45;
+  vec2 warpM = vec2( nonaVN( wq ), nonaVN( wq + 19.7 ) ) - 0.5;
+  warpM += ( vec2( nonaVN( wq * 2.7 - 5.3 ), nonaVN( wq * 2.7 + 31.1 ) ) - 0.5 ) * 0.45;
   warpM *= uWarp.x;
 
   // Four interlocking patch families from the two zone fields. They sum to 1, so
@@ -1551,7 +1551,7 @@ void sanctumBlend( vec2 uvw, vec2 ddx, vec2 ddy, float detailFade,
     vec2 dy = vec2( ddy.x * ca - ddy.y * sa2, ddy.x * sa2 + ddy.y * ca ) * fq;
     luv[ i ] = uv; ldx[ i ] = dx; ldy[ i ] = dy;
     vec4 sa = textureGrad( tLayers, vec3( uv, uLayerB[ i ].w ), dx, dy );
-    sa.rgb = sanctumSRGB( sa.rgb );
+    sa.rgb = nonaSRGB( sa.rgb );
     sm[ i ] = sa;
     float wi = uLayerA[ i ].x
              + uLayerA[ i ].y * gSlope
@@ -1626,7 +1626,7 @@ void sanctumBlend( vec2 uvw, vec2 ddx, vec2 ddy, float detailFade,
     vec2 dxk = ddx * k, dyk = ddy * k;
     vec4 dA = textureGrad( tLayers, vec3( duv, uDetail.w ), dxk, dyk );
     vec4 dN = textureGrad( tLayers, vec3( duv, uDetail.w + uNrmOfs ), dxk, dyk );
-    float gv = dot( sanctumSRGB( dA.rgb ), vec3( 0.3333 ) ) / max( uGrainMean, 0.02 );
+    float gv = dot( nonaSRGB( dA.rgb ), vec3( 0.3333 ) ) / max( uGrainMean, 0.02 );
     alb *= mix( 1.0, clamp( gv, 0.70, 1.38 ), detailFade * 0.30 );
     // Grain amplitude is scale-derived, not tuned. The ASH slice's normal is
     // authored for 0.028 m of relief over a 4.30 m tile; sampled at uDetail.x
@@ -1667,7 +1667,7 @@ void sanctumBlend( vec2 uvw, vec2 ddx, vec2 ddy, float detailFade,
 }
 
 // cheap expanding rain rings, deterministic in uTerrTime
-float sanctumRipple( vec2 p, float t ) {
+float nonaRipple( vec2 p, float t ) {
   vec2 rp = p * 2.6;
   vec2 cell = floor( rp );
   vec2 f = fract( rp ) - 0.5;
@@ -1693,7 +1693,7 @@ const FRAG_MAP = /* glsl */ `
   gCavity = cB.b;
   gBedrock = cB.a;
 
-  sanctumZones( vTerrW.xz );
+  nonaZones( vTerrW.xz );
 
   float detailFade = 1.0 - smoothstep( uDetail.y, uDetail.z, vTerrDist );
   gGrit = 1.0 - smoothstep( uGrit.y, uGrit.z, vTerrDist );
@@ -1716,7 +1716,7 @@ const FRAG_MAP = /* glsl */ `
   vec3 pa; vec3 pn; float pr; float po; float pl; vec4 pw; float ph;
 
   if ( bw3.y > 0.012 ) {
-    sanctumBlend( uvY, dYx, dYy, detailFade, pa, pn, pr, po, pl, pw, ph );
+    nonaBlend( uvY, dYx, dYy, detailFade, pa, pn, pr, po, pl, pw, ph );
     tAlb += pa * bw3.y; tRgh += pr * bw3.y; tAo += po * bw3.y; tLav += pl * bw3.y;
     tW += pw * bw3.y;
     // the surface height is only meaningful on the up-facing plane: water does
@@ -1726,14 +1726,14 @@ const FRAG_MAP = /* glsl */ `
     accN += t.xzy * bw3.y;
   }
   if ( bw3.x > 0.012 ) {
-    sanctumBlend( uvX, dXx, dXy, detailFade, pa, pn, pr, po, pl, pw, ph );
+    nonaBlend( uvX, dXx, dXy, detailFade, pa, pn, pr, po, pl, pw, ph );
     tAlb += pa * bw3.x; tRgh += pr * bw3.x; tAo += po * bw3.x; tLav += pl * bw3.x;
     tW += pw * bw3.x;
     vec3 t = vec3( pn.xy + gN.zy, abs( pn.z ) * gN.x );
     accN += t.zyx * bw3.x;
   }
   if ( bw3.z > 0.012 ) {
-    sanctumBlend( uvZ, dZx, dZy, detailFade, pa, pn, pr, po, pl, pw, ph );
+    nonaBlend( uvZ, dZx, dZy, detailFade, pa, pn, pr, po, pl, pw, ph );
     tAlb += pa * bw3.z; tRgh += pr * bw3.z; tAo += po * bw3.z; tLav += pl * bw3.z;
     tW += pw * bw3.z;
     vec3 t = vec3( pn.xy + gN.xy, abs( pn.z ) * gN.z );
@@ -1786,8 +1786,8 @@ const FRAG_MAP = /* glsl */ `
    * texture fetch, no sampler.
    */
   vec2 m2p = vTerrW.xz;
-  float m2 = sanctumVN( m2p / max( 3.0, uMacro2.z ) ) * 0.62
-           + sanctumVN( m2p / max( 5.0, uMacro2.y ) + 4.73 ) * 0.38;
+  float m2 = nonaVN( m2p / max( 3.0, uMacro2.z ) ) * 0.62
+           + nonaVN( m2p / max( 5.0, uMacro2.y ) + 4.73 ) * 0.38;
   float m2c = m2 * 2.0 - 1.0;
   // value and roughness move together — dusty dry stone lifts and roughens,
   // silted damp stone darkens and smooths. Decoupled they read as a stain.
@@ -1990,7 +1990,7 @@ const FRAG_MAP = /* glsl */ `
   wN = normalize( mix( wN, gN, pud * 0.92 ) );
 
   if ( uWet.z > 0.001 && pud > 0.02 ) {
-    float rp = sanctumRipple( vTerrW.xz, uTerrTime * uWet.w );
+    float rp = nonaRipple( vTerrW.xz, uTerrTime * uWet.w );
     wN = normalize( wN + vec3( rp, 0.0, rp * 0.87 ) * ( uWet.z * pud * 0.22 ) );
   }
 
@@ -2055,7 +2055,7 @@ function chainOnBeforeCompile(material, mine) {
     },
   });
   material.customProgramCacheKey = function () {
-    return `sanctum-terrain-${rev}-${externals.length}`;
+    return `nona-terrain-${rev}-${externals.length}`;
   };
 }
 
@@ -2091,7 +2091,7 @@ export function createTerrainMaterial(engine, lib) {
     uTriSharp: { value: 6.0 },
     uNormalScale: { value: 1.0 },
     uTerrTime: { value: 0 },
-    /* Frame-scale zoning. See sanctumZones().
+    /* Frame-scale zoning. See nonaZones().
        .x bias strength added to each slot's weight (±0.75 * 0.5 at the extremes,
           which is enough to flip the height-blend winner without overriding the
           authored geology terms),
@@ -2104,7 +2104,7 @@ export function createTerrainMaterial(engine, lib) {
        .w is (0.00015 / 0.028) * 4.30 * (8 * 1.35) = 0.25 — 0.15 mm of relief at
        the ASH slice's authored scale. Same slice, so no extra texture unit. */
     uGrit: { value: new THREE.Vector4(8.0, 9.0, 25.0, 0.25) },
-    /* UV domain warp — see sanctumBlend.
+    /* UV domain warp — see nonaBlend.
        .x amplitude in METRES (2.2 => a flagstone joint wanders by up to a third of
           the 6 m cobble tile and two thirds of the 3.25 m moss tile, which is far
           more than one sett: no two patches of ground carry the same arrangement),
@@ -2148,9 +2148,9 @@ export function createTerrainMaterial(engine, lib) {
     dithering: true,
     fog: true,
   });
-  mat.name = 'SanctumTerrain';
+  mat.name = 'NonaTerrain';
   mat.defines = mat.defines || {};
-  mat.defines.SANCTUM_TERRAIN = 1;
+  mat.defines.NONA_TERRAIN = 1;
   // Terrain owns cloud shadows unless Sky claims the material first.
   mat.userData.terrainCloudInject = true;
 
@@ -2202,9 +2202,9 @@ export function createTerrainMaterial(engine, lib) {
       if (typeof lfb === 'string' && lfb.indexOf('getDirectionalLightInfo') !== -1) {
         lfb = lfb
           .split('getDirectionalLightInfo( directionalLight, directLight );')
-          .join('getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= sanctumCloudShadow();')
+          .join('getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= nonaCloudShadow();')
           .split('getDirectionalLightInfo( directionalLights[0], directLight );')
-          .join('getDirectionalLightInfo( directionalLights[0], directLight );\n\t\tdirectLight.color *= sanctumCloudShadow();');
+          .join('getDirectionalLightInfo( directionalLights[0], directLight );\n\t\tdirectLight.color *= nonaCloudShadow();');
         f = f.replace('#include <lights_fragment_begin>', lfb);
       }
     } catch (e) {

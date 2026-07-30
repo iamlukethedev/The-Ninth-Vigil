@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Bestiary
+ * THE NINTH VIGIL — Bestiary
  *
  * Owns every enemy *body*: geometry, skeletons, animation, materials, damage
  * feedback, death and dissolve. The AI layer (src/game/ai/*) owns decisions and

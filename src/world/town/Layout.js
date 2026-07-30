@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Town layout.
+ * THE NINTH VIGIL — Town layout.
  *
  * Procedural, but *composed*. A settlement scattered by a Poisson dart throw
  * reads as noise; a real waypoint town reads as a plaza with a road out to a

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — per-archetype behaviour graph.
+ * THE NINTH VIGIL — per-archetype behaviour graph.
  *
  * A prioritised-interrupt state machine, which is what shipped ARPG AI actually
  * uses: a behaviour *tree* re-derives the same decision every tick and makes

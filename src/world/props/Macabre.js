@@ -1,5 +1,5 @@
 /**
- * SANCTUM — macabre dressing.
+ * THE NINTH VIGIL — macabre dressing.
  *
  * What a crypt, a charnel arena and a moor graveyard are actually made of: bone
  * that has been *stacked* rather than dropped, cages that held someone, altars

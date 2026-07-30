@@ -1,5 +1,5 @@
 /**
- * SANCTUM — ground attack telegraphs.
+ * THE NINTH VIGIL — ground attack telegraphs.
  *
  * These are gameplay-critical: the player has to read shape, extent and timing
  * in a fraction of a second at a 28 m camera distance. So they are NOT bitmaps.
@@ -706,7 +706,7 @@ export class TelegraphField {
       premultipliedAlpha: true,
       toneMapped: true,
     });
-    this.material.name = 'SanctumTelegraph';
+    this.material.name = 'NonaTelegraph';
     /* One fragment texture unit, and only on this program. The stain atlas spends
        two on its own program; nothing here is shared with a lit material, so the
        16-unit ceiling is nowhere near it. */

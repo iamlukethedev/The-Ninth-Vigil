@@ -1,5 +1,5 @@
 /**
- * SANCTUM — skill tree
+ * THE NINTH VIGIL — skill tree
  * ---------------------------------------------------------------------------
  * A radial node graph: a keystone at the hub, three branches of clustered
  * octagonal nodes, connected by cast filigree rods. Node frames are cast metal
@@ -20,31 +20,38 @@ import { mk, sty, txt, clamp01 } from './Widgets.js';
  * st: 'locked' | 'open' | 'ranked' | 'maxed'
  */
 const NODES = [
-  { id: 'core',    a: 0,    r: 0,    glyph: 'sigil',  col: '#e0c74e', st: 'maxed',  rank: [1, 1], size: 1.45, name: 'Bloodsworn Oath', desc: 'The pact that makes the rest possible.' },
+  { id: 'core',    a: 0,    r: 0,    glyph: 'sigil',  col: '#e0c74e', st: 'maxed',  rank: [1, 1], size: 1.45, name: 'The Vigil Oath', desc: 'The watch you swore. Everything else follows from it.' },
 
-  /* --- branch I: rage (upper left) --- */
+  /* --- branch I: faith (upper left) --- */
   { id: 'r1', a: -60,  r: 0.34, glyph: 'cleave', col: '#d8a04a', st: 'maxed',  rank: [5, 5], link: 'core', name: 'Sundering Cleave', desc: 'Cleave rends in a wider arc.' },
-  { id: 'r2', a: -84,  r: 0.68, glyph: 'whirl',  col: '#d8552a', st: 'ranked', rank: [3, 5], link: 'r1',   name: 'Bloodwhirl', desc: 'Spin, rending every enemy caught in the turn.' },
-  { id: 'r3', a: -38,  r: 0.68, glyph: 'flame',  col: '#d8552a', st: 'ranked', rank: [2, 3], link: 'r1',   name: 'Unbridled Fury', desc: 'Fury spent above 80 sets your weapon alight.' },
-  { id: 'r4', a: -62,  r: 0.99, glyph: 'quake',  col: '#b0813c', st: 'locked', rank: [0, 3], link: 'r2',   name: 'Earthsunder', desc: 'Requires 8 points in Rage.' },
+  { id: 'r2', a: -84,  r: 0.68, glyph: 'whirl',  col: '#d8552a', st: 'ranked', rank: [3, 5], link: 'r1',   name: 'Threshing Floor', desc: 'Spin, and let the chaff fall where it will.' },
+  { id: 'r3', a: -38,  r: 0.68, glyph: 'flame',  col: '#d8552a', st: 'ranked', rank: [2, 3], link: 'r1',   name: 'Unbridled Zeal', desc: 'Zeal spent above 80 sets your weapon alight.' },
+  { id: 'r4', a: -62,  r: 0.99, glyph: 'quake',  col: '#b0813c', st: 'locked', rank: [0, 3], link: 'r2',   name: 'Earthsunder', desc: 'Requires 8 points in Faith. Enough of it moves a mountain.' },
 
-  /* --- branch II: iron (below) --- */
-  { id: 'i1', a: 180,  r: 0.34, glyph: 'ward',   col: '#7fa8d8', st: 'maxed',  rank: [3, 3], link: 'core', name: 'Iron Bulwark', desc: 'A shield of will absorbs the next blow.' },
+  /* --- branch II: hope (below) --- */
+  { id: 'i1', a: 180,  r: 0.34, glyph: 'ward',   col: '#7fa8d8', st: 'maxed',  rank: [3, 3], link: 'core', name: 'Anchor of the Soul', desc: 'A shield of will absorbs the next blow.' },
   { id: 'i2', a: 156,  r: 0.68, glyph: 'banner', col: '#c9d6e4', st: 'ranked', rank: [1, 3], link: 'i1',   name: 'War Standard', desc: 'Plant a standard; allies within it take less damage.' },
   { id: 'i3', a: 204,  r: 0.68, glyph: 'thrust', col: '#c9d6e4', st: 'ranked', rank: [4, 5], link: 'i1',   name: 'Impaling Thrust', desc: 'Lunge forward and skewer.' },
-  { id: 'i4', a: 180,  r: 0.99, glyph: 'sigil',  col: '#8e6cd8', st: 'locked', rank: [0, 1], link: 'i2',   name: 'Unyielding', desc: 'Requires 10 points in Iron.' },
+  { id: 'i4', a: 180,  r: 0.99, glyph: 'sigil',  col: '#8e6cd8', st: 'locked', rank: [0, 1], link: 'i2',   name: 'Unyielding', desc: 'Requires 10 points in Hope. It holds, or nothing does.' },
 
-  /* --- branch III: blood (upper right) --- */
-  { id: 'b1', a: 60,   r: 0.34, glyph: 'drain',  col: '#8e6cd8', st: 'maxed',  rank: [5, 5], link: 'core', name: 'Vitae Siphon', desc: 'Draw life from wounded enemies.' },
-  { id: 'b2', a: 38,   r: 0.68, glyph: 'bolt',   col: '#6ac08a', st: 'ranked', rank: [2, 5], link: 'b1',   name: 'Grave Chill', desc: 'Siphoned life chills the ground you stand on.' },
-  { id: 'b3', a: 84,   r: 0.68, glyph: 'flame',  col: '#a8261c', st: 'locked', rank: [0, 3], link: 'b1',   name: 'Rending Wound', desc: 'Requires 6 points in Blood.' },
-  { id: 'b4', a: 62,   r: 0.99, glyph: 'whirl',  col: '#8e6cd8', st: 'locked', rank: [0, 1], link: 'b2',   name: 'Second Heart', desc: 'Requires 12 points in Blood.' },
+  /* --- branch III: charity (upper right) --- */
+  { id: 'b1', a: 60,   r: 0.34, glyph: 'drain',  col: '#8e6cd8', st: 'maxed',  rank: [5, 5], link: 'core', name: 'Good Measure', desc: 'Given, and given back — pressed down and running over.' },
+  { id: 'b2', a: 38,   r: 0.68, glyph: 'bolt',   col: '#6ac08a', st: 'ranked', rank: [2, 5], link: 'b1',   name: 'Cup of Cold Water', desc: 'The ground you stand on cools. Nothing given here is lost.' },
+  { id: 'b3', a: 84,   r: 0.68, glyph: 'flame',  col: '#a8261c', st: 'locked', rank: [0, 3], link: 'b1',   name: 'Balm of Gilead', desc: 'Requires 6 points in Charity.' },
+  { id: 'b4', a: 62,   r: 0.99, glyph: 'whirl',  col: '#8e6cd8', st: 'locked', rank: [0, 1], link: 'b2',   name: 'A New Heart', desc: 'Requires 12 points in Charity. The old one is spoken for.' },
 ];
 
+/**
+ * Three branches, so: faith, hope and charity — and the greatest of these is
+ * the one on the right, which is why it is the branch that gives instead of
+ * taking. A player who knows where the triad comes from gets the whole
+ * argument of the game off the skill screen. A player who does not just reads
+ * three good branch names.
+ */
 const BRANCH_LABELS = [
-  { text: 'RAGE',  a: -60, r: 1.20 },
-  { text: 'IRON',  a: 180, r: 1.20 },
-  { text: 'BLOOD', a: 60,  r: 1.20 },
+  { text: 'FAITH',   a: -60, r: 1.20 },
+  { text: 'HOPE',    a: 180, r: 1.20 },
+  { text: 'CHARITY', a: 60,  r: 1.20 },
 ];
 
 export class SkillTree {
@@ -202,7 +209,7 @@ export class SkillTree {
     const n = NODES.find((x) => x.id === 'r2');
     if (this.tip && n) {
       this.tipName.textContent = n.name;
-      this.tipType.textContent = 'Core Skill · 25 Fury';
+      this.tipType.textContent = 'Core Skill · 25 Zeal';
       this.tipDesc.innerHTML = `${n.desc} Deals <b>182%</b> weapon damage per rotation and Fortifies you for <b>8%</b> of Maximum Life on hit.`;
       this.tipRank.textContent = `Rank ${n.rank[0]} of ${n.rank[1]}   ·   hold to rank up`;
     }
@@ -268,70 +275,70 @@ export class SkillTree {
   /* ================================================================== CSS */
 
   _injectCSS() {
-    if (document.getElementById('sanctum-hud-tree')) return;
+    if (document.getElementById('nona-hud-tree')) return;
     const s = document.createElement('style');
-    s.id = 'sanctum-hud-tree';
+    s.id = 'nona-hud-tree';
     s.textContent = `
-#sanctum-hud .treePnl{ left:48.4vh; top:3.4vh; width:50vh; height:76vh; }
-#sanctum-hud .treePnl .body{ padding:2.4vh 2.6vh 2.2vh; }
-#sanctum-hud .tHead{ text-align:center; padding:0 3.6vh; }
-#sanctum-hud .tTitle{ font-size:1.36vh; letter-spacing:.26em; color:#eeddac;
+#nona-hud .treePnl{ left:48.4vh; top:3.4vh; width:50vh; height:76vh; }
+#nona-hud .treePnl .body{ padding:2.4vh 2.6vh 2.2vh; }
+#nona-hud .tHead{ text-align:center; padding:0 3.6vh; }
+#nona-hud .tTitle{ font-size:1.36vh; letter-spacing:.26em; color:#eeddac;
   text-shadow:0 -1px 0 #000,0 2px 2px rgba(0,0,0,.9),0 1px 0 rgba(255,244,200,.20); }
-#sanctum-hud .tPts{ display:flex; justify-content:center; margin-top:.9vh; }
-#sanctum-hud .tPtPlate{ height:2.1vh; padding:0 .8vh; background-size:100% 100%;
+#nona-hud .tPts{ display:flex; justify-content:center; margin-top:.9vh; }
+#nona-hud .tPtPlate{ height:2.1vh; padding:0 .8vh; background-size:100% 100%;
   display:flex; align-items:center; gap:.5vh;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.75)); }
-#sanctum-hud .tPtLab{ font-size:.78vh; letter-spacing:.20em; color:#cbb47e;
+#nona-hud .tPtLab{ font-size:.78vh; letter-spacing:.20em; color:#cbb47e;
   text-shadow:0 -1px 0 rgba(0,0,0,.85); }
-#sanctum-hud .tPtVal{ font-size:1.24vh; color:#f0dc9a; text-shadow:0 -1px 0 #000; }
+#nona-hud .tPtVal{ font-size:1.24vh; color:#f0dc9a; text-shadow:0 -1px 0 #000; }
 
-#sanctum-hud .tField{ position:relative; width:44.8vh; height:44.8vh; margin:1.4vh auto 0; }
-#sanctum-hud .tLinks,#sanctum-hud .tNodes{ position:absolute; inset:0; }
-#sanctum-hud .tLink{ position:absolute; height:1.35vh; background-size:100% 100%;
+#nona-hud .tField{ position:relative; width:44.8vh; height:44.8vh; margin:1.4vh auto 0; }
+#nona-hud .tLinks,#nona-hud .tNodes{ position:absolute; inset:0; }
+#nona-hud .tLink{ position:absolute; height:1.35vh; background-size:100% 100%;
   background-repeat:no-repeat; filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.8)); }
 
-#sanctum-hud .tNode{ position:absolute; transform:translate(-50%,-50%); }
-#sanctum-hud .tNode>div{ position:absolute; }
-#sanctum-hud .tFr{ inset:0; background-size:100% 100%;
+#nona-hud .tNode{ position:absolute; transform:translate(-50%,-50%); }
+#nona-hud .tNode>div{ position:absolute; }
+#nona-hud .tFr{ inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .4vh .9vh rgba(0,0,0,.85)); }
-#sanctum-hud .tIc{ inset:26%; background-size:100% 100%; background-repeat:no-repeat; }
-#sanctum-hud .tRing{ inset:2%; border-radius:50%; opacity:0; pointer-events:none; }
-#sanctum-hud .tLock{ inset:30%; background-size:100% 100%; background-repeat:no-repeat;
+#nona-hud .tIc{ inset:26%; background-size:100% 100%; background-repeat:no-repeat; }
+#nona-hud .tRing{ inset:2%; border-radius:50%; opacity:0; pointer-events:none; }
+#nona-hud .tLock{ inset:30%; background-size:100% 100%; background-repeat:no-repeat;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.9)); }
-#sanctum-hud .tNode.locked .tIc{ opacity:.34; }
-#sanctum-hud .tPips{ left:0; right:0; bottom:-1.05vh; display:flex; gap:.16vh;
+#nona-hud .tNode.locked .tIc{ opacity:.34; }
+#nona-hud .tPips{ left:0; right:0; bottom:-1.05vh; display:flex; gap:.16vh;
   justify-content:center; }
-#sanctum-hud .tPip{ width:.34vh; height:.34vh; transform:rotate(45deg);
+#nona-hud .tPip{ width:.34vh; height:.34vh; transform:rotate(45deg);
   background:#22262c; box-shadow:0 0 0 1px rgba(0,0,0,.7); }
-#sanctum-hud .tPip.on{ background:linear-gradient(135deg,#f6e3a8,#a4752a);
+#nona-hud .tPip.on{ background:linear-gradient(135deg,#f6e3a8,#a4752a);
   box-shadow:0 0 .35vh rgba(226,180,90,.75),0 0 0 1px rgba(0,0,0,.6); }
-#sanctum-hud .tRank{ left:-2vh; right:-2vh; bottom:-2.5vh; text-align:center;
+#nona-hud .tRank{ left:-2vh; right:-2vh; bottom:-2.5vh; text-align:center;
   font-size:.86vh; color:#9c9078; text-shadow:0 1px 0 #000; }
-#sanctum-hud .tNode.locked .tRank{ color:#6a6353; }
+#nona-hud .tNode.locked .tRank{ color:#6a6353; }
 
-#sanctum-hud .tBranch{ position:absolute; transform:translate(-50%,-50%);
+#nona-hud .tBranch{ position:absolute; transform:translate(-50%,-50%);
   font-size:1.02vh; letter-spacing:.34em; color:#8a7d5f; white-space:nowrap;
   text-shadow:0 -1px 0 rgba(0,0,0,.9),0 1px 0 rgba(232,206,150,.14); }
 
-#sanctum-hud .tLegend{ display:flex; justify-content:center; align-items:center;
+#nona-hud .tLegend{ display:flex; justify-content:center; align-items:center;
   gap:2.2vh; margin-top:1.15vh; height:2.6vh; }
-#sanctum-hud .tLegIt{ display:flex; align-items:center; gap:.55vh; }
-#sanctum-hud .tLegCh{ width:1.8vh; height:1.8vh; background-size:100% 100%;
+#nona-hud .tLegIt{ display:flex; align-items:center; gap:.55vh; }
+#nona-hud .tLegCh{ width:1.8vh; height:1.8vh; background-size:100% 100%;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.8)); }
-#sanctum-hud .tLegIt span{ font-size:.80vh; letter-spacing:.20em; color:#5a4a26;
+#nona-hud .tLegIt span{ font-size:.80vh; letter-spacing:.20em; color:#5a4a26;
   text-shadow:0 1px 0 rgba(255,246,214,.42); }
 
-#sanctum-hud .tTip{ position:relative !important; left:auto !important; top:auto !important;
+#nona-hud .tTip{ position:relative !important; left:auto !important; top:auto !important;
   width:100%; margin-top:1.4vh; }
-#sanctum-hud .tTip .body{ padding:1.3vh 1.5vh 1.2vh; }
-#sanctum-hud .tTip>canvas.skin{ filter:drop-shadow(0 1.2vh 2.2vh rgba(0,0,0,.9)); }
-#sanctum-hud .tTipName{ font-size:1.26vh; letter-spacing:.10em; color:#f0dc9a;
+#nona-hud .tTip .body{ padding:1.3vh 1.5vh 1.2vh; }
+#nona-hud .tTip>canvas.skin{ filter:drop-shadow(0 1.2vh 2.2vh rgba(0,0,0,.9)); }
+#nona-hud .tTipName{ font-size:1.26vh; letter-spacing:.10em; color:#f0dc9a;
   text-transform:none; text-shadow:0 -1px 0 #000,0 0 1.2vh rgba(190,140,60,.4); }
-#sanctum-hud .tTipType{ font-size:.78vh; letter-spacing:.20em; color:#8e8267; margin-top:.3vh; }
-#sanctum-hud .tTipRule{ margin:.6vh 0 .55vh; }
-#sanctum-hud .tTipDesc{ font-size:1.04vh; line-height:1.42; color:#bdb094; }
-#sanctum-hud .tTipDesc b{ color:#f4ecd4; font-family:${FONT_NUM}; font-weight:600; }
-#sanctum-hud .tTipRank{ margin-top:.6vh; font-size:.80vh; letter-spacing:.18em; color:#7f7459; }
+#nona-hud .tTipType{ font-size:.78vh; letter-spacing:.20em; color:#8e8267; margin-top:.3vh; }
+#nona-hud .tTipRule{ margin:.6vh 0 .55vh; }
+#nona-hud .tTipDesc{ font-size:1.04vh; line-height:1.42; color:#bdb094; }
+#nona-hud .tTipDesc b{ color:#f4ecd4; font-family:${FONT_NUM}; font-weight:600; }
+#nona-hud .tTipRank{ margin-top:.6vh; font-size:.80vh; letter-spacing:.18em; color:#7f7459; }
 `;
     document.head.appendChild(s);
   }

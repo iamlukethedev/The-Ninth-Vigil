@@ -1,5 +1,5 @@
 /**
- * SANCTUM — the stain decal material.
+ * THE NINTH VIGIL — the stain decal material.
  *
  * A MeshStandardMaterial extended through onBeforeCompile so decals are properly
  * lit, shadowed and fogged like any other surface — an unlit decal reads as a
@@ -88,7 +88,7 @@ export function makeStainMaterial(engine, atlas) {
     emissiveIntensity: 1.0,
     forceSinglePass: true,
   });
-  mat.name = 'SanctumDecalStain';
+  mat.name = 'NonaDecalStain';
   mat.normalMapType = THREE.TangentSpaceNormalMap;
   mat.normalScale.set(1.25, 1.25);
   // three only sets this when the texture is a 2-channel format; ours is RGBA

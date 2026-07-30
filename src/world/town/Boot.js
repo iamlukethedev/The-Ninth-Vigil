@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Town boot shim.
+ * THE NINTH VIGIL — Town boot shim.
  *
  * DIAGNOSIS (why the hub had no settlement): `src/world/Town.js` and its whole
  * `src/world/town/*` builder set existed and were correct, but **nothing ever
@@ -12,7 +12,7 @@
  *
  * THE FIX, without editing an integrator-owned file. This module runs as its own
  * `<script type="module">` **before** `/src/main.js` (the tag is injected by the
- * tiny `sanctum-town-boot` plugin in vite.config.js — no source rewriting, no
+ * tiny `nona-town-boot` plugin in vite.config.js — no source rewriting, no
  * edit to index.html, main.js, Engine.js, modules.js or Scenarios.js). ES module
  * namespaces are singletons, so the `MANIFEST` array mutated here is literally
  * the array `loadModules()` is about to walk a tick later. Town therefore

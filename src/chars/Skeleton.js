@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Skeleton.js
+ * THE NINTH VIGIL — Skeleton.js
  * ---------------------------------------------------------------------------
  * Procedural humanoid rig. Nothing in this project imports a skeleton, so the
  * hero's bones are authored here as a table of rest-pose joint positions and

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — LIGHT FIXTURES.
+ * THE NINTH VIGIL — LIGHT FIXTURES.
  *
  * This file exists because of one specific, fatal defect: captured frames had
  * torch lights with **no source object**. A point light floating in empty air

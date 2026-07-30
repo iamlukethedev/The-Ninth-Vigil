@@ -1,5 +1,5 @@
 /**
- * SANCTUM — AI module entry.
+ * THE NINTH VIGIL — AI module entry.
  *
  * This file is the *driver*. Every decision-making part already lives in
  * `src/game/ai/*`; AI.js owns the things that can only be done once, centrally,

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — encounter authoring and runtime.
+ * THE NINTH VIGIL — encounter authoring and runtime.
  *
  * A level is not a uniform enemy soup. It is a *sequence*: you walk into a hall
  * and a patrol is already pacing it; you push a side chamber and something that

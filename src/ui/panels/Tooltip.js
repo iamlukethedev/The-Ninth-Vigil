@@ -1,5 +1,5 @@
 /**
- * SANCTUM — item tooltip
+ * THE NINTH VIGIL — item tooltip
  * ---------------------------------------------------------------------------
  * The single most-read element in an action RPG, so it is fully authored:
  * an ornate iron frame over dark leather, a rarity-coloured title with the item
@@ -222,71 +222,71 @@ export class Tooltip {
   /* ================================================================== CSS */
 
   _injectCSS() {
-    if (document.getElementById('sanctum-hud-ttip')) return;
+    if (document.getElementById('nona-hud-ttip')) return;
     const s = document.createElement('style');
-    s.id = 'sanctum-hud-ttip';
+    s.id = 'nona-hud-ttip';
     s.textContent = `
-#sanctum-hud .ttip{ width:34.5vh; }
-#sanctum-hud .ttip .body{ padding:2.1vh 2.3vh 2.6vh; display:flex; flex-direction:column; }
-#sanctum-hud .ttip>canvas.skin{ filter:drop-shadow(0 1.6vh 3.0vh rgba(0,0,0,.9)); }
+#nona-hud .ttip{ width:34.5vh; }
+#nona-hud .ttip .body{ padding:2.1vh 2.3vh 2.6vh; display:flex; flex-direction:column; }
+#nona-hud .ttip>canvas.skin{ filter:drop-shadow(0 1.6vh 3.0vh rgba(0,0,0,.9)); }
 
-#sanctum-hud .ttHead{ display:flex; gap:1.0vh; align-items:flex-start; }
-#sanctum-hud .ttSockWrap{ position:relative; width:6.6vh; height:6.6vh; flex:0 0 auto; }
-#sanctum-hud .ttSock{ position:absolute; inset:0; background-size:100% 100%; }
-#sanctum-hud .ttIcon{ position:absolute; inset:13%; background-size:100% 100%;
+#nona-hud .ttHead{ display:flex; gap:1.0vh; align-items:flex-start; }
+#nona-hud .ttSockWrap{ position:relative; width:6.6vh; height:6.6vh; flex:0 0 auto; }
+#nona-hud .ttSock{ position:absolute; inset:0; background-size:100% 100%; }
+#nona-hud .ttIcon{ position:absolute; inset:13%; background-size:100% 100%;
   background-repeat:no-repeat; }
-#sanctum-hud .ttGlow{ position:absolute; inset:-16%; pointer-events:none; }
-#sanctum-hud .ttTitles{ flex:1 1 auto; min-width:0; padding-top:.15vh; }
-#sanctum-hud .ttName{ letter-spacing:.055em; line-height:1.16; text-transform:none; }
-#sanctum-hud .ttType{ font-size:.98vh; letter-spacing:.16em; margin-top:.48vh; line-height:1.35; }
-#sanctum-hud .ttPowerRow{ display:flex; align-items:center; gap:.7vh; margin-top:.68vh; }
-#sanctum-hud .ttPowerPlate{ height:1.95vh; min-width:5.4vh; padding:0 .6vh;
+#nona-hud .ttGlow{ position:absolute; inset:-16%; pointer-events:none; }
+#nona-hud .ttTitles{ flex:1 1 auto; min-width:0; padding-top:.15vh; }
+#nona-hud .ttName{ letter-spacing:.055em; line-height:1.16; text-transform:none; }
+#nona-hud .ttType{ font-size:.98vh; letter-spacing:.16em; margin-top:.48vh; line-height:1.35; }
+#nona-hud .ttPowerRow{ display:flex; align-items:center; gap:.7vh; margin-top:.68vh; }
+#nona-hud .ttPowerPlate{ height:1.95vh; min-width:5.4vh; padding:0 .6vh;
   display:flex; align-items:center; justify-content:center; background-size:100% 100%;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.7)); }
-#sanctum-hud .ttPowerPlate:before{ content:'IP'; font-family:${FONT_DISPLAY}; font-size:.78vh;
+#nona-hud .ttPowerPlate:before{ content:'IP'; font-family:${FONT_DISPLAY}; font-size:.78vh;
   letter-spacing:.16em; color:#a08a5e; margin-right:.42vh; }
-#sanctum-hud .ttPower{ font-size:1.28vh; color:#f0dc9a; letter-spacing:.03em;
+#nona-hud .ttPower{ font-size:1.28vh; color:#f0dc9a; letter-spacing:.03em;
   text-shadow:0 -1px 0 #000,0 1px 0 rgba(255,235,180,.16); }
-#sanctum-hud .ttUpg{ font-size:.84vh; letter-spacing:.18em; color:#cbbb94;
+#nona-hud .ttUpg{ font-size:.84vh; letter-spacing:.18em; color:#cbbb94;
   text-shadow:0 -1px 0 rgba(0,0,0,.85),0 1px 0 rgba(0,0,0,.6); }
 
-#sanctum-hud .ttRule{ margin:1.0vh 0 .85vh; }
+#nona-hud .ttRule{ margin:1.0vh 0 .85vh; }
 
-#sanctum-hud .ttBig{ font-size:2.9vh; line-height:1; color:#f2e8cc; letter-spacing:.01em;
+#nona-hud .ttBig{ font-size:2.9vh; line-height:1; color:#f2e8cc; letter-spacing:.01em;
   text-shadow:0 -1px 0 #000,0 2px 0 rgba(0,0,0,.7),0 1px 0 rgba(255,240,200,.12); }
-#sanctum-hud .ttBigLabel{ font-size:.90vh; letter-spacing:.26em; color:#d3c49c; margin-top:.30vh;
+#nona-hud .ttBigLabel{ font-size:.90vh; letter-spacing:.26em; color:#d3c49c; margin-top:.30vh;
   text-shadow:0 -1px 0 rgba(0,0,0,.9),0 1px 0 rgba(0,0,0,.65); }
-#sanctum-hud .ttSubs{ margin-top:.62vh; display:flex; flex-direction:column; gap:.20vh; }
-#sanctum-hud .ttSub{ font-size:1.14vh; letter-spacing:.02em; color:#ddd0ae;
+#nona-hud .ttSubs{ margin-top:.62vh; display:flex; flex-direction:column; gap:.20vh; }
+#nona-hud .ttSub{ font-size:1.14vh; letter-spacing:.02em; color:#ddd0ae;
   text-shadow:0 1px 1px rgba(0,0,0,.75); }
 
-#sanctum-hud .ttAffix{ display:flex; flex-direction:column; gap:.38vh; }
-#sanctum-hud .ttAff{ position:relative; display:flex; gap:.62vh; align-items:baseline;
+#nona-hud .ttAffix{ display:flex; flex-direction:column; gap:.38vh; }
+#nona-hud .ttAff{ position:relative; display:flex; gap:.62vh; align-items:baseline;
   font-size:1.20vh; line-height:1.36; letter-spacing:.012em; }
-#sanctum-hud .ttPip{ width:.50vh; height:.50vh; flex:0 0 auto; margin-top:.46vh;
+#nona-hud .ttPip{ width:.50vh; height:.50vh; flex:0 0 auto; margin-top:.46vh;
   transform:rotate(45deg); box-shadow:0 0 0 1px rgba(0,0,0,.6); }
-#sanctum-hud .ttAff.greater{ font-size:1.28vh; }
-#sanctum-hud .ttAff.greater .ttPip{ box-shadow:0 0 .5vh rgba(226,180,90,.7),0 0 0 1px rgba(0,0,0,.6); }
+#nona-hud .ttAff.greater{ font-size:1.28vh; }
+#nona-hud .ttAff.greater .ttPip{ box-shadow:0 0 .5vh rgba(226,180,90,.7),0 0 0 1px rgba(0,0,0,.6); }
 
-#sanctum-hud .ttAspect{ position:relative; margin-top:1.05vh; padding:.9vh 1.0vh .95vh; }
-#sanctum-hud .ttAspectSkin{ position:absolute; inset:0; width:100%; height:100%; display:block; }
-#sanctum-hud .ttAspectHead{ position:relative; font-size:.82vh; letter-spacing:.26em;
+#nona-hud .ttAspect{ position:relative; margin-top:1.05vh; padding:.9vh 1.0vh .95vh; }
+#nona-hud .ttAspectSkin{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+#nona-hud .ttAspectHead{ position:relative; font-size:.82vh; letter-spacing:.26em;
   color:#6b4f18; margin-bottom:.36vh; }
-#sanctum-hud .ttAspectText{ position:relative; font-size:1.14vh; line-height:1.42; color:#3a2c14;
+#nona-hud .ttAspectText{ position:relative; font-size:1.14vh; line-height:1.42; color:#3a2c14;
   font-style:italic; }
 
-#sanctum-hud .ttSockets{ display:flex; align-items:center; gap:.5vh; margin-top:1.0vh; }
-#sanctum-hud .ttSockLbl{ font-size:.82vh; letter-spacing:.24em; margin-right:.3vh; }
-#sanctum-hud .ttGemSock{ position:relative; width:2.0vh; height:2.0vh; background-size:100% 100%; }
-#sanctum-hud .ttGem{ position:absolute; inset:6%; background-size:100% 100%; }
+#nona-hud .ttSockets{ display:flex; align-items:center; gap:.5vh; margin-top:1.0vh; }
+#nona-hud .ttSockLbl{ font-size:.82vh; letter-spacing:.24em; margin-right:.3vh; }
+#nona-hud .ttGemSock{ position:relative; width:2.0vh; height:2.0vh; background-size:100% 100%; }
+#nona-hud .ttGem{ position:absolute; inset:6%; background-size:100% 100%; }
 
-#sanctum-hud .ttFlav{ font-size:1.14vh; line-height:1.44; color:#c2b391;
+#nona-hud .ttFlav{ font-size:1.14vh; line-height:1.44; color:#c2b391;
   text-shadow:0 1px 1px rgba(0,0,0,.7); }
-#sanctum-hud .ttFoot{ display:flex; justify-content:space-between; align-items:baseline;
+#nona-hud .ttFoot{ display:flex; justify-content:space-between; align-items:baseline;
   margin-top:1.05vh; }
-#sanctum-hud .ttReq{ font-size:.86vh; letter-spacing:.18em; color:#c0b18f;
+#nona-hud .ttReq{ font-size:.86vh; letter-spacing:.18em; color:#c0b18f;
   text-shadow:0 -1px 0 rgba(0,0,0,.85); }
-#sanctum-hud .ttSell{ font-size:1.02vh; color:#e2c882; text-shadow:0 1px 1px rgba(0,0,0,.7); }
+#nona-hud .ttSell{ font-size:1.02vh; color:#e2c882; text-shadow:0 1px 1px rgba(0,0,0,.7); }
 `;
     document.head.appendChild(s);
   }

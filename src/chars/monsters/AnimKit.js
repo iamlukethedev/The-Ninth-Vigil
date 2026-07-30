@@ -1,5 +1,5 @@
 /**
- * SANCTUM — AnimKit
+ * THE NINTH VIGIL — AnimKit
  *
  * A tiny procedural animation graph. Clips are *functions of phase*, not baked
  * tracks: `fn(P, phase, ctx)` writes local joint rotations (and optional local

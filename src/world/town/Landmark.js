@@ -1,5 +1,5 @@
 /**
- * SANCTUM — the waypoint shrine.
+ * THE NINTH VIGIL — the waypoint shrine.
  *
  * The single most-needed thing in the old `hub` capture was a focal point: an
  * object the eye lands on, lit differently from everything else, that tells you

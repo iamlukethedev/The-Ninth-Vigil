@@ -1,5 +1,5 @@
 /**
- * SANCTUM — HUD combat layer
+ * THE NINTH VIGIL — HUD combat layer
  * ---------------------------------------------------------------------------
  * Everything in the interface that is anchored to something in the world:
  *
@@ -219,7 +219,7 @@ export class CombatLayer {
 
     this.boss.hpTxt = txt('div', 'bbHp num', '', bar);
     this.boss.sub = txt('div', 'bbSub eng', 'PHASE II · LEVEL 20', bb);
-    this._setBossName('SANCTUM WARDEN');
+    this._setBossName('APOLLYON');
 
     this._injectCSS();
   }
@@ -713,56 +713,56 @@ export class CombatLayer {
   /* ================================================================= CSS */
 
   _injectCSS() {
-    if (document.getElementById('sanctum-hud-combat')) return;
+    if (document.getElementById('nona-hud-combat')) return;
     const s = document.createElement('style');
-    s.id = 'sanctum-hud-combat';
+    s.id = 'nona-hud-combat';
     s.textContent = `
-#sanctum-hud .cLayer{ position:absolute; inset:0; }
+#nona-hud .cLayer{ position:absolute; inset:0; }
 
 /* ---- damage numbers ----
    .dNum is the inline-block that gives the pair a shared box; .dStroke is taken
    out of flow directly on top of it so both layers share one text origin. */
-#sanctum-hud .dmg{ position:absolute; left:0; top:0; will-change:transform,opacity; }
-#sanctum-hud .dNum{ position:relative; display:inline-block; white-space:nowrap; }
-#sanctum-hud .dNum>div{
+#nona-hud .dmg{ position:absolute; left:0; top:0; will-change:transform,opacity; }
+#nona-hud .dNum{ position:relative; display:inline-block; white-space:nowrap; }
+#nona-hud .dNum>div{
   white-space:nowrap; font-variant-numeric:lining-nums tabular-nums;
   font-weight:600; line-height:1.06;
 }
-#sanctum-hud .dStroke{ position:absolute; left:0; top:0; }
-#sanctum-hud .dFill{ position:relative; }
+#nona-hud .dStroke{ position:absolute; left:0; top:0; }
+#nona-hud .dFill{ position:relative; }
 /* The gradient fill is the enhancement, not the baseline: if an engine cannot
    clip a background to text, the numerals stay a solid colour and stay legible. */
-#sanctum-hud .dFill{ color:#fff0d0; }
+#nona-hud .dFill{ color:#fff0d0; }
 @supports (-webkit-background-clip:text) or (background-clip:text){
-  #sanctum-hud .dFill{
+  #nona-hud .dFill{
     -webkit-background-clip:text; background-clip:text;
     -webkit-text-fill-color:transparent;
   }
 }
-#sanctum-hud .dmg.crit .dNum>div{ font-weight:700; }
-#sanctum-hud .dFlash{
+#nona-hud .dmg.crit .dNum>div{ font-weight:700; }
+#nona-hud .dFlash{
   position:absolute; left:50%; top:50%; width:9vh; height:9vh; border-radius:50%;
   opacity:0; pointer-events:none; mix-blend-mode:screen;
 }
 
 /* ---- nameplates ---- */
-#sanctum-hud .np{ position:absolute; left:0; top:0; width:22vh; margin-left:-11vh;
+#nona-hud .np{ position:absolute; left:0; top:0; width:22vh; margin-left:-11vh;
   display:flex; flex-direction:column; align-items:center; gap:.24vh; }
-#sanctum-hud .npTop{ display:flex; align-items:center; gap:.46vh; }
-#sanctum-hud .npIcon{ width:1.9vh; height:1.9vh; background-size:100% 100%;
+#nona-hud .npTop{ display:flex; align-items:center; gap:.46vh; }
+#nona-hud .npIcon{ width:1.9vh; height:1.9vh; background-size:100% 100%;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.9)); flex:0 0 auto; }
-#sanctum-hud .npName{ font-size:1.20vh; letter-spacing:.11em; color:#f0dc9a;
+#nona-hud .npName{ font-size:1.20vh; letter-spacing:.11em; color:#f0dc9a;
   text-shadow:0 -1px 0 #000,0 1px 0 rgba(0,0,0,.9),0 0 1vh rgba(0,0,0,.95); white-space:nowrap; }
-#sanctum-hud .npLvl{ font-size:1.06vh; color:#b9ab86; opacity:.85;
+#nona-hud .npLvl{ font-size:1.06vh; color:#b9ab86; opacity:.85;
   text-shadow:0 1px 0 #000; }
-#sanctum-hud .npLvl:before{ content:'lv '; font-size:.78em; opacity:.7; letter-spacing:.1em; }
-#sanctum-hud .npBar{ position:relative; width:13.5vh; height:.86vh; }
-#sanctum-hud .npClip{ position:absolute; left:.22vh; right:.22vh; top:.20vh; bottom:.20vh;
+#nona-hud .npLvl:before{ content:'lv '; font-size:.78em; opacity:.7; letter-spacing:.1em; }
+#nona-hud .npBar{ position:relative; width:13.5vh; height:.86vh; }
+#nona-hud .npClip{ position:absolute; left:.22vh; right:.22vh; top:.20vh; bottom:.20vh;
   overflow:hidden; }
-#sanctum-hud .npFill,#sanctum-hud .npGhost{ position:absolute; left:0; top:0; bottom:0;
+#nona-hud .npFill,#nona-hud .npGhost{ position:absolute; left:0; top:0; bottom:0;
   background-size:100% 100%; }
-#sanctum-hud .npGhost{ opacity:.34; }
-#sanctum-hud .npFrame{ position:absolute; inset:0; background-size:100% 100%;
+#nona-hud .npGhost{ opacity:.34; }
+#nona-hud .npFrame{ position:absolute; inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .2vh .4vh rgba(0,0,0,.85)); }
 
 /* ---- boss bar ----
@@ -771,46 +771,46 @@ export class CombatLayer {
    frame raster. Hand-kept copies of those four numbers drift the first time
    either side is tuned, and a fill sitting proud of its own channel is the most
    obvious way to make a bar look unfinished. */
-#sanctum-hud .bossBar{ position:absolute; left:50%; top:2.4vh; transform:translateX(-50%);
+#nona-hud .bossBar{ position:absolute; left:50%; top:2.4vh; transform:translateX(-50%);
   width:${BOSS_BAR_W_VH.toFixed(3)}vh; display:flex; flex-direction:column; align-items:center; }
-#sanctum-hud .bbName{ position:relative; z-index:2;
+#nona-hud .bbName{ position:relative; z-index:2;
   width:${BOSS_CART_W_VH.toFixed(3)}vh; height:${BOSS_CART_VH.toFixed(3)}vh;
   background-size:100% 100%;
   display:flex; align-items:center; justify-content:center;
   filter:drop-shadow(0 .5vh 1.2vh rgba(0,0,0,.86)); }
 /* the gilded name raster — sized by JS from its own aspect, see _setBossName */
-#sanctum-hud .bbTitle{ filter:drop-shadow(0 .12vh .3vh rgba(0,0,0,.9)); }
-#sanctum-hud .bbIcon{ position:absolute; left:2.0vh; top:50%; transform:translateY(-50%);
+#nona-hud .bbTitle{ filter:drop-shadow(0 .12vh .3vh rgba(0,0,0,.9)); }
+#nona-hud .bbIcon{ position:absolute; left:2.0vh; top:50%; transform:translateY(-50%);
   width:2.5vh; height:2.5vh; background-size:100% 100%;
   filter:drop-shadow(0 .2vh .5vh rgba(0,0,0,.92)); }
 /* The cartouche seats ON the beam's top edge, so the two read as one assembly
    rather than as a caption floating above a bar — but only just. At a deeper
    overlap the plate covered the upper halves of all three phase bosses (they
    are all inside its span horizontally) and each of them read as a map pin. */
-#sanctum-hud .bbBar{ position:relative;
+#nona-hud .bbBar{ position:relative;
   width:${BOSS_BAR_W_VH.toFixed(3)}vh; height:${BOSS_BAR_VH.toFixed(3)}vh; margin-top:-.52vh; }
-#sanctum-hud .bbClip{ position:absolute; overflow:hidden;
+#nona-hud .bbClip{ position:absolute; overflow:hidden;
   left:${(BOSS_GEO.clipX * 100).toFixed(3)}%; right:${(BOSS_GEO.clipX * 100).toFixed(3)}%;
   top:${(BOSS_GEO.clipY * 100).toFixed(3)}%; bottom:${(BOSS_GEO.clipY * 100).toFixed(3)}%; }
-#sanctum-hud .bbFill,#sanctum-hud .bbGhost{ position:absolute; left:0; top:0; bottom:0;
+#nona-hud .bbFill,#nona-hud .bbGhost{ position:absolute; left:0; top:0; bottom:0;
   background-size:100% 100%; }
-#sanctum-hud .bbGhost{ opacity:.34; }
-#sanctum-hud .bbEdge{ position:absolute; right:0; top:0; bottom:0; width:1.30vh;
+#nona-hud .bbGhost{ opacity:.34; }
+#nona-hud .bbEdge{ position:absolute; right:0; top:0; bottom:0; width:1.30vh;
   background-size:100% 100%; }
-#sanctum-hud .bbFrame{ position:absolute; inset:0; background-size:100% 100%;
+#nona-hud .bbFrame{ position:absolute; inset:0; background-size:100% 100%;
   filter:drop-shadow(0 .45vh 1.1vh rgba(0,0,0,.82)); }
-#sanctum-hud .bbStone{ position:absolute; top:50%; transform:translate(-50%,-50%);
+#nona-hud .bbStone{ position:absolute; top:50%; transform:translate(-50%,-50%);
   width:${(BOSS_STONE_H * BOSS_BAR_VH).toFixed(3)}vh;
   height:${(BOSS_STONE_H * BOSS_BAR_VH).toFixed(3)}vh; background-size:100% 100%; }
 /* the readout lives IN the channel, in the last segment — the one stretch of
    trough no phase boss crosses — so the number a player checks mid-fight is on
    the object it describes instead of orbiting it */
-#sanctum-hud .bbHp{ position:absolute; left:0; top:0; bottom:0;
+#nona-hud .bbHp{ position:absolute; left:0; top:0; bottom:0;
   right:${(BOSS_GEO.clipX * 100 + 2.3).toFixed(3)}%;
   display:flex; align-items:center; justify-content:flex-end;
   font-size:1.14vh; letter-spacing:.09em; color:#f4e6c4;
   text-shadow:0 -1px 0 rgba(0,0,0,.96),0 1px 2px rgba(0,0,0,.96),0 0 .8vh rgba(0,0,0,.94); }
-#sanctum-hud .bbSub{ margin-top:.58vh; font-size:.94vh; letter-spacing:.34em; color:#a89272;
+#nona-hud .bbSub{ margin-top:.58vh; font-size:.94vh; letter-spacing:.34em; color:#a89272;
   text-shadow:0 1px 0 #000,0 0 .8vh rgba(0,0,0,.9); }
 `;
     document.head.appendChild(s);

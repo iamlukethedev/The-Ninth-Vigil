@@ -1,5 +1,5 @@
 /**
- * SANCTUM — synthesis primitives.
+ * THE NINTH VIGIL — synthesis primitives.
  * ---------------------------------------------------------------------------
  * Every SFX recipe is built from these. They all take a *synth scope* `S`:
  *

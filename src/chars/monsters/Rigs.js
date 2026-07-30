@@ -1,5 +1,5 @@
 /**
- * SANCTUM — rig presets.
+ * THE NINTH VIGIL — rig presets.
  *
  * Bipeds, quadrupeds and floaters share a joint-naming contract so the clip
  * library in Clips.js can drive any of them. Proportions are *always* in metres

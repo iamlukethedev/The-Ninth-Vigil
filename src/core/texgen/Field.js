@@ -1,5 +1,5 @@
 /**
- * SANCTUM — scalar field plumbing for procedural texture synthesis.
+ * THE NINTH VIGIL — scalar field plumbing for procedural texture synthesis.
  *
  * A "field" is a Float32Array of size*size laid out row-major, row 0 first.
  * Textures are uploaded with flipY = false, so the array row index maps

@@ -1,5 +1,5 @@
 /**
- * SANCTUM — objectives.
+ * THE NINTH VIGIL — objectives.
  *
  * A small quest chain, built from the encounter plan so it always describes work
  * that actually exists in the level: clear the hall, find the reliquary key, kill
@@ -57,7 +57,7 @@ export class Objectives {
     const countOf = (kind) => plan.list.filter((e) => e.kind === kind).length;
 
     if (name === 'hub' || name === 'inventory' || name === 'closeup') {
-      this.title = 'Sanctuary';
+      this.title = 'The Chapterhouse';
       this.subtitle = 'Rest, re-arm, and choose your descent';
       this._add({ id: 'hub.repair', kind: 'talk', text: 'Speak with the Armourer', hint: 'Repair and re-socket before you descend', need: 1 });
       this._add({ id: 'hub.stash', kind: 'talk', text: 'Empty your stash', hint: 'Nothing carried down is safe', need: 1, optional: true });
@@ -79,7 +79,7 @@ export class Objectives {
     if (name === 'boss') {
       this.title = world.bossName;
       this.subtitle = `${world.tier.label} · boss lv ${world.levelFor('boss')}`;
-      this._add({ id: 'boss.phase1', kind: 'boss', text: 'Break the Warden\'s guard', hint: 'Phase I', need: 1, have: 1, state: 'done' });
+      this._add({ id: 'boss.phase1', kind: 'boss', text: `Break ${world.bossName}'s guard`, hint: 'Phase I', need: 1, have: 1, state: 'done' });
       this._add({ id: 'boss.phase2', kind: 'boss', text: `Survive ${world.bossName}'s second phase`, hint: 'It calls the pack now', need: 1, state: 'active' });
       this._add({ id: 'boss.kill', kind: 'boss', text: `Kill ${world.bossName}`, hint: 'The third seal must not open', need: 1 });
       return this.touch();

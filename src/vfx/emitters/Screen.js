@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * SANCTUM — screen-space VFX finish.
+ * THE NINTH VIGIL — screen-space VFX finish.
  *
  * Three effects that cannot be done with geometry, all in one pass over the
  * resolved frame:
@@ -131,7 +131,7 @@ export class ScreenFX {
       transparent: false,
       blending: THREE.NoBlending,
     });
-    this.material.name = 'Sanctum.vfxScreen';
+    this.material.name = 'Nona.vfxScreen';
     this.material.userData.noCSM = true;
 
     const geo = new THREE.PlaneGeometry(1, 1);
@@ -160,7 +160,7 @@ export class ScreenFX {
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.colorSpace = THREE.NoColorSpace;
-    tex.name = 'Sanctum.vfxFrame';
+    tex.name = 'Nona.vfxFrame';
     this.frameTex = tex;
     this.uniforms.tFrame.value = tex;
     this.uniforms.uAspect.value = iw / ih;

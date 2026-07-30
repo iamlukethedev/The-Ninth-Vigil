@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { SHAPE, ALIGN } from './Sprites.js';
 
 /**
- * SANCTUM — layered effect recipes.
+ * THE NINTH VIGIL — layered effect recipes.
  *
  * Every entry here is a *stack*, never a sprite. The house rule, taken straight
  * off the rubric: an effect is not finished until it has a bright core, a soft

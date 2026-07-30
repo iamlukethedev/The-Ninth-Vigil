@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * SANCTUM — procedural lightning.
+ * THE NINTH VIGIL — procedural lightning.
  *
  * Each bolt is a set of polylines produced by recursive midpoint displacement:
  * split a segment, push the new midpoint along a random perpendicular by an
@@ -213,7 +213,7 @@ export class BoltSystem {
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
     });
-    this.material.name = 'Sanctum.vfxBolts';
+    this.material.name = 'Nona.vfxBolts';
     this.material.userData.noCSM = true;
 
     this.mesh = new THREE.Mesh(geo, this.material);

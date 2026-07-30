@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Affixes
+ * THE NINTH VIGIL — Affixes
  * ---------------------------------------------------------------------------
  * The affix pool, the tier tables, the weighted roller, the legendary powers,
  * and the procedural name generator. Pure data + pure functions: nothing here

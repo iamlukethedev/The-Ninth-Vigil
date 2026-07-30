@@ -8,7 +8,7 @@ import { ScreenFX } from './emitters/Screen.js';
 import { TrailSystem } from './Trails.js';
 
 /**
- * SANCTUM — VFX system.
+ * THE NINTH VIGIL — VFX system.
  *
  * Owns every combat effect in the game. Five GPU resources, five draw calls
  * total, all pooled and all deterministic:
@@ -133,11 +133,11 @@ export class VFXSystem {
 
     this.add = new SpriteBatch({
       capacity: budget.add, blend: 'add', masks: this.masks,
-      renderOrder: 20, shaded: 0, name: 'Sanctum.vfxAdd',
+      renderOrder: 20, shaded: 0, name: 'Nona.vfxAdd',
     });
     this.softBatch = new SpriteBatch({
       capacity: budget.soft, blend: 'alpha', masks: this.masks,
-      renderOrder: 18, shaded: 1, name: 'Sanctum.vfxSoft',
+      renderOrder: 18, shaded: 1, name: 'Nona.vfxSoft',
     });
     this.groundFX = new GroundFX({ capacity: budget.ground, masks: this.masks });
     this.bolts = new BoltSystem({ strips: budget.bolts, segments: 16 });

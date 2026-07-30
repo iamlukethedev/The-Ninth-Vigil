@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Props geometry toolkit.
+ * THE NINTH VIGIL — Props geometry toolkit.
  *
  * Every dressing mesh in the game is synthesised here. The rules the whole
  * library obeys:

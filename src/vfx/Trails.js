@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * SANCTUM — swept ribbon trails.
+ * THE NINTH VIGIL — swept ribbon trails.
  *
  * A weapon trail is a quad strip built from the blade's *measured* swept
  * positions: one edge follows the hilt, the other the tip. That is what makes
@@ -290,7 +290,7 @@ export class TrailSystem {
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
     });
-    this.material.name = 'Sanctum.vfxTrails';
+    this.material.name = 'Nona.vfxTrails';
     this.material.userData.noCSM = true;
 
     this.mesh = new THREE.Mesh(geo, this.material);

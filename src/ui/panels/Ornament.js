@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Ornament
+ * THE NINTH VIGIL — Ornament
  * ---------------------------------------------------------------------------
  * Second-tier procedural UI art built on top of UIAtlas: the pieces the HUD and
  * the panels need that are not generic panels — bar troughs, level plates,

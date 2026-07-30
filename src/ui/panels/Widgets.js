@@ -1,5 +1,5 @@
 /**
- * SANCTUM — UI widget primitives
+ * THE NINTH VIGIL — UI widget primitives
  * ---------------------------------------------------------------------------
  * Thin DOM helpers plus the "skin registry": every ornate panel in the
  * interface is a <div> with an absolutely-positioned <canvas> behind its

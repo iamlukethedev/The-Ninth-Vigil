@@ -1,5 +1,5 @@
 /**
- * SANCTUM — Dungeon geometry primitives.
+ * THE NINTH VIGIL — Dungeon geometry primitives.
  *
  * Everything the architectural kit is built from. Two rules run through the
  * whole file:

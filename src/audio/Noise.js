@@ -1,5 +1,5 @@
 /**
- * SANCTUM — procedural noise bank + procedurally generated impulse responses.
+ * THE NINTH VIGIL — procedural noise bank + procedurally generated impulse responses.
  * ---------------------------------------------------------------------------
  * There are no audio files in this project. Every waveform below is computed
  * from a deterministic PRNG at runtime, once, and then reused by BufferSource
