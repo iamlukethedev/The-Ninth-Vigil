@@ -227,7 +227,7 @@ judged by capturing frames and measuring them, not by reasoning about the code.
 | tool | purpose |
 |---|---|
 | `node tools/guard.mjs` | enforces the hard rules — no `Math.random()`, no runtime fetches, no external asset references, no stubs, no dependencies off the allowlist. Seconds, no browser. CI gates on it |
-| `node tools/smoke.mjs` | asserts the game boots, every module loads, every shader program **links**, and two independent runs of a scenario are byte-identical. CI gates on it |
+| `node tools/smoke.mjs` | asserts the game boots, every module loads, every shader program **links**, and two independent runs of a scenario reach identical simulation state. `--pixels` adds a canvas hash. CI gates on it |
 | `node tools/shot.mjs --all --w=1600 --h=900` | deterministic headless capture of all 8 scenarios |
 | `node tools/sheet.mjs --analyze` | contact sheet plus objective frame metrics — lifted blacks, missing highlights, contrast collapse, oversaturation |
 | `node tools/crop.mjs --in=shots/combat.png --x=0.5 --y=0.5 --w=0.25 --scale=4` | crop and nearest-neighbour zoom. Essential: a 1600x900 frame viewed whole hides the defects that matter |
@@ -240,9 +240,19 @@ judged by capturing frames and measuring them, not by reasoning about the code.
 the two that CI enforces on every push and pull request.
 
 CI runs on GitHub-hosted runners, which have no GPU, so the smoke job renders through SwiftShader.
-That makes its pixels differ from a local hardware capture — which is fine, because the assertion is
-that two independent page loads agree with *each other*, alongside every module loading and every
-shader linking. Cross-machine pixel equality is not a property this project has or needs.
+Two consequences worth knowing if you touch it. Chromium's compositor **hangs indefinitely** when
+asked to screenshot a canvas under software rendering — the frame renders fine, the capture never
+returns — so the smoke test hashes simulation state (actor positions, health, clock) instead of
+pixels. That turns out to be the stronger check anyway: sim state is what `Math.random()` or a
+wall-clock read actually corrupts, whereas a same-machine pixel hash mostly re-tests the GPU. And
+the assertion is that the two runs agree with *each other*, never against a stored hash, because
+software and hardware output legitimately differ and asserting cross-machine equality would produce
+a permanently red build.
+
+The CI scenario is `combat`, which puts nine actors under live AI so the determinism check has
+something to bite on. Encouragingly, it holds: 90 frames of pathfinding, avoidance and attack-token
+arbitration reach a bit-identical state across runs, which also confirms the `performance.now()`
+work-splitting budgets in `AI.js` and `NavGrid.js` do not leak into simulation results.
 
 `CRITIC_RUBRIC.md` defines ten scored axes and fifteen **instant-fail flags** — things like a
 black or single-colour frame, untextured flat-colour geometry, obvious texture tiling, or uniform

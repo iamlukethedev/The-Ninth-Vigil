@@ -16,10 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       # Parses every module and enforces the hard rules from ENGINE_CONTRACT.md:
@@ -32,25 +32,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      # Runners have no GPU, so this renders through SwiftShader. That makes the
-      # pixels differ from a local hardware capture, which is fine: the assertion
-      # is that two independent page loads agree with EACH OTHER, plus that every
-      # module loads and every shader program links. Kept small and short because
-      # software rasterising this scene is slow.
+      # Runners have no GPU, so this renders through SwiftShader. Deliberately
+      # small: software rasterising this scene is slow, and resolution dominates
+      # that cost while barely affecting the simulation being checked.
+      #
+      # `combat` rather than a quieter scenario because it puts 9 actors under live
+      # AI, which is what the determinism assertion needs something to bite on.
+      # Note the check compares the two runs against EACH OTHER, not against a
+      # golden hash -- software and hardware rendering legitimately differ, and
+      # asserting cross-machine equality would produce a permanently red build.
       - name: Smoke test (software rendering)
-        run: node tools/smoke.mjs --software --scenario=closeup --frames=30 --w=640 --h=360
-      - name: Upload artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-failure
-          path: shots/_debug/
-          if-no-files-found: ignore
-          retention-days: 7
+        run: node tools/smoke.mjs --software --scenario=combat --frames=45 --w=480 --h=270
