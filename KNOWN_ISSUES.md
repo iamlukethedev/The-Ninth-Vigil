@@ -40,7 +40,7 @@ area and swallow whatever is behind them.
 This turned out to be **five stacked causes**, not one, which is why it kept
 coming back after each fix looked convincing on a still frame.
 
-1a, 1d and 1e are fixed and verified below. 1b and 1c were taken by the Wave 3
+1a, 1d, 1e and 1f are fixed and verified below. 1b and 1c were taken by the Wave 3
 lighting and grade lanes; their write-ups here still read as proposals and have
 not been re-verified against their original measurements, so treat those two
 sections as historical. What *is* verified is the flag itself: it no longer
@@ -141,10 +141,7 @@ while grounding is retained (`shots/combat.png`). All eight scenarios still pass
 `sheet.mjs --analyze` in AAA range.
 
 **Ruled out along the way**, each by measurement rather than inspection: the
-hero grounding pool (`nona.heroPool`) — a 5.6 m quad that does follow the
-player, but whose real footprint is ~3.4 k pixels against a 4.1 k-pixel
-frame-noise floor, i.e. not the "square around the player" it looked like in an
-uncontrolled diff; the `ProbeVolume` irradiance grid, which snaps to whole cells
+`ProbeVolume` irradiance grid, which snaps to whole cells
 and so cannot swim; and `hero_cloak`, whose stale 40 m bounding sphere is a
 culling inefficiency (worth fixing separately) but changes nothing in the
 G-buffer.
@@ -172,8 +169,8 @@ now measures 4.2 % near-black with no wedge anywhere in it
 (`shots/_debug/play/walk_worst.png`).
 
 Grounding is unaffected because it was never coming from these maps: it comes
-from the contact-AO stage rebuilt in 1d, the hero pool, and inverse-square
-falloff. The sun/CSM path is untouched, so exteriors still cast. Actor
+from the contact-AO stage rebuilt in 1d, the hero pool (see 1f), and
+inverse-square falloff. The sun/CSM path is untouched, so exteriors still cast. Actor
 separation is unchanged within its (large) frame-to-frame variance — mean SEP
 across eight actors 0.123 casting vs 0.139 not casting, and the hero's own
 separation improves, 0.066 to 0.127.
@@ -194,6 +191,37 @@ shadow tier with a real veto — a fresh incumbent is untouchable for
 sort could not hold a slot. Ownership is now stable indefinitely (0 changes in
 39 frames, tenure climbing past 3.6 s). This did **not** move the churn, which
 is what proved thrash was not the mechanism.
+
+### 1f. The hero pool was being depth-clipped into a rectangle — FIXED
+
+The separate half of the same report — "a square around the player on the floor,
+and when he moves the floor tile moves with him" — and it really was the hero
+grounding pool. **An earlier pass wrongly cleared it** by comparing its changed
+pixel *count* against a frame-noise floor; that is the wrong test for a defect
+whose complaint is a *shape*. Hiding the mesh and looking at the two frames
+settles it in a second, and should have been the first thing done.
+
+`nona.heroPool` is a flat 4-vertex 5.6 m quad parked 3.5 cm above the hero's feet
+and tilted by a single `terrain.normalAt` sample. Its alpha ramp is radial and
+does reach zero well inside the quad, so the quad's own edges are not the
+problem — but a crypt floor is not terrain and is not flat. It is flagstones,
+steps and rubble at different heights, and with `depthTest: true` every slab
+standing proud of the quad's plane clipped it along that slab's straight edge.
+The result is a hard-edged rectangle that slides across the floor with the hero.
+Proved by lifting the quad 0.6 m: the hard edge vanishes while the darkening
+stays.
+
+**Fix:** the depth test is replaced by a soft comparison in the pool's own
+fragment shader. It samples the G-buffer depth — which excludes the pool, since
+the mesh is `noGBuffer`, so it is exactly the right comparison — and fades alpha
+over `uSoft` (0.30 m) as a surface comes nearer than the quad. An intruding slab
+now fades the pool instead of cutting it, while a column or a character in front
+still takes it to zero, which is what the depth test was doing correctly. Tiers
+with no G-buffer keep the plain depth test, since they have no depth to test
+against.
+
+The pool still does its job: it changes 4548 px (7.9 % of the sampled frame) by
+more than 0.02, and actor separation is unchanged (hero SEP 0.125 vs 0.127).
 
 ---
 

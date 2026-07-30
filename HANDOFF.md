@@ -485,6 +485,14 @@ and were not — verify these in pixels with extra suspicion.
   over the party. Grounding never came from these maps; it comes from the contact-AO stage, the
   hero pool and inverse-square falloff. **The sun/CSM path is untouched — exteriors still cast.**
   `KNOWN_ISSUES.md` §1e lists everything that was ruled out; read it before re-opening this.
+- **🔴 The hero grounding pool no longer clips into a rectangle.** `nona.heroPool` is a flat
+  5.6 m quad 3.5 cm above the feet; with an ordinary depth test, every flagstone standing proud
+  of that plane clipped it along the slab's straight edge, giving a hard rectangle that slid
+  across the floor with the hero. It now samples the G-buffer depth in its own fragment shader
+  and fades over 0.30 m where a surface comes nearer, instead of being cut. See
+  `KNOWN_ISSUES.md` §1f — including the note that an earlier pass wrongly cleared the pool by
+  comparing pixel *counts* against a noise floor, which cannot detect a complaint about a
+  *shape*. When the defect is a shape, hide the mesh and look at the two frames.
 - **Shadow slot ownership no longer thrashes.** `LightRig.select()` used to rank both tiers off
   one continuous score with only a multiplicative incumbency nudge, so a practical near the
   shadow/plain boundary crossed it every few frames, handing the slot to a different owner and
