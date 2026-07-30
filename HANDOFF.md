@@ -11,6 +11,99 @@ Three.js r185. It is a real, working, feature-complete game: ~98,700 lines acros
 **Project root:** `/Users/lucasguilherme/Apps/World Of Warcraft`
 (the folder is named "World Of Warcraft" for historical reasons — the game is SANCTUM)
 
+---
+
+# ⏸ RESUME HERE — state as of 2026-07-29, stopped for a machine restart
+
+This session was interrupted mid-wave. Read this section before anything else; it overrides
+the work queue further down, which is now partly stale.
+
+### The tree has ~1,770 uncommitted insertions. They are on disk and survive the reboot.
+
+Last commit is `b2a0838 wave 2: world surfaces`. Everything after it is uncommitted but
+**measured and verified** — each lane reported objective before/after numbers, and all 12
+files pass `node --check`. Committing is a formality here, not a risk.
+
+```bash
+git log --oneline -4     # b2a0838 wave 2 / a4a9118 wave 1 / d2aad35 lighting fix / f9f0cfd baseline
+git diff --stat -- src   # 12 files, +1770 -189
+```
+
+| uncommitted files | what changed | trust level |
+|---|---|---|
+| `render/passes/AOApplyPass.js`, `render/RenderPipeline.js` | contact-AO split into estimate + 3x3 binomial-tent resolve, killing the halftone dither | **measured good** |
+| `world/Terrain.js`, `world/TerrainMaterial.js` | `_moorRelief` landform pass (bedrock ribs, peat hags, groughs) + bleach/soak wear layer | **measured good** |
+| `chars/monsters/{Species,RigKit,MonsterMaterials}.js`, `core/texgen/Kinds.js` | carved skull geometry, plate armour lames, coupled wear layer, new `plate` texgen kind | **measured good** |
+| `core/Input.js`, `chars/Hero.js`, `game/Director.js`, `game/Loot.js` | **click-to-move repair — fixed and verified on the live path** | **measured good** |
+
+All of it is safe to commit as a rollback point:
+
+```bash
+git add src/render src/world src/chars/monsters src/core/texgen src/core/Input.js \
+        src/chars/Hero.js src/game/Director.js src/game/Loot.js
+git commit -m "wave 3: contact-AO resolve, moor landform, character tiers, click-to-move"
+```
+
+### ⚠️ `shots/` is a mix of two different builds
+
+The full 8-scenario recapture was interrupted. Six of eight PNGs are modified, two are stale
+wave-2 frames. **Do not compare or A/B anything until you recapture all eight:**
+
+```bash
+node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze
+```
+
+### One live bug still open, plus one loose end to route
+
+Click-to-move is **fixed** (see "Recently fixed"). The flashes are not. They were reproduced by
+the user in the browser, not in the harness, so **verify on the live path** — `npm run dev`,
+then walk around. The harness cannot see them.
+
+1. **Black/white triangular flashes while the player walks.** Transient hard-edged polygons
+   that appear only during locomotion, so every static screenshot misses them. The agent
+   investigating this wrote **no files** — its analysis is gone and this restarts from zero.
+   *Leading hypothesis, unconfirmed:* the LightPool reassigns importance-selected shadow-casting
+   practicals as the hero moves, and a slot reused on the same frame renders one frame with a
+   stale shadow camera. Reproduce by driving the hero with Playwright, capturing **every**
+   frame, and diffing consecutive frames for a sudden solid-black area spike — a flash that
+   lasts one frame will never show up in a normal capture.
+   *Owner:* `src/render/Lighting.js` (LightPool slot reuse), `src/game/CameraRig.js` occluder fade.
+2. **One follow-up left over from the click-to-move fix, in a file that lane did not own.**
+   `Director._handOverToPlayer()` currently reaches into `CombatSystem._govern` / `_script` /
+   `_userInput` to release the capture-time damage governor. That governor belongs to
+   CombatSystem, and while it is set nothing the player hits can die. The durable fix is one
+   line in `CombatSystem._readInput()` (`src/combat/CombatSystem.js:445-447`): latch the
+   `_govern = false` release on `input.userActed` rather than on a `BINDS` keypress. That also
+   closes a pre-existing hole where keyboard-only play never released the governor at all.
+   The Director workaround is guarded and idempotent, and should be deleted once that lands.
+
+### Where the instant-fail work got to
+
+The goal is the one in `CRITIC_RUBRIC.md`: **drive the instant-fail count to zero.** Three
+waves of parallel, file-partitioned lanes have run. Confirmed fixed and measured (details in
+"Recently fixed" below): sunless interiors casting directional cascades through the ceiling,
+the grade's toe crushing darks to absolute black, blown additive discs, the halftone dither
+from contact AO, the untextured boss, and the featureless moor.
+
+What remains before the final review: the two live bugs above, then a clean recapture, then a
+hostile pass over all eight frames against the 15 instant-fail flags. `KNOWN_ISSUES.md` is the
+authoritative open list and is more current than the queue in this file.
+
+### One environment note
+
+Vite must be started as a real background process, not in a subshell, or it dies with the
+shell that spawned it:
+
+```bash
+node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5190 --strictPort > /tmp/vite.log 2>&1 &
+```
+
+The dev server logs `texture budget reached, degrading to 512px`. That is `AssetForge.js`
+working as designed under its 150 MB soft ceiling, not a bug — but it does mean the project is
+running at its VRAM limit, so any new generated map costs resolution somewhere else.
+
+---
+
 ## Step 0 — read these three files before touching anything
 
 1. `ENGINE_CONTRACT.md` — the binding integration contract: module lifecycle, engine
@@ -187,6 +280,12 @@ and a false pass ends the work prematurely.
 
 ## The prioritised work queue
 
+> ⚠️ **This queue is stale as of 2026-07-29.** Several items below — the black wedges (item 1),
+> the additive clipping, the grade toe, the untextured characters, the flat moor — were fixed
+> across waves 1–3 and are recorded in "Recently fixed" instead. **Use `KNOWN_ISSUES.md` as the
+> authoritative open list**, and the RESUME section at the top of this file for what to do next.
+> The queue is kept here only for the diagnostic notes and file-ownership hints in each entry.
+
 Severity is from the last review. Items marked **RE-RAISED** were previously reported fixed
 and were not — verify these in pixels with extra suspicion.
 
@@ -328,6 +427,75 @@ and were not — verify these in pixels with extra suspicion.
 
 ## Recently fixed — do not regress these
 
+### Waves 1–3 (2026-07-29). Commits `d2aad35`, `a4a9118`, `b2a0838`, plus uncommitted work.
+
+- **🔴 Sunless interiors were casting four directional CSM cascades through the ceiling.** This
+  is what produced the huge hard-edged black wedges that were item 1 in the queue, and it also
+  made characters look invisible — they were rendering and in-frame the whole time, just buried
+  under black polygons. `LightRig.js` had always declared `shadow: false` for the crypt/hell
+  skylight; `Lighting.js` simply ignored the flag and gated `castShadow` on `enabled` instead.
+  The fix threads a real `shadow` property through `setSun` → `_applySunToLights`, gates the
+  cascade lights and `keyLight` on it, and skips `csm.update()` entirely when it is false.
+  Draw calls and triangle counts dropped sharply as a side effect.
+  *If you ever collapse that flag back into `enabled`, the wedges return and actors vanish.*
+- **Cascade lights are now aimed even when they are not casting.** `_aimUnshadowedKey()` exists
+  because disabling the cascades above left the interior key pointing nowhere, so vertical rock
+  faces went unlit. Sunless presets were re-aimed (elevation/azimuth/intensity) to hold floor
+  irradiance while lifting vertical faces, and a `wallFill` oriented bounce term was added.
+- **The grade's toe was crushing everything below 0.040 to a single code value**, welding dark
+  objects to their surroundings and reading as broken rather than moody. `ShaderChunks.js` now
+  has a `softFloor` C1 quadratic knee and a `contrastToe` that relaxes to unity slope at the
+  bottom; `GradePass.js` bakes the LUT against it with per-look `toeKnee`/`toeGamma`. Absolute-
+  zero pixels in the play area fell ~94%.
+- **Additive VFX were clipping to white discs.** Loot glints, spell cores and impact flashes
+  stacked without any ceiling. `Sprites.js` gained `applyCrowdCap`, which sums live additive
+  radiance into a 10px screen grid and scales particles to hold the busiest tile under budget,
+  plus a sharper alpha profile; `VFXSystem.js` clamps `flash()` and lifts flashes off the
+  ground; `Loot.js` divides the additive budget among nearby drops. Clipped-white area on the
+  night scenario fell 26%.
+- **Contact AO was drawing a visible ordered halftone dot screen.** The golden-spiral rotation
+  by 2x2 screen parity was landing straight in the output. `AOApplyPass.js` is now two stages:
+  estimate raw obscurance into an RG16F target, then resolve through a 3x3 binomial tent
+  *before* the pedestal, power curve and luma protection. Nyquist checkerboard energy dropped
+  sharply while detail went up. **Uncommitted.**
+- **The boss rendered as an untextured plastic mannequin.** Fixed across four files: a `plate`
+  kind and a tier-0 macro value band in `texgen/Kinds.js`, a coupled wear layer with per-recipe
+  gains in `MonsterMaterials.js`, `carveDishes`/`skullGeo`/`curvatureAttr` in `RigKit.js`, and
+  real cuirass/fauld/cuisse/greave lames plus carved eye orbits in `Species.js`. **Uncommitted.**
+- **The moor was a milky featureless plane.** `Terrain.js` gained a `_moorRelief` pass (bedrock
+  ribs, peat hags, groughs, hummocks) with flow re-accumulated for wetness and puddles;
+  `TerrainMaterial.js` gained a coupled bleach/soak wear layer. This also cleared the standing
+  `overworld → NO HIGHLIGHTS` warning from `sheet.mjs --analyze`. **Uncommitted.**
+- **The boss health bar and XP bar** were rebuilt with procedural generators in `Ornament.js`
+  and `Combat.js`; the XP bar no longer paints over the keybind tabs.
+- **🔴 Click-to-move did nothing — every click read as an attack.** The raycast was never the
+  problem; the ground pick was landing within 0.02 m of the clicked point the whole time. The
+  hero's input read was simply never called. `Hero.applyScenario()` installs a script with
+  `suppressInput: true`, `Hero.update()` gates the *entire* `_readInput()` behind it, and
+  nothing ever cleared `_script` — while `main.js` applies `DEFAULT_SCENARIO = 'dungeon'` on
+  every live boot. So in a real session `_readInput()`, which holds **both** click-to-move and
+  WASD, ran zero times. Attacks still fired because they live in `CombatSystem`, which already
+  released its own scenario script on the first bound keypress. *That asymmetry is the whole
+  bug* — and it is the reason this looked like a targeting problem rather than an input-gating
+  one. The 1–2 m the hero did travel was the scenario script walking its authored path; the
+  distance to the click was actually growing.
+  **The fix:** `Hero._releaseScript()` latched on `input.userActed`, plus `Input` now resolving
+  the left button into an *order* once per frame — `attack` over a body, `move` over open
+  floor — so both consumers keep reading the API they already read and stop disagreeing about
+  what a click meant. `rawDown`/`rawJustPressed` expose the physical button for `Loot.js`
+  pickup. With no resolver installed it falls back to `attack`, so a missing provider can never
+  silently disarm the button.
+  The ray-vs-capsule test is deliberately **not** a ground-distance test: under the 56° camera
+  the ground beneath a monster's chest projects metres behind its feet, so a distance test
+  would call a dead-centre click on a tall body "open floor."
+  *Measured after:* a 9 m click walks 8.55 m (was 0 and drifting away), hold-to-move runs on
+  170 of 170 frames at the full 4.55 m/s `moveSpeed`, WASD restored, and clicking a body still
+  swings and kills. Zero pixels changed; captures stayed byte-identical.
+  *If you ever gate `_readInput()` on a scenario script again without a release latch, the
+  player loses all movement while still being able to attack.*
+
+### Older fixes
+
 - **🔴 THE FLOOR BUG — the most important fix in the project's history, and the one most likely
   to be accidentally reverted.** On the live default boot, actors rendered ~3.5 m *beneath the
   drawn dungeon floor* and were occluded by it, so the player saw an empty room.
@@ -369,9 +537,10 @@ For each: read the owning files, capture + zoom the named region, look at it, fi
 have not regressed frame time, determinism, or the sampler budget. Re-run
 `node tools/sheet.mjs --analyze` and read the 8 canonical frames before moving on.
 
-Start with item 1 — the hard-edged black wedges. It is the most visible defect to a player right
-now, it has never been investigated (the floor bug was masking it), and a hard un-feathered black
-polygon in frame reads as a rendering failure rather than as art.
+**Start with the RESUME section at the top of this file, not with item 1** — item 1 is fixed.
+The one open user-reported bug is the black flashes that appear only while walking. It is a
+live-path bug that no static screenshot can catch, so budget time for driving the browser
+rather than reading canonical frames.
 
 **Before you start, sanity-check the build**, because several waves of parallel agents were
 mid-flight when this document was written and some of their work may be partially landed:

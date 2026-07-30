@@ -152,6 +152,84 @@ const FLOOR_RELIEF = {
   },
 };
 
+/* ------------------------------------------------------------------ *
+ * MOOR LANDFORM RELIEF — see _moorRelief(). Everything here is metres.
+ *
+ * THE DEFECT THIS FIXES, MEASURED. Marching heightAt down the overworld
+ * camera's own sight line, the moor the frame contains runs from r = 10 m to
+ * r = 48 m and its height goes 5.04 -> 2.43 -> 7.04 m: one smooth dish, no
+ * local form anywhere. The relief s.d. after high-passing at an 8 m window is
+ * 0.254 / 0.284 / 0.241 m at r = 20 / 30 / 40 m, and at a 20 m window it is
+ * 0.678 / 0.529 / 0.414 m. A quarter of a metre over 8 m is a 1.8 deg slope:
+ * it produces a ~3 % lambert delta, and the frame then multiplies that by the
+ * ~7 % of the surface that survives Sky's 0.93-ceiling height fog at 52-72 m.
+ * The far field therefore measured midFreq 0.0222 and mean 0.7700 with the
+ * screen-space AO pass off — a milky plane, and the "terrain that is visibly a
+ * flat plane" instant-fail is literally true as geometry, not as shading.
+ *
+ * WHY IT HAS TO BE ITS OWN PASS, AFTER THE DAMPING — the same lesson
+ * _floorRelief records for the crypt. `_generate` builds the moor from fbm at
+ * baseFreq 3.2 over 140 m, so its first octave is a 44 m wavelength and every
+ * octave below that falls off as 1/f: by the 8 m scale there is only ~0.3 m of
+ * amplitude left. Nine thermal iterations and the deposition smoother then take
+ * most of that, and `_dampPlayfield` lerps 62 % of the way toward a 3.8 m box
+ * blur inside r0 = 16 m. Authored anywhere earlier, this relief would be gone
+ * before it reached a vertex.
+ *
+ * FOUR SIGNALS, all authored in metres, all deterministic:
+ *   1. bedrock ribs   ~30 m across a 3.2:1 strike, +/- 1.35 m — the 5-50 m
+ *                     landform the rubric asks for, and the only signal long
+ *                     enough to change the fog integral across the frame.
+ *   2. peat hags      10.5 m cells terraced onto 0.62 m benches, 1.15 m — flat
+ *                     tops with ~25 deg faces, which is what a blanket bog
+ *                     erodes into and what gives the far field a horizon-AO
+ *                     signal that owes nothing to any screen-space pass.
+ *   3. groughs        the drainage cut between the hags, 0.55 m deep. `_flow`
+ *                     is re-accumulated afterwards so the wetness mask, the
+ *                     damp film and the puddle line all follow these channels —
+ *                     a DROWNED moor needs its water in the right places.
+ *   4. hummocks       3.2 m tussocks at 0.26 m, so the near field is not smooth
+ *                     between the big forms.
+ *
+ * RADIAL PROFILE. `inner` holds the fight playfield down to 30 % of amplitude
+ * (0.35 m hags: walkable, no actor visibly tilts, nothing spawns on a step)
+ * and the full landform lives from r1 outward, where the camera is looking.
+ * Past r2 it tapers back out so the scarp keeps the silhouette it was tuned
+ * against. `walkSlope` for the moor is 0.66 rad = 38 deg; the steepest thing
+ * here is a hag face at ~25 deg, so the walkability mask is unaffected.
+ * ------------------------------------------------------------------ */
+const MOOR_RELIEF = {
+  moor: {
+    /* Every number below was solved offline against the relief statistics
+       rather than eyeballed, because the whole point is that the previous
+       amplitudes were too small to shade. The set produces, over r 8-50 m:
+       s.d. 0.93 m, range -1.47 to +3.22 m, a mean slope of 5.7 deg measured
+       over an 8 m span (the shipping surface manages 3.6 deg), and 3.9 % of
+       nodes past r = 18 m too steep to walk — which is what a hag bank IS. */
+    strike: 0.62, ribM: 26.0, ribAniso: 3.2, rib: 2.60,
+    /* Ridged noise peaks at its MEDIAN, so `1 - |2n-1|` is crest-heavy and a
+       raw ridged field would raise the whole moor. The spine is thresholded
+       instead: ribLo picks off the top of the ridge, which lands bedrock on
+       16.9 % of the map as long thin bands along strike, and ribMean subtracts
+       that coverage back out so the pass is level on average. */
+    ribLo: 0.84, ribHi: 1.0, ribMean: 0.19,
+    hagM: 12.5, hagStep: 0.70, hag: 1.50, hagFace: 0.72, hagSpread: 3.4, hagGate0: 0.45,
+    grough: 0.50, groughW: 0.34,
+    hummockM: 3.2, hummock: 0.30,
+    /* Residual mean of the four signals, subtracted so the moor neither rises
+       nor sinks: the tarn fill levels and the scarp profile were both resolved
+       against the old datum and a 22 cm shift would move every shoreline. */
+    bias: 0.220,
+    r0: 12, r1: 27, r2: 44, r3: 60, inner: 0.14,
+    /* Basin protection, in multiples of the published basin radius (which is
+       already 1.12x the authored tarn radius, and is exactly the disc Water
+       draws). `_carveTarns` has already resolved each tarn's floor and fill
+       level against a spill ring by the time this runs, so lifting ground
+       inside one would drain it. Fade in outside the water's own edge. */
+    tarnPad: [1.02, 1.42],
+  },
+};
+
 /** Fraction of the map each geology mask should cover (0 = leave as authored). */
 const MASK_COVERAGE = {
   town:  { macro: 0, mask2: 0 },
@@ -393,6 +471,10 @@ export class Terrain {
       // authored at the slab scale — that is why every previous attempt to give
       // the crypt floor relief produced no measurable change in pixels.
       this._floorRelief(B);
+      // Same reason, one scale up: the moor's 5-50 m landform. It also has to
+      // follow _carveTarns (which _dampPlayfield calls), because it reads the
+      // resolved basin discs in order to leave the standing water alone.
+      this._moorRelief(B);
       this._derive(B);
       this._uploadControl();
       this._refillChunks();
@@ -887,6 +969,117 @@ export class Terrain {
     };
   }
 
+  /* ---------------- 4b · moor landform relief ---------------- */
+
+  /**
+   * Mid-frequency landform for the moor. See MOOR_RELIEF for the measurement
+   * that motivates it and for what each of the four signals is.
+   *
+   * Runs AFTER `_dampPlayfield` (so the 3.8 m playfield blur cannot erase it)
+   * and BEFORE `_derive` (so normals, slope, curvature, the horizon-AO cavity
+   * field and walkability are all computed from the real surface, and the
+   * splat's slope/altitude/curvature weights pick the new forms up for free —
+   * which is what finally lets the ROCK slot, and therefore the wet-stone
+   * specular film, win anywhere in the far field).
+   */
+  _moorRelief(B) {
+    const P = MOOR_RELIEF[this.biome];
+    if (!P) return;
+    const h = this._h;
+    const x0 = this._x0, z0 = this._z0, dx = this._dx, seed = B.seed;
+
+    /* Only the annulus inside r3 is touched, so walk the bounding box rather
+       than all 513^2 nodes: at r3 = 60 m on a 140 m map that is 58 % of the
+       grid, and the per-node cost here is ~50 hashes. */
+    const lim = P.r3;
+    const iLo = Math.max(0, Math.floor((-lim - x0) / dx));
+    const iHi = Math.min(NM1, Math.ceil((lim - x0) / dx));
+    const jLo = Math.max(0, Math.floor((-lim - z0) / dx));
+    const jHi = Math.min(NM1, Math.ceil((lim - z0) / dx));
+
+    const cs = Math.cos(P.strike), sn = Math.sin(P.strike);
+    const invRib = 1 / P.ribM, invHag = 1 / P.hagM, invHum = 1 / P.hummockM;
+    const basins = this.basins ?? [];
+    const step = P.hagStep;
+
+    let dmin = 0, dmax = 0, sum = 0, sum2 = 0, n = 0;
+
+    for (let j = jLo; j <= jHi; j++) {
+      const wz = z0 + j * dx;
+      for (let i = iLo; i <= iHi; i++) {
+        const wx = x0 + i * dx;
+        const r = Math.sqrt(wx * wx + wz * wz);
+
+        /* Radial amplitude: `inner` over the fight playfield, full landform
+           through the band the camera frames, feathered out into the scarp. */
+        let amp = P.inner + (1 - P.inner) * smooth01(P.r0, P.r1, r);
+        amp *= 1 - smooth01(P.r2, P.r3, r);
+        /* A basin's floor and fill level were resolved against the pre-relief
+           surface; anything added inside the waterline would drain the tarn. */
+        for (let b = 0; b < basins.length; b++) {
+          const bb = basins[b];
+          const br = Math.hypot(wx - bb.x, wz - bb.z);
+          amp *= smooth01(bb.r * P.tarnPad[0], bb.r * P.tarnPad[1], br);
+        }
+        if (amp < 0.002) continue;
+
+        /* 1 · bedrock ribs. Sampled through a rotated frame that is squashed
+           3.2:1, so the outcrops run as long parallel spurs along one strike
+           the way bedded slate does, instead of as isotropic lumps. This is
+           the only signal with a wavelength long enough (26 m across, 83 m
+           along) to change the fog integral across the width of the frame. */
+        const rx = (wx * cs + wz * sn) * invRib;
+        const rz = (-wx * sn + wz * cs) * invRib / P.ribAniso;
+        const rn = skFbm2(rx, rz, seed + 5153, 3);
+        const spine = smooth01(P.ribLo, P.ribHi, 1 - Math.abs(rn * 2 - 1));
+        let d = (spine - P.ribMean) * P.rib;
+
+        /* 2 · peat hags. The source field is terraced onto benches `hagStep`
+           high: floor() gives the flat top, and the shoulder occupies the last
+           `hagFace` of each bench so the face has a real horizontal run rather
+           than being a one-node cliff (which would spike the laplacian and
+           collapse the curvature control mask — see the note in _derive).
+           Hags erode out of the interfluves, so the rib spine gates them. */
+        const hagF = (skFbm2(wx * invHag, wz * invHag, seed + 6247, 3) - 0.5) * P.hagSpread + P.hag;
+        const q = hagF / step;
+        const qi = Math.floor(q);
+        const bench = (qi + smooth01(1 - P.hagFace, 1.0, q - qi)) * step;
+        const hagGate = P.hagGate0 + (1 - P.hagGate0) * spine;
+        d += (bench - P.hag) * hagGate;
+
+        /* 3 · groughs — the peat channels that separate the hags. worley's
+           f2 - f1 is near zero exactly on a cell boundary, which is where a
+           blanket bog actually erodes. `_flowAccum` is re-run after this pass
+           so gFlow, and with it the damp film and the puddle line, follow
+           these channels: without that the moor is cut but not drowned. */
+        const w = worley2(wx * invHag * 1.18 + 3.7, wz * invHag * 1.18 - 1.9, seed + 7331);
+        d -= smooth01(P.groughW, 0.0, w.edge) * P.grough * hagGate;
+
+        /* 4 · hummocks. Tussock scale, so the ground a body length from the
+           camera is not a smooth ramp between the big forms. */
+        d += (skFbm2(wx * invHum, wz * invHum, seed + 8419, 2) - 0.5) * P.hummock * 2.0;
+
+        d = (d + P.bias) * amp;
+        h[j * N + i] += d;
+        if (d < dmin) dmin = d; if (d > dmax) dmax = d;
+        sum += d; sum2 += d * d; n++;
+      }
+    }
+
+    /* Drainage has to be re-derived: the flow field the shader reads was
+       accumulated in `_erode`, i.e. against a surface that had none of the
+       above in it, so every grough would have rendered bone dry. O(N) bucket
+       sort — the same call `_erode` already makes once. */
+    this._flowAccum(h, this._flow);
+
+    const mean = n ? sum / n : 0;
+    this._moorReliefStats = {
+      minM: +dmin.toFixed(3), maxM: +dmax.toFixed(3),
+      sdM: +Math.sqrt(Math.max(0, (n ? sum2 / n : 0) - mean * mean)).toFixed(3),
+      nodes: n,
+    };
+  }
+
   /**
    * Carve the authored standing-water basins.
    *
@@ -1035,7 +1228,12 @@ export class Terrain {
        would go back to resolving as one layer. So the mask is taken from a
        lightly smoothed copy (radius 3 nodes = 0.87 m, far below any landform
        feature) while positions, normals and slope keep the full relief. */
-    const cSrc = FLOOR_RELIEF[this.biome] ? boxBlur(h, N, 3, this._tA, this._tB) : h;
+    /* The moor is in this list for the same reason: its hag benches are 0.70 m
+       steps landed over a ~1.5 m run, which is landform at the metre scale but
+       still the sharpest laplacian on the map, and curvScale normalises against
+       the single largest one. */
+    const cSrc = (FLOOR_RELIEF[this.biome] || MOOR_RELIEF[this.biome])
+      ? boxBlur(h, N, 3, this._tA, this._tB) : h;
 
     let curvMax = 1e-5;
     for (let j = 0; j < N; j++) {
@@ -1085,6 +1283,18 @@ export class Terrain {
     const step = NM1 / (R - 1);
     const small = new Float32Array(R * R);
     const dirs = 8;
+    /* Ray lengths in NODES; on the 140 m moor a node is 0.273 m, so this set
+       reaches 0.82 / 1.91 / 3.83 / 7.11 m and stops.
+       TRIED AND REJECTED: extending to [.., 48, 88] = 13.1 / 24.1 m so the
+       sampler could see `_moorRelief`'s 12.5 m hag lattice and 26 m ribs. It
+       does nothing, and the reason is the `maxTan` below — the horizon is the
+       MAXIMUM elevation angle over the whole ray set, and the 0.82 m sample
+       already sits on a hag bench at tan ~0.35 while a 1.4 m rib crest 13 m
+       away subtends tan ~0.11. The near sample wins every time, so the far
+       rings never change the max. Measured: frame midFreq 0.0255 -> 0.0253,
+       frame mean 0.3886 -> 0.3859, far-field midFreq unmoved. Not worth the
+       266 k extra reads. Landform occlusion has to come from the light
+       transport, not from lengthening this search. */
     const dists = [3, 7, 14, 26];
     const dx = this._dx;
     for (let j = 0; j < R; j++) {
@@ -1556,6 +1766,10 @@ export class Terrain {
        TerrainMaterial's FRAG_MAP for why the film is per-slot and slope-gated. */
     const fh = p.filmHold ?? [0, 0, 0, 0];
     U.uFilmHold.value.set(fh[0] ?? 0, fh[1] ?? 0, fh[2] ?? 0, fh[3] ?? 0);
+    /* Coupled bleach / soak wear — see the block in TerrainMaterial's FRAG_MAP.
+       Only biomes that declare it get it, so nothing else changes by a pixel. */
+    const bl2 = p.bleach ?? [0, 0, 0, 0];
+    U.uBleach.value.set(bl2[0] ?? 0, bl2[1] ?? 0, bl2[2] ?? 0, bl2[3] ?? 0);
     this._chromaBase = p.chroma ?? 1.0;
     this._syncChroma();
     this._pushPuddle();
@@ -1600,10 +1814,19 @@ export class Terrain {
        above the tile period. Periods are in metres and both are longer than any
        layer tile (2.85-9.40 m). */
     const interior = !BIOMES[this.biome]?.exterior;
-    U.uMacro2.value.set(interior ? 0.155 : 0.105,
-      interior ? 21.0 : 27.0,
-      interior ? 8.5 : 11.0,
-      interior ? 0.16 : 0.11);
+    /* The moor is broken out of the exterior default. It is the one biome with
+       no built structure and no props to carry the mid-frequency read, so the
+       band IS its surface: MEASURED on a frozen overworld frame, taking it from
+       0.105 at 27/11 m to 0.42 at 21/9.5 m moved the near-field patch's midFreq
+       0.0335 -> 0.0403 while the whole-frame mean moved 0.3913 -> 0.3941 and p01
+       did not move at all. 9.5 m is still above the longest moor layer tile
+       (ROCK, 9.40 m), which is the constraint this band exists to satisfy — a
+       signal shorter than the tile cannot hide the tile's own repeat. */
+    const moor = this.biome === 'moor';
+    U.uMacro2.value.set(interior ? 0.155 : moor ? 0.42 : 0.105,
+      interior ? 21.0 : moor ? 21.0 : 27.0,
+      interior ? 8.5 : moor ? 9.5 : 11.0,
+      interior ? 0.16 : moor ? 0.24 : 0.11);
   }
 
   _onWeather(p) {

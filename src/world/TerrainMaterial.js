@@ -1256,7 +1256,24 @@ export const BIOME_PRESETS = {
        matte however much falls. Slot 1 is ROCK. See the wet-rock block in FRAG_MAP —
        this is the mask that lets the moor's ridges and scarps carry a highlight while
        the bog around them stays dead flat. */
-    filmHold: [0.10, 1.0, 0.06, 0.22],
+    /* THE MOOR IS DROWNED, so all four of its materials hold water — this used
+       to be [0.10, 1.0, 0.06, 0.22], i.e. only the ROCK slot, on the argument
+       that "peat, moss and ash soak it in and stay matte". That is true of a
+       DRY bog and false of this one: saturated peat carries standing water on
+       its surface, sphagnum holds twenty times its weight in it and is a wet
+       film by definition, and the gravel of a bog runnel is under water. It was
+       also costing the frame its only cheap source of highlight: MEASURED on a
+       frozen overworld frame, opening the film to all four slots moved the
+       near-field patch's midFreq 0.0335 -> 0.0443 (+32 %) and its p99 up, while
+       the whole-frame mean moved 0.3913 -> 0.3905 — free, because a specular
+       lobe adds range without adding average. ROCK still holds the most: it is
+       the only non-porous one, so its film is a sheet rather than a wetting. */
+    filmHold: [0.46, 1.0, 0.55, 0.50],
+    /* Coupled bleach / soak wear — see the block in FRAG_MAP for the measurement
+       that motivates it. Tuned in the render, not here; the sweep is in the
+       round report. .x albedo gain, .y roughness lift on the bleach, .z
+       roughness cut on the soak, .w hue tilt (straw / cold peat). */
+    bleach: [1.10, 0.26, 0.35, 0.062],
     /* See the chroma-gain block in FRAG_MAP. The number has to be this large because
        the layer generators in src/core/texgen produce very nearly achromatic albedo
        for DIRT / ROCK / MOSS / ASH — the resolved moor albedo measures HSV saturation
@@ -1394,6 +1411,10 @@ uniform vec4 uFilm;
    has to be given a larger structure that is NOT periodic.
    .x albedo strength, .y period A (m), .z period B (m), .w roughness coupling. */
 uniform vec4 uMacro2;
+/* Coupled bleach / soak wear layer. See the block in FRAG_MAP.
+   .x albedo gain, .y roughness lift (bleach), .z roughness cut (soak),
+   .w hue tilt. All zero = the layer does not exist. */
+uniform vec4 uBleach;
 uniform float uDebug;        // 1 = paint the resolved splat weights instead of albedo
 
 // per-pixel geology, filled once in main() before the plane blends run
@@ -1773,6 +1794,58 @@ const FRAG_MAP = /* glsl */ `
   tAlb *= 1.0 + m2c * uMacro2.x;
   tRgh = clamp( tRgh * ( 1.0 + m2c * uMacro2.w ), 0.03, 1.0 );
 
+  /* ---- BLEACH AND SOAK: the wear layer, and the moor's only light value ----
+   *
+   * MEASURED DEFECT. With Sky's fog switched off, the moor's far field renders
+   * at mean luma 0.084 with 87 % of its pixels under 0.15: the four slots
+   * resolve to albedo 0.05-0.14 and there is no light value ANYWHERE in the
+   * biome. That is why the distance reads as a milky plane rather than as
+   * landform. Sky's haze at this weather sits at 0.13-0.27 linear, four to nine
+   * times the ground it covers, so a surface with no bright end has nothing
+   * that can show through it — and the rubric's "mid-frequency structure plus a
+   * wear layer that darkens, roughens and occludes together" has no bright end
+   * to wear FROM.
+   *
+   * A GLOBAL LIFT IS THE WRONG FIX and was measured as such: scaling all four
+   * slot tints by 2 moves the frame mean 0.391 -> 0.457, straight out of the
+   * 0.10-0.34 band the analyser checks, and buys 0.0019 of far-field midFreq.
+   * What the frame needs is RANGE, at a frequency the eye reads as surface.
+   *
+   * So this is one signed field, mean-balanced by construction, driven by the
+   * things that actually decide where a blanket bog is pale and where it is
+   * black:
+   *   bleach — the hag tops and interfluves. High ground, off the drainage,
+   *            on the CROWNS of the mesostructure. Wind-scoured Molinia and
+   *            lichen: pale straw, and DRIER, so roughness goes up with value.
+   *   soak   — the groughs and hollows. On the drainage, concave, in the
+   *            TROUGHS of the mesostructure. Waterlogged peat: near-black,
+   *            and smoother, and self-occluding.
+   * The two are complementary, so subtracting one from the other gives a field
+   * whose mean is near zero: it cannot move the histogram's centre, only widen
+   * it. Value, roughness, occlusion and hue all move together, which is the
+   * difference between a wear layer and a stain.
+   *
+   * Costs two smoothsteps and no texture fetch — every term is already
+   * resolved. Zero samplers, and it needs the terrain to HAVE hags and groughs
+   * for gAlt and gFlow to separate at all, which is why Terrain._moorRelief
+   * has to land first. */
+  if ( uBleach.x > 0.001 ) {
+    float hag = smoothstep( 0.34, 0.80, gAlt ) * ( 1.0 - smoothstep( 0.22, 0.60, gFlow ) );
+    float sink = clamp( smoothstep( 0.30, 0.74, gFlow ) + max( 0.0, -gCurv - 0.05 ) * 0.90, 0.0, 1.0 );
+    // the mesostructure decides the last centimetre: crowns dry, troughs hold
+    float bleach = clamp( hag * ( 0.30 + 0.70 * tH ) * ( 0.55 + 0.45 * m2 ), 0.0, 1.0 );
+    float soak = clamp( sink * ( 0.35 + 0.65 * ( 1.0 - tH ) ), 0.0, 1.0 );
+    float bs = bleach - soak;
+    // straw on the bleach, cold peat-black on the soak — a small tilt, because
+    // a large one is the "rust-orange field beside an ice-blue one" this biome
+    // was already pulled back from once (see the chroma note in BIOME_PRESETS).
+    vec3 hue = vec3( 1.0 + bs * uBleach.w, 1.0, 1.0 - bs * uBleach.w * 1.35 );
+    tAlb *= hue * ( 1.0 + bs * uBleach.x );
+    tRgh = clamp( tRgh * ( 1.0 + bleach * uBleach.y - soak * uBleach.z ), 0.03, 1.0 );
+    // wear that lightens must also occlude where it does not reach
+    tAo *= 1.0 - soak * 0.28;
+  }
+
   // ---- wetness / standing water ----
   // Water only collects where the ground is genuinely flat AND genuinely
   // concave or on a drainage line. A broad damp term applied to every flat
@@ -2058,6 +2131,12 @@ export function createTerrainMaterial(engine, lib) {
     /* World macro band, periods in metres. Both are LONGER than every layer tile
        (2.85-9.40 m) on purpose — see the block in FRAG_MAP. */
     uMacro2: { value: new THREE.Vector4(0.10, 23.0, 9.0, 0.10) },
+    /* BLEACH / SOAK — see the block in FRAG_MAP. Off by default, so any biome
+       that does not ask for it renders exactly as before.
+       .x albedo gain on the signed bleach-minus-soak field,
+       .y roughness lift on bleached ground, .z roughness cut on soaked ground,
+       .w hue tilt (warm on the bleach, cool on the soak). */
+    uBleach: { value: new THREE.Vector4(0, 0, 0, 0) },
     uDebug: { value: 0 },
   };
 

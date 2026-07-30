@@ -308,7 +308,19 @@ export class RenderPipeline {
       contactBias: 0.08,
       contactSlope: 0.34,
       contactRangeMul: 2.6,
-      contactJitter: 0.5,
+      /*
+       * Spread of the contact spiral's 2x2 INTERLEAVED start angle, in mean
+       * azimuthal gaps. 1 = the four screen-parity classes tile one gap, so a
+       * 2x2 tile samples 4 x contactTaps directions and the pass's tent resolve
+       * reads that whole set back. This used to be a per-pixel `ign()` rotation
+       * at 0.5, which is what stamped an ordered halftone screen across every
+       * shadow in the game — see the header of passes/AOApplyPass.js.
+       */
+      contactJitter: 1.0,
+      /** 1 = resolve the contact estimate over the tile, 0 = raw (diagnostic). */
+      contactDenoise: 1.0,
+      /** Resolve depth tolerance, as a fraction of the receiver's distance. */
+      contactResolveTol: 0.02,
       contactKnee: 0.12,
       contactFloor: 0.06,
       contactProtect: 0.55,
