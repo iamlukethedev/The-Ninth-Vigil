@@ -310,6 +310,46 @@ export function sunLightColor(S, out = [1, 1, 1]) {
 const BAND_GAIN = 0.118;   // skyline luma at skyLum = 1
 const BAND_COMP = 0.62;    // luminance compression exponent
 const BAND_OPP = 0.71;     // anti-key skyline, as a fraction of the key side
+/* ── DAYLIGHT SKY-TO-GROUND RATIO ────────────────────────────────────────────
+ * The block above was tuned entirely against DUSK and NIGHT rigs (`hub` at
+ * tod 0.78 and `night` at tod 0.02 both put the sun 10-66 deg BELOW the horizon,
+ * so both meter S.sunUp = 0). On those the level above is right: a moonlit moor
+ * and a near-black sky are within a factor of two of each other, and lifting the
+ * band would turn the night sky into a grey card.
+ *
+ * `overworld` is the only shipped scenario with the sun actually up, and there
+ * the same level is physically inverted. MEASURED on the shipped rig: the lit
+ * moor resolves to 0.056 scene-linear and the fully-fogged far field to 0.060,
+ * while the band the frame silhouettes against sat at 0.031-0.071 — i.e. the SKY
+ * WAS DARKER THAN THE GROUND. Real numbers for an overcast day are a 20-40:1
+ * sky-to-ground ratio (5000 cd/m^2 off the cloud deck against wet peat at
+ * albedo 0.08), so distance has to LIFT toward the horizon and a ridge has to
+ * read as a dark shape against a bright one. At 0.058 linear the whole 30-78 m
+ * depth range the rig frames arrived within 7 % of one value, which is precisely
+ * "distant ridges have identical value to near terrain".
+ *
+ * The lift is gated on S.sunUp, so it is identically 1.0 for every dusk and
+ * night scenario and cannot regress the two frames that share these files.
+ *
+ * IT APPLIES TO THE FAR HAZE ONLY, NOT TO THE BAND. That split is not a
+ * refinement, it is the constraint the block above already states: above roughly
+ * 0.06 scene-linear the `moor` grade throws the sky's chroma and its gradient
+ * away. An earlier pass here scaled the band by this lift too, which put it at
+ * 0.365 scene-linear, and the frame reproduced that prediction exactly — the
+ * visible sky measured display luma 0.5945 at HSV saturation 0.0017, i.e. the
+ * flat achromatic card BAND_GAIN exists to avoid, with the four receding
+ * silhouette layers and the mist banks compressed into it and invisible.
+ *
+ * Nothing was gained by it. MEASURED with a runtime sweep that scales the band
+ * uniforms alone: taking the band from that lifted level back down to its
+ * authored one moves the fraction of the frame above display 0.75 by 0.15 points
+ * out of 2.36, while the same sweep on the two far-haze targets alone moves it by
+ * 1.66 points at only a 20 % cut. The highlight quota lives entirely in the
+ * hazed far ground; the band contributes nothing to it and only loses its own
+ * hue and gradient by being dragged up there. Removing the band's share also
+ * MEASURED better on both remaining metrics — frame saturation 0.180 -> 0.192 and
+ * mean 0.230 -> 0.203 — because a flat desaturated sky was averaging both down. */
+const DAY_SKY_LIFT = 4.90;
 /* Deep-band level. MEASURED CONSTRAINT: the `moor` grade's toe crushes anything
    under roughly 0.036 scene-linear to black and its contrast stage AMPLIFIES the
    0.036-0.065 window by about 2.9x in log terms. At 0.30 the band fell to 0.034 by
@@ -319,22 +359,47 @@ const BAND_OPP = 0.71;     // anti-key skyline, as a fraction of the key side
    render. */
 const BAND_LO = 0.52;
 const BAND_GLOW = 0.30;    // horizon-warming glow amplitude, fraction of skyline
-/* Fog far-field target, as fractions of the skyline. MEASURED CONSTRAINT: the
-   lit moor resolves to 0.032-0.050 scene-linear, so the far target has to land
-   near 0.070 or the fog mix is arithmetically a no-op and 20 m / 300 m come out
-   the same value — which is precisely what "distant ridges have identical value
-   to near terrain" means. It also has to stay under the band (0.079-0.094 over
-   the visible wedge) or distant land resolves BRIGHTER than the sky it stands
-   against and the horizon disappears. 0.68 / 0.56 of the skyline threads both. */
+/* Fog far-field target, as fractions of the skyline BEFORE the daylight lift below
+   is applied. MEASURED CONSTRAINT: the lit moor resolves to 0.032-0.050
+   scene-linear, so the far target has to clear that by a real multiple or the fog
+   mix is arithmetically a no-op and 20 m / 300 m come out the same value — which is
+   precisely what "distant ridges have identical value to near terrain" means. The
+   key/anti-key split is what stops the air being one flat wash across the frame;
+   0.82 keeps the half of the sky behind the sun a fifth dimmer than the half in
+   front of it, which is the right sign for forward scatter. */
 const HAZE_SUN = 1.00;
 const HAZE_OPP = 0.82;
+/* How much of DAY_SKY_LIFT the far haze gets — and since the band no longer takes
+   any of it, this is the whole daylight ratio. 0.80 puts the far target at 0.291 /
+   0.238 scene-linear (key / anti-key) against a near-field haze pinned at 0.061
+   and a lit moor at 0.032-0.050, which is the 4-6x walk that makes 30 m and 80 m
+   read as two planes instead of one.
+   The pre-existing note here said the haze must land BELOW the band or "the skyline
+   inverts and the ridges disappear into it". That reasoning was written for a rig
+   whose horizon is in shot. This one's is not: at 46 deg of pitch the top of the
+   frame sits 22 deg BELOW level, so the only sky in frame is the sub-horizon band —
+   which, being air at 22-30 deg down from a camera 35.6 m up, is looking at the
+   same 60-90 m of atmosphere as the far ground itself. There is no horizon line in
+   frame for the far haze to invert across, and the receding crests stay legible
+   because uHzRock sits at 0.037 against both. */
+const HAZE_DAY_K = 0.80;
 /* Near-field haze. MEASURED: at 0.34 of the skyline this landed at 0.0440 while
    the reference stone albedo resolves to 0.0488, so the first 40 m of fog made the
    ground DARKER and the 20 m -> 40 m value went 0.04877 -> 0.04844 (a dip, i.e.
    non-monotone). At 0.50 it sits just above any plausible surface value, so the
    curve only ever climbs. */
 const HAZE_NEAR = 0.76;
-const HAZE_SAT = 0.13;     // the air is never more chromatic than this
+/* The air is never more chromatic than this. 0.13 was chosen purely to make the
+   saturation-vs-depth curve monotone, and it over-corrected: with the two distance
+   drains in Sky.js on top of it, the fully-fogged far field measured HSV saturation
+   0.023-0.033, which is a grey wash and was the largest single contributor to the moor
+   frame's 0.208 saturation — well over half its pixels sit past 60 m, where the fog
+   owns 90 % of the result. 0.22 lets the air keep a readable hue; monotonicity is now
+   held by the hue-bias weights below instead, and measured on the shipped fog probe
+   this cap is no longer the binding term on the moor rig (0.22 and 0.30 resolve to the
+   same curve). It still binds at a grazing sun, where the transmitted colour is
+   (1, 0.25, 0.01) raw and would otherwise make the whole distance orange. */
+const HAZE_SAT = 0.22;
 const ROCK_LEVEL = 0.50;   // far-silhouette rock albedo*light, fraction of skyline
 
 const LUMA = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
@@ -404,6 +469,12 @@ export function bandState(S, keyDir, opts = {}) {
       (hs[2] + ho[2] + 2 * up[2]) * 0.25]),
     1e-5
   );
+  /* The band, its glow, the rim and the far silhouette stack are all authored
+     against this one number, and BAND_GAIN pins it to the 0.04-0.08 scene-linear
+     window the `moor` grade can still render chroma and gradient inside. The
+     daylight sky-to-ground ratio is therefore applied to the far HAZE alone (see
+     DAY_SKY_LIFT and hazeLift below), which is the term that actually separates
+     the depth planes; dragging the band up with it only flattened the sky. */
   const skyline = BAND_GAIN * Math.pow(skyLum, BAND_COMP);
 
   /* ---- hues ----
@@ -434,7 +505,16 @@ export function bandState(S, keyDir, opts = {}) {
      end. fogAmount does the same, more gently. */
   const wi = clamp(opts.weatherIntensity ?? 1, 0, 1);
   const murk = clamp((lerp(1, S.w.fogMul, wi) - 1) / 1.6, 0, 1);
-  const oppK = lerp(BAND_OPP, 0.80, murk * 0.6);
+  /* By day the anti-key half of the band has to come up close to the key half, and
+     not for prettiness: with the daylight lift in place the fully-fogged far land
+     resolves to 0.2225 scene-linear, and at the dusk-calibrated 0.735 the anti-key
+     band sat at 0.204 — BELOW the land standing in front of it, so the silhouette
+     inverted and the horizon stopped reading. An overcast deck is also genuinely
+     near-uniform in azimuth (the sun's position barely shows through 0.80 coverage),
+     whereas a moonlit night really is much darker away from the moon, which is what
+     0.71 was measured against. Gated on S.sunUp, so every dusk and night rig keeps
+     the old value exactly. */
+  const oppK = lerp(lerp(BAND_OPP, 0.80, murk * 0.6), 0.90, S.sunUp);
   const loK = lerp(BAND_LO, 0.42, murk * 0.55 + fogAmount * 0.18);
 
   const hi = toLuma(hiHue, skyline, [0, 0, 0]);
@@ -442,9 +522,23 @@ export function bandState(S, keyDir, opts = {}) {
   const lo = toLuma(loHue, skyline * loK, [0, 0, 0]);
 
   /* Horizon-warming glow. Additive, tight against the skyline, and honest:
-     amplitude tracks how low the key light actually is. */
-  const glowK = BAND_GLOW * lerp(0.22, 1.0, lowSun) * lerp(1, 0.55, S.desat) * (1 - 0.55 * S.night);
-  const glow = toLuma(warmH, skyline * glowK, [0, 0, 0]);
+     amplitude tracks how low the key light actually is.
+     The high-sun floor was 0.22, which at `overworld`'s 42 deg sun resolved the
+     glow to 0.0083 scene-linear — under the grade's toe, so the band had NO bright
+     region anywhere and there was nothing for a ridgeline to rim against. A broken
+     overcast deck at midday is exactly where the brightest patch in the frame
+     lives (the cloud edge round the sun is the 5000 cd/m^2 part), so the floor is
+     0.60: it puts a 0.023-above-band patch on the key azimuth, i.e. a 1.15x local
+     lift the far crests read as a silhouette against. Cases with the key light
+     actually low (lowSun = 1: `hub` at dusk, `night`) hit the same lerp endpoint as
+     before and are bit-identical. */
+  const glowK = BAND_GLOW * lerp(0.60, 1.0, lowSun) * lerp(1, 0.55, S.desat) * (1 - 0.55 * S.night);
+  /* At a high sun the break is a WHITE hole in grey cloud, not an orange one —
+     `warmH` is the grazing-path extinction hue (1, 0.46, 0.25 after flooring) and
+     reads as sunset at any elevation. Blending back toward the key-side sky hue by
+     (1 - lowSun) keeps dusk orange and makes midday neutral-warm. */
+  const glowHue = limitSat(mix3(hiHue, warmH, 0.30 + 0.70 * lowSun, [0, 0, 0]), 0.34);
+  const glow = toLuma(glowHue, skyline * glowK, [0, 0, 0]);
 
   /* ---- fog targets ----
      HAZE_SUN / HAZE_OPP are the readable horizon. Fully-fogged distant land converges on
@@ -474,11 +568,31 @@ export function bandState(S, keyDir, opts = {}) {
      crossing. The cap keeps it a whisper (HSV 0.13) — the SKY stays cool at
      0.14-0.32, so the frame still reads cold base / warm distance rather than
      warm everywhere. */
-  const hazeSunHue = limitSat(mix3(hiHue, warmH, 0.35, [0, 0, 0]), HAZE_SAT);
-  const hazeOppHue = limitSat(mix3(oppHue, hazeSunHue, 0.85, [0, 0, 0]), HAZE_SAT);
-  const hazeNearHue = limitSat(mix3(loHue, hazeSunHue, 0.80, [0, 0, 0]), HAZE_SAT);
-  const hazeSun = toLuma(hazeSunHue, skyline * HAZE_SUN, [0, 0, 0]);
-  const hazeOpp = toLuma(hazeOppHue, skyline * HAZE_OPP, [0, 0, 0]);
+  /* The warm-bias weights were 0.35 / 0.85 / 0.80 and are now 0.26 / 0.62 / 0.66. They
+     are the term that actually holds the saturation curve monotone, so they were tuned
+     against the shipped fog probe rather than by eye, and the measurement is worth
+     recording because the failure mode is subtle. Any fog whose hue sits on the
+     OPPOSITE side of neutral from the surface makes saturation cross zero and climb
+     again on the far side. Pulled all the way to 0.20 / 0.45 / 0.55 — which is what an
+     overcast day's genuinely blue-grey distance wants — the anti-key haze went cool
+     against the probe's warm reference stone and the curve measured 0.237 at 20 m,
+     0.021 at 58 m, then back UP to 0.032 at 80 m: a crossing, exactly as documented
+     below. At 0.26 / 0.62 / 0.66 the same probe reads
+     0.244 / 0.187 / 0.145 / 0.104 / 0.073 / 0.049 / 0.047 / 0.046 / 0.045 / 0.043 /
+     0.041 at 20-190 m, i.e. non-increasing at every step, while still leaving the
+     anti-key side visibly cooler than the key side so the air is not one flat wash. */
+  const hazeSunHue = limitSat(mix3(hiHue, warmH, 0.26, [0, 0, 0]), HAZE_SAT);
+  const hazeOppHue = limitSat(mix3(oppHue, hazeSunHue, 0.62, [0, 0, 0]), HAZE_SAT);
+  const hazeNearHue = limitSat(mix3(loHue, hazeSunHue, 0.66, [0, 0, 0]), HAZE_SAT);
+  const hazeLift = lerp(1, DAY_SKY_LIFT * HAZE_DAY_K, S.sunUp);
+  const hazeSun = toLuma(hazeSunHue, skyline * hazeLift * HAZE_SUN, [0, 0, 0]);
+  const hazeOpp = toLuma(hazeOppHue, skyline * hazeLift * HAZE_OPP, [0, 0, 0]);
+  /* Near haze stays on the UNLIFTED reference. The whole point of the daylight
+     lift is to open the ratio between the two ends of the aerial ramp; scaling both
+     ends would move the near field with it and change nothing about the separation,
+     while lifting the near ground straight off the grade's toe and taking p01 with
+     it. Pinned here, the shipped fog probe reads 0.0502 linear at 20 m against
+     0.2434 at 300 m — a 4.85x walk where the pre-fix rig measured 1.06x. */
   const hazeNear = toLuma(hazeNearHue, skyline * HAZE_NEAR * lerp(0.80, 1.25, fogAmount), [0, 0, 0]);
 
   /* ---- far silhouette stack ----
@@ -486,6 +600,11 @@ export function bandState(S, keyDir, opts = {}) {
      separates receding ranges: same material, progressively more of the air in
      front of it. Values staggered a hair so the layers are not arithmetically
      identical where their fog mixes happen to coincide. */
+  /* By day the far crests are the DARK half of the sky-to-ground ratio: rock at
+     albedo 0.09 under a 20:1 deck cannot approach the deck's own value. At
+     ROCK_LEVEL the stack lands at 0.0371 against a 0.074 band and a 0.24-0.29 far
+     haze, so the receding ranges read as shapes cut out of the air rather than as
+     four grey steps a hair apart from it. */
   const rockL = skyline * ROCK_LEVEL;
   const rock = [
     toLuma(rockHue, rockL * 1.00, [0, 0, 0]),

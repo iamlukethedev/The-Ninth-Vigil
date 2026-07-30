@@ -78,12 +78,81 @@ const FLOOR_LIFT = 0.03;
 /** metres-per-texture-tile -> texture repeat */
 const rep = (metres) => 1 / metres;
 
+/**
+ * Per-instance look for a debris pile, in one place so the four call sites agree.
+ * Consumes exactly three `r()`, in tint, rough, hue order.
+ *
+ * VALUE, 0.76-1.00 -> 0.90-1.12. The new `Kit.rubble` is chipped rather than
+ * chamfered and beds each block on a spall plate, which is a lot of extra facets
+ * turned away from a light 3 m up. Measured on `closeup`: at the old value the frame
+ * sat at 0.2614 with 0.527 % merged solid black, at this one 0.2653 with 0.470 %,
+ * and the debris' own sampled pixels went 0.365 -> 0.375. That pays part of the
+ * geometry back where it was lost instead of lifting the whole frame, and it is
+ * honest — stone broken to fresh faces is lighter than the weathered course it fell
+ * off, so the old value was darkening the one thing in frame that should be
+ * brightest. It does not pay all of it back: `closeup` is 0.2653 against 0.2776
+ * before this lane, and buying the last 0.012 here would take +45 % albedo, which is
+ * chalk. Debris that is legible is worth 4 % of frame mean.
+ *
+ * TEMPERATURE, symmetric -> warm-biased. Every other piece in the kit jitters hue
+ * symmetrically about 0, right for masonry that is damp in some bays and dusty in
+ * others. Debris is the class the critic called COLD, and physically it is: an
+ * isometric camera sees mostly its up-faces, the practicals rake verticals, so a
+ * horizontal facet's only illuminant is an ambient probe that is cold by art
+ * direction. A `+0.26` mean is +1.3 % red and -1.2 % blue on the instance colour —
+ * far less than it sounds (+0.4 % luma), and it reads as settled dust rather than as
+ * a different stone. The remaining +/-0.25 keeps the pile-to-pile spread.
+ */
+const RUBBLE_LOOK = (r) => ({
+  tint: 0.90 + r() * 0.22,
+  rough: 0.95 + r() * 0.3,
+  hue: 0.26 + (r() - 0.5) * 0.5,
+});
+
 const MAT_DEFS = {
   // 3 x 5 blocks per tile at 1.62 m -> a 0.54 x 0.32 m ashlar, per the scale table
   stone: { kind: 'stone', uv: 1.62, size: 1024, seed: 811, color: 0xccd3de },
   // 9 setts per tile at 2.05 m -> a 0.23 m sett
   floor: { kind: 'cobble', uv: 2.05, size: 1024, seed: 419, color: 0xafaa9e },
   rock: { kind: 'stone', uv: SPEC.uv.rock, size: 1024, seed: 977, color: 0x9aa0aa },
+  /*
+   * The arena's standing masonry — wall panels, buttresses, obelisks. Split off
+   * `rock` (same kind, same seed, so `_baseSet` is a cache hit and the four maps
+   * are shared clones: no new VRAM, no new sampler, no new program) purely to
+   * give it a different LIGHT RESPONSE.
+   *
+   * WHY IT NEEDED ONE. `hell` is a sunless interior: no directional light, no
+   * shadow cascades, and only ~14 practicals survive Lighting's importance cut.
+   * Every one of those is on the floor or on a mid-side pilaster, so the six corner
+   * buttresses and the panels either side of them are lit by ambient IBL and very
+   * little else. Two departures from `rock` for that, and one honest negative:
+   *
+   *  • `uv: 1.20` instead of 3.10 m per tile — the change that carries this. On a
+   *    6.2 m panel the old tiling laid two texture tiles top to bottom, so the
+   *    ashlar coursing, the spalled arrises and the quartz fleck were magnified
+   *    2.6x past the point where they read as surface. At 1.20 m the generator's
+   *    5-course ashlar lands at 0.24 m per course, the right size for cyclopean
+   *    basalt seen from 22 m up, and gives the eye something to catch.
+   *  • `aoMapIntensity: 0.35`. Ambient occlusion attenuates ambient, and on a
+   *    surface whose only light IS ambient the cavity map multiplies the one
+   *    contribution it has. Correct for a wall with a key light, backwards here.
+   *  • `emissive: 0x30201a` and `envMapIntensity: 3.4` are the ambient bounce a
+   *    basalt room full of lava has, and they cost no sampler and cannot be
+   *    importance-culled — but be clear that NEITHER fixed the black shape this
+   *    room was failing on. Measured on the frozen boss frame: raising
+   *    `envMapIntensity` from 1 to 3.4 moved the void's luma by 0.0000, and forcing
+   *    emissive to red at six times intensity moved it by 0.0000 as well. That
+   *    shape was this geometry's own cast shadow, and it is fixed in
+   *    dungeon/Arena.js where the panels stop casting. These two stay because they
+   *    are right for a wall lit only by bounce, not because they earned the fix.
+   *
+   * No `emissiveIntensity` key on purpose — supplying one would enrol this material
+   * in `_emissiveMats` and make a stone wall pulse like a brazier.
+   */
+  crag: {
+    kind: 'stone', uv: 1.20, size: 1024, seed: 977, color: 0x9aa0aa,
+    over: { envMapIntensity: 3.4, aoMapIntensity: 0.35, emissive: 0x30201a },
+  },
   // The mass the crypt is buried in. Earth, not masonry: the surrounding cap is
   // most of the frame outside the rooms, and if it reads as coursed blocks the
   // whole picture reads as brickwork.
@@ -107,12 +176,18 @@ const BIOME_TINT = {
   // Tints multiply an albedo the generators already author at realistic stone
   // reflectance (0.15 - 0.35), so they sit near white. A "dark stone" tint here
   // lands the surface at charcoal and no amount of torchlight recovers it.
-  crypt: { stone: 0xccd3de, floor: 0xafaa9e, rock: 0x9aa0aa, cap: 0x6f6c62, dirt: 0xbdb098, iron: 0xd6d3ce },
+  crypt: { stone: 0xccd3de, floor: 0xafaa9e, rock: 0x9aa0aa, crag: 0x9aa0aa, cap: 0x6f6c62, dirt: 0xbdb098, iron: 0xd6d3ce },
   // Basalt, not sandstone. These were authored at the same reflectance as the
   // crypt's limestone, which put the arena floor at ~0.35 display grey filling the
   // whole frame — a milky plane with the lava moat and the braziers unable to read
   // as the accent against it. Volcanic rock reflects 6-10 %.
-  hell: { stone: 0x8e7264, floor: 0x83685c, rock: 0x7d6a5e, cap: 0x54402f, dirt: 0x8a7058, iron: 0xc9b5a4 },
+  /*
+   * `crag` is graded 0xa08a79 against `rock`'s 0x7d6a5e — a stop and a half
+   * brighter, and warmer. Not a licence to make hell pale: it applies only to the
+   * standing masonry, which in this room is the one surface class with no key
+   * light on it, and 0x7d6a5e reflectance under ambient alone measured 0.013.
+   */
+  hell: { stone: 0x8e7264, floor: 0x83685c, rock: 0x7d6a5e, crag: 0xa08a79, cap: 0x54402f, dirt: 0x8a7058, iron: 0xc9b5a4 },
 };
 
 /** Pieces that must occlude light. Floors, relief and dressing need not. */
@@ -936,7 +1011,7 @@ export class Dungeon {
           const rz = pz + nzs * (0.40 + r() * 0.30) + (run.axis === 'x' ? 0 : off);
           this._pushPiece(kit.rubble((r() * 4) | 0, 0.55 + r() * 0.4),
             trsInto(_m, rx, this._g(rx, rz), rz, 0, r() * TAU, 0),
-            { tint: 0.78 + r() * 0.22, rough: 0.95 + r() * 0.3, hue: (r() - 0.5) * 0.6 });
+            RUBBLE_LOOK(r));
         }
         s += len;
       }
@@ -1039,7 +1114,7 @@ export class Dungeon {
             const rx = cx + (r() - 0.5) * B.bw * 0.6, rz = cz + (r() - 0.5) * B.bd * 0.6;
             this._pushPiece(kit.rubble((r() * 4) | 0, 0.9 + r() * 0.7),
               trsInto(_m, rx, this._g(rx, rz), rz, 0, r() * TAU, 0),
-              { tint: 0.78 + r() * 0.24, rough: 0.95 + r() * 0.3, hue: (r() - 0.5) * 0.6 });
+              RUBBLE_LOOK(r));
             continue;
           }
           if (tier === 2) continue;
@@ -1264,7 +1339,7 @@ export class Dungeon {
       if (r() < 0.74) {
         this._pushPiece(kit.rubble((r() * 4) | 0, 0.4 + r() * 0.6),
           trsInto(_m, p.x, gy, p.z, 0, r() * TAU, 0),
-          { tint: 0.78 + r() * 0.24, rough: 0.95 + r() * 0.3, hue: (r() - 0.5) * 0.6 });
+          RUBBLE_LOOK(r));
       } else {
         this._pushPiece(kit.bones((r() * 3) | 0),
           trsInto(_m, p.x, gy, p.z, 0, r() * TAU, 0),
@@ -1291,7 +1366,7 @@ export class Dungeon {
         const rx = fx + (r() - 0.5) * 8.5, rz = fz - r() * 3.4;
         this._pushPiece(kit.rubble((r() * 4) | 0, 0.45 + r() * 0.8),
           trsInto(_m, rx, this._g(rx, rz), rz, 0, r() * TAU, 0),
-          { tint: 0.76 + r() * 0.24, rough: 0.95 + r() * 0.3, hue: (r() - 0.5) * 0.6 });
+          RUBBLE_LOOK(r));
       }
       for (let k = 0; k < 3; k++) {
         const bx = fx + (r() - 0.5) * 7.0, bz = fz - r() * 3.0;

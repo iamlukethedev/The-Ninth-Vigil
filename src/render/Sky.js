@@ -411,8 +411,19 @@ vec3 skApplyFog( vec3 color, vec3 wpos ) {
   /* ONE monotone ramp in view depth drives BOTH the haze colour and the chroma
      drain, so value and saturation cannot move independently of distance:
      value rises toward the horizon colour, saturation falls, always. */
-  float aer = smoothstep( uSkAer.x, uSkAer.y, dist );
-  aer = aer * aer * ( 3.0 - 2.0 * aer );
+  /* The shaping used to be a SECOND smoothstep on top of the first, which is a
+     quintic in disguise and put the entire useful part of the curve outside the
+     frame. MEASURED on the overworld rig, whose terrain spans 30-78 m of view
+     depth: aer came out 0.002 / 0.034 / 0.144 at 30 / 50 / 80 m, so the haze
+     colour never left uSkHazeNear anywhere on screen and the far target was
+     decorative — the fog mix was arithmetically a no-op over the whole visible
+     range, which is the real reason 20 m and 80 m read as the same plane.
+     pow(.., 0.55) is still monotone in depth (so the value-up / chroma-down
+     guarantee below is untouched) but front-loads the walk: 0.10 / 0.24 / 0.46 at
+     the same three depths, reaching 0.89 by 145 m and 1.0 past 210 m, so 20 / 80 /
+     300 m stay three distinct planes AND the two that are actually on screen
+     separate. */
+  float aer = pow( smoothstep( uSkAer.x, uSkAer.y, dist ), 0.55 );
 
   /* Haze colour, keyed to the sky's own horizon: near-field air is dim and
      biome-tinted, the far field converges on the skyline colour of THIS
@@ -1362,21 +1373,42 @@ void main() { gl_FragColor = vec4( skApplyFog( uProbeAlbedo, vSkWPos ), 1.0 ); }
         lerp(28, 20, fa),
         lerp(100, 80, fa),
         clamp01(lerp(0.46, 0.36, fa)),
-        clamp01(0.20 + 0.22 * fa)
+        /* Haze neutral floor. Was 0.20 + 0.22*fa = 0.32 on the moor, which with the
+           distance drain below left the far field at HSV sat 0.023 — a grey wash, and
+           the single biggest contributor to the frame's 0.208 saturation. Aerial
+           perspective desaturates toward the SKY's hue, and this sky is a definite
+           cool blue-grey; draining the air to near-neutral throws that away. 0.15 +
+           0.17*fa = 0.24 keeps the air readably cool while the ramp still only ever
+           removes chroma with distance. */
+        clamp01(0.10 + 0.12 * fa)
       );
       U.uSkAer.value.set(
         lerp(22, 15, fa),
         lerp(240, 190, fa),
         /* Surface chroma loss. Split with the result-side ceiling below rather
            than carrying the whole drop, because a single strong pre-mix desat
-           leaves the haze's own hue free to raise total saturation again. */
-        clamp01(0.20 + 0.34 * fa + 0.08 * (wm - 1)),
+           leaves the haze's own hue free to raise total saturation again.
+           Trimmed from 0.20 + 0.34*fa because the ramp above now reaches these
+           values 3-6x earlier in depth: at the old coefficients the same curve
+           applied 0.36 of desat by 80 m where it previously applied 0.05, which
+           would have taken the frame's saturation DOWN while the brief needs it up.
+           The total chroma removed at full distance is what is preserved, not the
+           per-metre rate. */
+        clamp01(0.14 + 0.20 * fa + 0.06 * (wm - 1)),
         lerp(0.94, 1.06, fa)
       );
+      /* .x and .z were 0.26 + 0.22*fa and 0.28 + 0.17*fa. Stacked on the (then 0.13)
+         haze saturation cap they took the far field to HSV 0.031 — three multiplicative
+         drains on a colour that was already nearly neutral. MEASURED end state on the
+         moor: 0.246 at 20 m falling to 0.031 at 300 m, i.e. the far 60 % of the frame
+         had no hue at all. Aerial perspective is a HUE SHIFT toward the air plus a
+         chroma reduction, not a conversion to greyscale. Halved, the same curve lands
+         at 0.10-0.12 far, so it still falls monotonically by a factor of two-plus over
+         the depth range while distant land actually reads as blue-grey. */
       U.uSkAer2.value.set(
-        clamp01(0.34 + 0.30 * fa),
+        clamp01(0.10 + 0.10 * fa),
         1.35,
-        clamp01(0.36 + 0.22 * fa + 0.06 * (wm - 1)),
+        clamp01(0.09 + 0.07 * fa + 0.03 * (wm - 1)),
         0
       );
     }

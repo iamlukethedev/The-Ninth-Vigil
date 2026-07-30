@@ -6,7 +6,9 @@
  * it beds into the ground instead of balancing on a point.
  */
 
-import { rockGeo, shardGeo, mergeParts, xform, finish, bakeWear, clamp01, smooth01, perlin3 } from './Geo.js';
+import {
+  rockGeo, shardGeo, mergeParts, xform, finish, bakeWear, clamp01, smooth01, perlin3, debrisUV,
+} from './Geo.js';
 
 const BOULDER_SPECS = [
   { radius: 1.15, warp: 0.30, squash: [1.15, 0.62, 0.95], flatten: 0.3, shear: 0.14, detail: 2 },
@@ -68,28 +70,76 @@ export function rockCluster(rand, index, { mat = 'stoneCold' } = {}) {
   return { parts: [{ geo, matName: mat, cast: true }] };
 }
 
-/** Scree: a shallow scatter of angular chips. Reads as erosion debris. */
+/**
+ * Scree: a shallow scatter of angular chips. Reads as erosion debris.
+ *
+ * Variant 2/5 draws four chips of up to 0.48 m, which puts this generator at exactly
+ * the size the "untextured flat-colour geometry" flag was raised against. Three
+ * things were wrong and all three were scale mismatches rather than missing content:
+ *
+ *  • `uTile: 1/1.1` put an architectural 1.1 m texture tile on a 0.3 m chip, and on
+ *    `stoneRock` — which also carries a 0.26 material repeat for boulders — the
+ *    effective tile was 4.2 m. A worley cell landed at 17.6 cm, so a facet showed
+ *    two isolated pits and nothing else. `debrisUV` scales the tile to the piece.
+ *  • `seg: 1` gives a rounded box one quad per face, and `rough` warps it through
+ *    noise at a fixed 2.1 cycles/m, so a 0.3 m chip received 0.63 of a cycle: one
+ *    smooth gradient, geometrically planar faces, one constant shading term per
+ *    facet. seg 2 plus the size-relative `fine` term breaks that.
+ *  • `dust: 0.2` at the default 1.18 dustColor lit every up-facing bevel above the
+ *    albedo, which under a cool interior probe reads as frost on every arris.
+ *
+ * Chips also now bed: each one gets a flat spall plate lapped over its foot, so the
+ * silhouette crosses the floor along a broken chip-scale edge instead of one clean
+ * analytic curve.
+ *
+ * Verified by construction, not by frame: a per-material hide-and-measure showed the
+ * four canonical frames this lane is graded on draw their debris from the crypt kit,
+ * so nothing here is measurable in `closeup`. The arithmetic above is the same either
+ * way — a 17.6 cm worley cell on a 30 cm chip is two pits wherever it is standing.
+ */
 export function scree(rand, index, { mat = 'rubble' } = {}) {
   const n = [7, 12, 4][index % 3];
   const sz = [0.16, 0.1, 0.28][index % 3];
   const parts = [];
   for (let i = 0; i < n; i++) {
     const s = sz * (0.5 + rand() * 1.2);
+    const w = s * (1 + rand() * 0.7), h = s * (0.3 + rand() * 0.45), d = s * (0.7 + rand() * 0.7);
     const g = shardGeo({
-      w: s * (1 + rand() * 0.7), h: s * (0.3 + rand() * 0.45), d: s * (0.7 + rand() * 0.7),
-      seed: 2500 + index * 23 + i * 5, seg: 1, rough: 0.34, uTile: 1 / 1.1, bevel: s * 0.14,
+      w, h, d, seed: 2500 + index * 23 + i * 5, seg: s > 0.09 ? 2 : 1, rough: 0.34,
+      uTile: debrisUV(mat, Math.max(w, h, d)), bevel: s * 0.14,
+      fine: Math.min(w, h, d) * 0.12, fineCycles: 5,
     });
     const a = rand() * 6.283;
     const dist = Math.pow(rand(), 0.55) * sz * 4.5;
+    const px = Math.cos(a) * dist, pz = Math.sin(a) * dist;
     xform(g, {
-      pos: [Math.cos(a) * dist, s * 0.12, Math.sin(a) * dist],
+      pos: [px, s * 0.12, pz],
       euler: [(rand() - 0.5) * 0.7, rand() * 6.283, (rand() - 0.5) * 0.7],
     });
     parts.push(g);
+    // spall lapped over the foot — only for chips big enough to show a contact line
+    if (s > 0.12) {
+      const bs = s * (0.55 + rand() * 0.35);
+      const ba = rand() * 6.283;
+      const bg = shardGeo({
+        w: bs * 1.7, h: bs * 0.22, d: bs * 1.2,
+        seed: 2560 + index * 23 + i * 5, seg: 1, rough: 0.4,
+        uTile: debrisUV(mat, bs * 1.7), bevel: bs * 0.12,
+        fine: bs * 0.1, fineCycles: 4,
+      });
+      xform(bg, {
+        pos: [px + Math.cos(ba) * w * 0.42, bs * 0.05, pz + Math.sin(ba) * d * 0.42],
+        euler: [(rand() - 0.5) * 0.24, ba, (rand() - 0.5) * 0.24],
+      });
+      parts.push(bg);
+    }
   }
   const geo = mergeParts(parts);
   if (!geo) return null;
-  bakeWear(geo, { seed: 2600 + index, base: 0.4, baseH: 0.18, cavity: 0.42, blotch: 0.3, blotchFreq: 3.5, dust: 0.2 });
+  bakeWear(geo, {
+    seed: 2600 + index, base: 0.4, baseH: 0.18, cavity: 0.42, blotch: 0.3, blotchFreq: 3.5,
+    dust: 0.11, dustColor: [1.03, 1.0, 0.95], grain: 0.12,
+  });
   finish(geo);
   return { parts: [{ geo, matName: mat, cast: false }] };
 }

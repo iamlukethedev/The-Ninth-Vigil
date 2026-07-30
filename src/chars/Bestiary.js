@@ -81,19 +81,49 @@ const METAL = {
 /**
  * Ceiling on the hit-flash uniform.
  *
- * MonsterMaterials turns this into `flashColor * uMonFlash * 2.4` of emissive
- * plus `uMonFlash * 0.45` of albedo-toward-white, so the uniform is the only
- * knob that decides whether a flash is a punch or an erasure.
+ * MonsterMaterials turns this into flashColor * uMonFlash * 0.7 of structure-
+ * weighted emissive plus uMonFlash * 0.22 of albedo-toward-white, so the uniform
+ * and that gain together decide whether a flash is a punch or an erasure.
  *
  * MEASURED, on the boss body region (760,240 120x140) of the `boss` capture:
  *   uniform 0.29 -> region mean 0.509, 34.4 % of it clipped past 0.9
  *   uniform 0.00 -> region mean 0.210,  1.0 % clipped
- * i.e. at 0.29 the flash was still erasing the whole silhouette. 0.13 puts the
- * emissive punch at 0.31 linear — about ACES 0.6 once exposed, a clearly hot
- * body that still shows its basalt/metal/cloth — and drops the albedo wash to
- * 0.06, so the material read survives the hit instead of being painted out.
+ * i.e. at 0.29 the flash was still erasing the whole silhouette.
+ *
+ * 0.13 was not low enough either, and this time the measurement is per-enemy
+ * rather than on a hand-drawn region. In the combat capture a ghoul caught at
+ * uniform 0.10 — an ordinary hit, under the old ceiling — measured a silhouette
+ * mean luma of 0.925 with 83 % of its pixels past 0.9 and a luma SD of 0.088,
+ * against 0.51 and 0.53 for its two identically-shaded packmates. It was the
+ * single whitest, flattest thing in the frame, which is exactly the defect the
+ * capture was being reviewed for. Dropping the ceiling to 0.05, together with
+ * MonsterMaterials weighting the punch by the albedo map's own structure and
+ * pulling its gain to 0.7, puts the emissive at 0.035 linear: about a 45 % lift on
+ * a body whose post-floor diffuse is 0.07-0.10, still an unmistakable hit because
+ * the flash is animated, and no longer able to reach the clip point on its own.
  */
-const FLASH_CEIL = 0.13;
+const FLASH_CEIL = 0.05;
+
+/**
+ * Aura carried by an ORDINARY mob, i.e. the faint cold fresnel that lifts a body
+ * off the ground plane. Not the champion tell — see ELITE.aura for that.
+ *
+ * Was 0.055, which MonsterMaterials expands through its three-lobe profile to as
+ * much as 0.055 * 2.07 = 0.114 scene-linear of ADDITIVE emissive. On a fat body
+ * that lands on the rounded far side and is exactly the wanted effect; on a
+ * skeleton, whose femurs and ribs are 4-8 px wide at the gameplay camera, the
+ * fresnel term is near its maximum over the ENTIRE silhouette, so the "rim" was
+ * really a body-wide structureless wash of 0.11 linear over a bone whose diffuse
+ * albedo is 0.115 — a 1:1 paint-over of the surface with flat light.
+ *
+ * 0.022 keeps the ground separation the term was added for (measured: enemy
+ * silhouette to adjacent floor luma separation stays above 0.16 in the combat
+ * capture, well clear of tools/actors.mjs's 0.05 invisibility threshold) while
+ * cutting the wash by 60 %. The champion aura is untouched at 0.30-0.42, so the
+ * ratio between "a mob" and "a champion" goes from 5:1 to 14:1 and the tell reads
+ * harder than it did.
+ */
+const TRASH_AURA = 0.022;
 
 /**
  * CHAMPION TELL — what makes an elite unmistakable.
@@ -961,11 +991,15 @@ class Enemy {
         _col.r *= shift[0]; _col.g *= shift[1]; _col.b *= shift[2];
         if (eliteTint) _col.lerp(eliteTint, ELITE.tint);
         this.materials[i].color.copy(_col);
+        // The tint is the denominator of the value-trim gain, so re-solve it or a
+        // recycled body renders at its raw map-times-tint albedo. See
+        // MonsterMaterials.trim().
+        mm.trim(this.materials[i]);
         const u = this.materials[i].userData.monU;
         if (u) {
           u.uMonDissolve.value = 0;
           u.uMonFlash.value = 0;
-          u.uMonAura.value = this.elite ? ELITE.aura : 0.055;
+          u.uMonAura.value = this.elite ? ELITE.aura : TRASH_AURA;
           u.uMonAuraColor.value.set(this.elite ? def.aura : (def.rim ?? 0x93a8c6));
         }
       }
@@ -1006,7 +1040,7 @@ class Enemy {
           u.uMonEmissColor.value.set(cfg.emiss).multiplyScalar(cfg.emissI ?? 1);
         }
         if (cfg.fade) u.uMonFade.value.set(cfg.fade[0], cfg.fade[1]);
-        u.uMonAura.value = this.elite ? ELITE.aura : 0.055;
+        u.uMonAura.value = this.elite ? ELITE.aura : TRASH_AURA;
       }
       this.materials.push(mat);
     }
@@ -1346,9 +1380,10 @@ class Enemy {
      * THE BUG THIS FIXES: the boss rendered as a FLAT WHITE SILHOUETTE in the
      * `boss` capture. Not a material failure and not bloom — verified by
      * capturing with bloom disabled, where the white body survives. The
-     * arithmetic: MonsterMaterials adds `flashColor * uMonFlash * 2.4` to
-     * emissive AND mixes albedo `uMonFlash * 0.45` toward pure white, and the
-     * capture caught uMonFlash at 0.614 (measured). At the boss scenario's
+     * arithmetic, with the gains MonsterMaterials carried at the time: it added
+     * flashColor * uMonFlash * 2.4 to emissive AND mixed albedo uMonFlash * 0.45
+     * toward pure white, and the capture caught uMonFlash at 0.614 (measured;
+     * those gains are 0.7 and 0.22 today). At the boss scenario's
      * 2.73x exposure gain and 1.15 tone-mapping bias that is 1.47 x 3.14 = 4.6
      * pre-ACES: hard white, the whole body, hiding the silhouette the frame is
      * built around. Every enemy did it, for 154 ms per hit, which in a scripted

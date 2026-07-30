@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import {
   boxGeo, shardGeo, latheGeo, rockGeo, tube, mergeParts, xform, finish,
-  bakeWear, paintVertex, clamp01, lerp, smooth01, perlin3,
+  bakeWear, paintVertex, clamp01, lerp, smooth01, perlin3, debrisUV,
 } from './Geo.js';
 
 const MOSS_DIR = [0.2, 0.45, -0.87];
@@ -528,6 +528,8 @@ export function rubbleHeap(rand, index, { mat = 'rubble', blockMat = null } = {}
   const seed = 4700 + index * 59;
   const blocks = [];        // dressed masonry — the architecture's own material
   const grit = [];          // loose chip and gravel
+  /** Footprints of the dressed blocks, so the bedding pass knows where to bed. */
+  const feet = [];
 
   /**
    * One dressed ashlar block, 0.55 x 0.32 m per the scale table, chipped.
@@ -536,14 +538,27 @@ export function rubbleHeap(rand, index, { mat = 'rubble', blockMat = null } = {}
    * every block in the game shares one family of surface dents, which is the
    * geometric half of "one asset stamped repeatedly"; drawing it in 0.07..0.19
    * makes some faces near-dressed and others badly spalled.
+   *
+   * `seg: 2` and `fine` are the other half. `rough` warps the box through a noise
+   * field at a fixed 2.1 cycles/m: a 0.5 m block spans one cycle, so on a seg-1
+   * rounded box (which has a single quad per face) the whole face received one
+   * smooth gradient and stayed geometrically planar. One flat normal over a 0.5 m
+   * facet is the "untextured grey box" read, and no amount of albedo detail fixes
+   * it because the shading term is constant. seg 2 gives each face 4 quads for the
+   * size-relative `fine` term to bend, at ~2.4x the triangles of a piece that is a
+   * tenth of a per-cent of the frame's budget.
    */
   const ashlar = (i, w, h, d, pos, euler) => {
+    const mn = Math.min(w, h, d);
     const g = shardGeo({
-      w, h, d, seed: seed + 400 + i * 13, seg: 1, rough: 0.07 + rand() * 0.12,
-      uTile: 1 / 1.65, bevel: Math.min(w, h, d) * (0.09 + rand() * 0.08),
+      w, h, d, seed: seed + 400 + i * 13, seg: 2, rough: 0.07 + rand() * 0.12,
+      uTile: debrisUV(bmat, Math.max(w, h, d)),
+      bevel: mn * (0.09 + rand() * 0.08),
+      fine: mn * 0.085, fineCycles: 6,
     });
     xform(g, { pos, euler });
     blocks.push(g);
+    feet.push({ x: pos[0], z: pos[2], r: Math.max(w, d) * 0.5 });
   };
 
   if (kind === 1) {
@@ -667,10 +682,23 @@ export function rubbleHeap(rand, index, { mat = 'rubble', blockMat = null } = {}
   const ring = spec.ring ?? 0;
   for (let i = 0; i < spec.chips; i++) {
     const s = c0 + rand() * (c1 - c0);
+    const cw = s * (1.05 + rand() * 0.95), ch = s * (0.34 + rand() * 0.62), cd = s * (0.7 + rand() * 0.85);
+    /*
+     * `rough` and `fine` pulled back from 0.24..0.50 / 0.11 to 0.16..0.32 / 0.07.
+     *
+     * The first pass at this warped each chip hard enough that the bevels came out
+     * as knife edges, and a 3x crop of the same treatment on the crypt kit's debris
+     * read as broken glass rather than masonry — a spiky chip presents mostly steep,
+     * self-occluding facets to a light 3 m away, so it also cost that frame 0.029 of
+     * mean luma. Debris is chipped, not shattered. The surface read comes from the
+     * retiled UVs and `grain`, which are shading detail rather than silhouette, so
+     * the geometry can settle down.
+     */
     const g = shardGeo({
-      w: s * (1.05 + rand() * 0.95), h: s * (0.34 + rand() * 0.62), d: s * (0.7 + rand() * 0.85),
-      seed: seed + i * 11, seg: 1, rough: 0.24 + rand() * 0.26,
-      uTile: 1 / 1.1, bevel: s * (0.1 + rand() * 0.1),
+      w: cw, h: ch, d: cd,
+      seed: seed + i * 11, seg: s > 0.07 ? 2 : 1, rough: 0.16 + rand() * 0.16,
+      uTile: debrisUV(mat, Math.max(cw, ch, cd)), bevel: s * (0.1 + rand() * 0.1),
+      fine: Math.min(cw, ch, cd) * 0.07, fineCycles: 4,
     });
     const a = rand() * 6.283;
     // `ring` pushes the radial distribution off zero, so the middle stays open
@@ -687,8 +715,63 @@ export function rubbleHeap(rand, index, { mat = 'rubble', blockMat = null } = {}
     grit.push(g);
   }
 
+  /*
+   * BEDDING — the fix for "hard geometric intersection lines where objects meet
+   * the floor".
+   *
+   * A dressed block is a convex solid dropped onto a flat plane, so its silhouette
+   * crosses that plane along a single straight analytic curve, and there is nothing
+   * anywhere near it at a smaller scale. The eye reads that as two primitives
+   * interpenetrating, which is precisely what it is. The contact blob under the
+   * heap does not help: it is one radial gradient centred on the heap, and at the
+   * 0.4-1.0 m radius where the blocks actually touch down its alpha has already
+   * fallen to ~0.18.
+   *
+   * Real settled debris has a collar of fines: the block crushed what it landed on
+   * and the spall washed up against its foot. Three flat chips per block, laid
+   * around the footprint at floor level and deliberately over-wide so they cross the
+   * silhouette, replace one clean line with a broken one at chip scale — which is
+   * the only thing that actually reads. They go in the grit half (loose material,
+   * no shadow casting), cost ~110 triangles per block, and because they are drawn
+   * from the same `rand` stream they stay deterministic.
+   */
+  const bed = [];
+  for (let b = 0; b < feet.length; b++) {
+    const f = feet[b];
+    const a0 = rand() * 6.283;
+    for (let k = 0; k < 2; k++) {
+      /*
+       * Small collar chips, not plates. The first pass laid three per block at
+       * 0.42-0.92 of the footprint radius and 1.5x that again in width, i.e. chips
+       * as big as the block they were bedding, 0.26 of their width thick. At a 3x
+       * crop that is not a collar of fines, it is a carpet of tipped cards, and the
+       * same mistake made on the crypt kit's debris (dungeon/Pieces.js, where the
+       * measurable frames could see it) cost 0.029 of frame mean and tripled the
+       * frame's merged solid black, because a field of ankle-high plates is a field
+       * of steep facets turned away from every light. Two chips at 0.24-0.54 of the
+       * radius, proportionally thicker, sit against the foot and break the contact
+       * line without becoming the subject.
+       */
+      const a = a0 + (k / 2) * 6.283 + (rand() - 0.5) * 0.7;
+      const s = f.r * (0.24 + rand() * 0.30);
+      const g = shardGeo({
+        w: s * 1.4, h: s * 0.44, d: s * 1.05,
+        seed: seed + 900 + b * 17 + k, seg: 1, rough: 0.2 + rand() * 0.12,
+        uTile: debrisUV(mat, s * 1.4), bevel: s * 0.12,
+        fine: s * 0.06, fineCycles: 4,
+      });
+      xform(g, {
+        pos: [f.x + Math.cos(a) * f.r * (0.66 + rand() * 0.26), s * 0.06,
+          f.z + Math.sin(a) * f.r * (0.66 + rand() * 0.26)],
+        euler: [(rand() - 0.5) * 0.24, a + (rand() - 0.5) * 0.6, (rand() - 0.5) * 0.24],
+      });
+      bed.push(g);
+    }
+  }
+
   const parts = [];
-  const gGrit = mergeParts(grit);
+  let gGrit = mergeParts(grit);
+  const gBed = bed.length ? mergeParts(bed) : null;
   const gBlock = blocks.length ? mergeParts(blocks) : null;
 
   /*
@@ -698,21 +781,66 @@ export function rubbleHeap(rand, index, { mat = 'rubble', blockMat = null } = {}
    * that has settled into a drift does not.
    */
   const sq = spec.sq;
+  const blockSq = sq ? [1 + (sq[0] - 1) * 0.45, 1 + (sq[1] - 1) * 0.35, 1 + (sq[2] - 1) * 0.45] : null;
   if (sq) {
     if (gGrit) xform(gGrit, { scale: sq });
-    if (gBlock) xform(gBlock, { scale: [1 + (sq[0] - 1) * 0.45, 1 + (sq[1] - 1) * 0.35, 1 + (sq[2] - 1) * 0.45] });
+    if (gBlock) xform(gBlock, { scale: blockSq });
+    // Bedding takes the BLOCK stretch, not the grit stretch, or it slides out from
+    // under the block it exists to bed: at variant 0 the two differ by 1.35 vs 1.16
+    // in x, which is 9 cm of drift at a 0.5 m footprint — enough to re-open the very
+    // gap this pass is closing.
+    if (gBed) xform(gBed, { scale: blockSq });
   }
   if (gGrit && spec.warp) warpHeap(gGrit, seed + 811, spec.warp[0], spec.warp[1]);
+  if (gBed) gGrit = gGrit ? mergeParts([gGrit, gBed]) : gBed;
 
+  /*
+   * Contact, cavity and blotch all pulled back one notch (0.42/0.46/0.28 ->
+   * 0.34/0.34/0.20, the last two being `bakeWear`'s own defaults).
+   *
+   * These three multiply, and on a chip pile most vertices qualify for all of them
+   * at once: the floor of the stack is `1 - base`, a down or inward facet is
+   * `1 - 0.345`, and blotch can take another 0.72x on top. 0.58 x 0.655 x 0.72 is
+   * 0.27 of albedo before a single light is sampled, and a debris chip's every facet
+   * is small and steeply turned, so a pile lit by one torch 3 m up lands most of
+   * itself under the 0.035 black threshold the critic fails frames on. Wear has to
+   * stay a modulation, not an exposure cut. `grain` stays and is the band that
+   * actually reads as stone; being symmetric about 1 it costs no exposure at all.
+   */
   const wear = {
-    seed, base: 0.42, baseH: 0.2, cavity: 0.46, blotch: 0.28, blotchFreq: 2.4,
-    dust: spec.dust, dustColor: [1.2, 1.15, 1.04],
+    seed, base: 0.34, baseH: 0.2, cavity: 0.34, blotch: 0.20, blotchFreq: 2.4,
+    /*
+     * Dust pulled back from 1.2 to 1.03 and thinned to 0.55 of the authored amount.
+     *
+     * `bakeWear` steers up-facing vertices toward `dustColor`, and on a bevelled
+     * chip the bevel strips ARE the up-facing vertices — so at a 1.2 multiplier
+     * (over `LIFT.rubble` 1.32 on top) every arris in the debris field came back
+     * lighter than the albedo, which under a cool ambient probe reads as frost
+     * rather than dust: a bright blue-white rim tracing every bevel, with a flat
+     * facet inside it. Grain carries that variation now and carries it across the
+     * face instead of only around its edge, so the dust only has to warm the tops.
+     */
+    dust: spec.dust * 0.55, dustColor: [1.03, 1.0, 0.95],
     moss: spec.moss, mossColor: [0.4, 0.47, 0.36], mossDir: MOSS_DIR,
+    /*
+     * Per-variant value tint, green and blue trailing red slightly so the ten heaps
+     * do not share one exposure and none of them drifts cold. A neutral tint under
+     * a cool ambient probe is most of what made debris read slate blue.
+     *
+     * Deliberately left at the authored values. The `closeup`, `boss`, `combat` and
+     * `dungeon` frames contain no debris from this generator at all — a per-material
+     * hide-and-measure over the six rubble sample rects in `closeup` moved the mean
+     * 0.3460 -> 0.3460 for `props.rubble` and `props.stoneWarm` and 0.3460 -> 0.4341
+     * for `dungeon:stone`, and a 3.0/0.1/0.1 red tint pushed through this line
+     * changed that frame by 0.0000. Those four frames' debris is the crypt kit's
+     * (dungeon/Pieces.js). Tuning exposure here would be tuning it blind.
+     */
     tint: [spec.tint, spec.tint * 0.995, spec.tint * 0.985],
+    grain: 0.11,
   };
   if (gBlock) {
     // dressed stone keeps more of its face: less blotch, more grime in the joints
-    bakeWear(gBlock, Object.assign({}, wear, { blotch: 0.2, blotchFreq: 1.5, cavity: 0.5 }));
+    bakeWear(gBlock, Object.assign({}, wear, { blotch: 0.16, blotchFreq: 1.5, cavity: 0.38, grain: 0.085 }));
     finish(gBlock);
     parts.push({ geo: gBlock, matName: bmat, cast: true });
   }

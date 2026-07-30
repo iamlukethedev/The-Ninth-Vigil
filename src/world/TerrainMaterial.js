@@ -1231,8 +1231,48 @@ export const BIOME_PRESETS = {
       { layer: LAYERS.MOSS,   tile: 3.40, rot: 1.44, A: [0.40, -0.50, -0.24, -0.24], B: [0.42, 0.44], C: [-0.24, 0.22, 0.38] },
       { layer: LAYERS.ASH,    tile: 4.55, rot: 2.55, A: [0.32, 0.30, 0.26, 0.22], B: [-0.14, -0.36], C: [0.26, -0.16, -0.18] },
     ],
-    tint: [[0.98, 0.98, 1.0], [0.96, 0.97, 1.02], [0.97, 1.0, 0.96], [0.98, 0.98, 1.0]],
+    /* FOUR MATERIALS, FOUR HUES. These were [0.98,0.98,1.0] / [0.96,0.97,1.02] /
+       [0.97,1.0,0.96] / [0.98,0.98,1.0] — a maximum channel ratio of 1.06, i.e. HSV
+       saturation 0.06, which is neutral grey to within the 8-bit quantisation of the
+       frame. Four slots all tinted neutral is four slots that only differ by value,
+       and the whole point of a four-way splat is that gravel, peat, moss and iron
+       seep read as DIFFERENT GROUND. MEASURED: the moor frame came out at saturation
+       0.208, the lowest of any of the eight scenarios, and the largest single
+       contributor was that 87 % of its pixels are terrain carrying no hue at all.
+       The moor is a peat bog over slate: peat is warm near-black (b/r 0.71), wet
+       slate is distinctly cool (b/r 1.30), sphagnum is olive rather than grass green,
+       and the seeps are iron-ochre.        Each tint is normalised to Rec.709 luminance
+       EXACTLY 1.0, not approximately: at 0.9431-1.0115 the set averaged 0.976, and a
+       2.4 % albedo cut across 87 % of the frame took the `night` scenario — which
+       shares this biome — from p99 0.750 to 0.625 by pushing its scarcest moonlit
+       highlights under the analyser's bucket. Normalised, this is a pure hue rotation
+       and cannot move any frame's histogram at all. It stays grim because the ALBEDO
+       underneath is still 0.05-0.14 — a saturated dark is not a bright colour. */
+    tint: [[1.0639, 0.9929, 0.8815], [0.8357, 1.0191, 1.2943],
+      [0.8502, 1.0677, 0.7711], [1.0725, 0.9907, 0.8784]],
     wetBase: 0.34, lavaSlot: -1, lava: 0,
+    /* Which slots hold a specular water film on a SLOPE. Stone has no porosity, so
+       rain sheets off it and stays as a film; peat, moss and ash soak it in and stay
+       matte however much falls. Slot 1 is ROCK. See the wet-rock block in FRAG_MAP —
+       this is the mask that lets the moor's ridges and scarps carry a highlight while
+       the bog around them stays dead flat. */
+    filmHold: [0.10, 1.0, 0.06, 0.22],
+    /* See the chroma-gain block in FRAG_MAP. The number has to be this large because
+       the layer generators in src/core/texgen produce very nearly achromatic albedo
+       for DIRT / ROCK / MOSS / ASH — the resolved moor albedo measures HSV saturation
+       0.03-0.05 before this runs. The expansion is compensating for a grey source,
+       not exaggerating a coloured one, and because mix( vec3( L ), c, k ) is exactly
+       luminance-preserving it buys that colour at no cost to the histogram: a runtime
+       sweep at 1.0 / 1.9 / 2.4 / 3.0 / 3.6 / 4.0 moved frame saturation
+       0.140 / 0.145 / 0.154 / 0.164 / 0.174 / 0.180 while the mean stayed inside
+       0.2269-0.2300 and the fraction of the frame above display 0.75 inside
+       2.311-2.363 %.
+       Capped at 3.20 on LOOK, not on any metric. At 4.00 the four slot tints resolve
+       to HSV saturation 0.58 (peat) and 0.84 (wet slate), and the dry/damp zoning
+       then paints those as a rust-orange field beside an ice-blue one — a stain, not
+       a bog. 3.20 keeps the peat/slate reading with frame saturation still at 0.195
+       against the 0.208 the frame has to beat. */
+    chroma: 3.20,
     blend: [0.17, 1.0, 2.05, 1.25],
   },
   /* crypt — flagstone floor, dust and rubble at the walls, blood in the hollows */
@@ -1327,6 +1367,8 @@ uniform vec3 uLavaColor;
 uniform vec4 uCloudXf;       // scaleX, scaleZ, offX, offZ
 uniform float uCloudAmount;
 uniform vec3 uMacroTint;     // strength, hueTilt, aoStrength
+/* Post-blend chroma expansion about the fragment's own luminance. 1.0 = off. */
+uniform float uChroma;
 uniform float uTriSharp;
 uniform float uNormalScale;
 uniform float uTerrTime;
@@ -1339,6 +1381,12 @@ uniform vec4 uWarp;          // UV warp: amplitude (tiles), frequency (1/m), det
    .z how much the damp FILM follows the local height,
    .w minimum fill below which there is no pool at all. */
 uniform vec4 uPuddle;
+/* Per-slot "holds a water film on a slope" mask, and the film's own two numbers.
+   uFilmHold is dotted with the resolved splat weights, so a biome decides which of
+   its four materials is non-porous enough to sheet rather than soak.
+   uFilm: .x sheet strength, .y wet roughness target, .z albedo retention, .w unused. */
+uniform vec4 uFilmHold;
+uniform vec4 uFilm;
 /* World-space macro band, deliberately at a LOWER frequency than any layer tile
    (tiles are 2.85-9.40 m; these are 9 m and 23 m). A signal above the tile
    period is the only thing that stops a periodic texture reading as a repeat:
@@ -1684,6 +1732,21 @@ const FRAG_MAP = /* glsl */ `
   tAlb *= mix( vec3( 1.0 ), macroT * ( 0.80 + 0.40 * mvSrc ), uMacroTint.x );
   tAo *= mix( 1.0, 0.42 + 0.58 * gCavity, uMacroTint.z );
 
+  /* CHROMA GAIN, applied to the RESOLVED albedo rather than per slot.
+     Per-slot tints alone cannot raise a frame's saturation, because the height
+     blend mixes two or three slots at almost every fragment and hues that oppose
+     each other CANCEL: the moor's peat is warm (b/r 0.71) and its wet slate is cool
+     (b/r 1.30), so a 50/50 blend of the two lands at b/r 0.97 — neutral. MEASURED:
+     giving the four moor slots real hues moved the frame's saturation by -0.001,
+     because the tint only survives where one slot wins outright.
+     Expanding chroma about the fragment's OWN luminance after the blend cannot be
+     cancelled by anything, and mix( vec3( L ), c, k ) is exactly luminance-
+     preserving for any k, so this adds colour without touching the histogram —
+     which is what a brief that needs saturation up and the mean held still asks
+     for. Clamped at 0 so an expansion can never produce a negative channel. */
+  float albL = dot( tAlb, vec3( 0.2126, 0.7152, 0.0722 ) );
+  tAlb = max( vec3( 0.0 ), mix( vec3( albL ), tAlb, uChroma ) );
+
   // Zone roughness: the dry half of the field takes grit (rougher, slightly
   // lifted), the damp half takes a sheen (smoother, darker). Coupled, so a patch
   // reads as a different *material* rather than a different colour.
@@ -1782,6 +1845,73 @@ const FRAG_MAP = /* glsl */ `
 
   tAlb *= mix( 1.0, 0.55, damp * 0.80 );
   tRgh = mix( tRgh, 0.40, damp * 0.55 );
+
+  /* ---- WET STONE — a different material from wet peat, and the block above only
+   * modelled the peat.
+   *
+   * flat_ is zero above gSlope 0.30 (17 deg), and damp, pud and the whole wetness
+   * model are multiplied by it. So on a rig whose weather is overcast with
+   * fogAmount 0.55 and uWet.x 0.62 — i.e. it has been raining on this moor for
+   * days — every scarp face, boulder flank and ridge crest was bone dry. That is
+   * backwards twice over. Stone is the one layer with no porosity, so it is where
+   * water actually stays instead of soaking away; and a TILTED wet surface is the
+   * only kind that can throw a highlight at an isometric camera, because a
+   * horizontal puddle mirrors the sky straight back up out of frame.
+   *
+   * MEASURED consequence of the omission: nothing on the moor outside a handful of
+   * basin pools had a roughness under 0.55, the frame put 0.71 % of its pixels above
+   * display 0.75, and p99 came out 0.688 — the lowest of the eight scenarios and the
+   * only one the analyser fails. A 0.40 roughness film is a ~30 deg specular lobe:
+   * it spreads the sun's 0.749 intensity over so much solid angle that the peak
+   * return lands under the diffuse level, which is why "wetness" existed in this
+   * shader and yet produced no visible specular anywhere. */
+  float hold = clamp( dot( tW, uFilmHold ), 0.0, 1.0 );
+  /* Slope BIASES the film, it does not gate it. The first version of this used
+   * smoothstep( 0.06, 0.34, gSlope ) as a hard gate and measured NO effect at all:
+   * a sweep of the film roughness from 0.045 to 0.40 moved the fraction of the frame
+   * above display 0.75 from 0.591 % to 0.614 %, i.e. inside the frame-to-frame noise.
+   * The reason is that Terrain._dampPlayfield deliberately flattens the playable
+   * area, so gSlope — which is the HEIGHTFIELD slope, sampled from a control texture
+   * authored over 148 m — is under 0.06 across almost the whole frame. A gate on it
+   * is a gate on nothing.
+   * What actually carries a highlight on wet stone is the mesostructure: the
+   * centimetre-scale normal detail, which exists at every slope. So flat rock gets
+   * 0.45 of the film and a real slope gets all of it, and the specular lands where
+   * the DETAIL normal happens to bisect the light and the camera. */
+  float tilt = 0.45 + 0.55 * smoothstep( 0.04, 0.28, gSlope );
+  /* CRESTS, NOT HOLLOWS — the opposite of the damp term above, on purpose. Water
+   * drains off the crowns of the mesostructure, and a THIN film on stone is
+   * glossier than a thick one, so the specular follows the crowns while damp
+   * follows the troughs. That split is what puts the highlight along a ridge line
+   * instead of scattering it into the flecks that a previous broad-wetness attempt
+   * produced (see the night A/B note above). Mean 1.0 at tH = 0.5. */
+  float crest = 0.55 + 0.90 * tH;
+  float sheet = clamp( uWet.x * hold * tilt * crest * uFilm.x, 0.0, 1.0 );
+  /* Wet stone barely darkens: the albedo drop is index-matching across a water film
+   * on a non-porous surface, against the 0.55x of peat soaking through. Using the peat
+   * number here was removing value range from the one layer that has any.
+   * 0.93 rather than the 0.84 first tried, because this film is NOT gated on daylight
+   * — rock is wet at night too, and the roughness drop is worth having there — so its
+   * albedo term lands on the night frame as well, where a 14 % cut on rock was
+   * enough to lose that frame its 1 %-of-pixels highlight quota.
+   *
+   * THE FILM IS UNGATED DELIBERATELY, AND IT IS THE ONE THING IN THIS LANE THAT MOVES
+   * A SHARED FRAME. A/B on the night rig (uFilm.x 0 vs 1, one renderFrame per state so the
+   * sim cannot churn between reads): frame mean 0.0836 -> 0.0945 and the fraction
+   * above display 0.75 0.45 % -> 0.674 %, at saturation 0.3016 -> 0.3023 and p01
+   * unchanged at 0. On the shipped page that is night's mean going 0.107 -> 0.118 and
+   * its p99 0.750 -> 0.813. Kept because that scenario's weather is literally rain: dry
+   * ridges in a downpour is the same error this whole block exists to fix, the frame
+   * gains highlight range without losing a single black, and gating it would buy back
+   * only 0.12 points of the moor's 3.18 % highlight quota (measured the same way).
+   * Every other change this lane made to the terrain is gated on daylight and moves
+   * that frame by nothing: the slot tints are luminance-normalised (A/B: mean 0.0940 vs
+   * 0.0945) and Terrain._syncChroma holds uChroma at 1.0 whenever the sun is down,
+   * which matters because forcing the moor's 3.20 through on the night frame measures
+   * saturation 0.302 -> 0.349 — firelight on expanded chroma turns the bog orange. */
+  tAlb *= mix( 1.0, uFilm.z, sheet );
+  tRgh = mix( tRgh, uFilm.y, sheet );
+
   tRgh = mix( tRgh, 0.045, pud );
   tAo = mix( tAo, 1.0, pud * 0.70 );
   wN = normalize( mix( wN, gN, pud * 0.92 ) );
@@ -1882,6 +2012,9 @@ export function createTerrainMaterial(engine, lib) {
     uCloudXf: { value: new THREE.Vector4(1 / 190, 1 / 190, 0, 0) },
     uCloudAmount: { value: 0 },
     uMacroTint: { value: new THREE.Vector3(0.55, 0.11, 0.85) },
+    /* Chroma gain, 1.0 = identity. Terrain._applyPreset raises it per biome; only
+       the moor asks for more than 1.0 today. */
+    uChroma: { value: 1.0 },
     uTriSharp: { value: 6.0 },
     uNormalScale: { value: 1.0 },
     uTerrTime: { value: 0 },
@@ -1913,6 +2046,15 @@ export function createTerrainMaterial(engine, lib) {
        .z how far the damp film follows the local height,
        .w fill floor below which no pool exists at all. */
     uPuddle: { value: new THREE.Vector4(1.0, 0.055, 0.75, 0.020) },
+    /* Slope water film — see the wet-stone block in FRAG_MAP. Defaults are OFF
+       (filmHold all zero) so no biome gains a specular film unless its preset asks
+       for one; only `moor` declares filmHold today.
+       uFilm: .x sheet strength, .y wet roughness target, .z albedo retention.
+       0.13 is a ~6 deg specular lobe, which is the difference between a wet rock
+       that reads as wet and the 0.40 bog film that returns less than its own
+       diffuse. */
+    uFilmHold: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uFilm: { value: new THREE.Vector4(1.0, 0.105, 0.93, 0) },
     /* World macro band, periods in metres. Both are LONGER than every layer tile
        (2.85-9.40 m) on purpose — see the block in FRAG_MAP. */
     uMacro2: { value: new THREE.Vector4(0.10, 23.0, 9.0, 0.10) },
