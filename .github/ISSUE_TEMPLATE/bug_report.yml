@@ -1,0 +1,66 @@
+name: Bug report
+description: Something crashes, fails to load, misbehaves, or performs badly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For something that renders *wrong* rather than behaves wrong, use the
+        **Visual defect** template instead — it asks for the things that make a
+        rendering bug actionable.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include the URL you loaded, with any `?shot=` or `&q=` parameters.
+      placeholder: |
+        1. npm run dev
+        2. Open http://localhost:5190/?shot=boss
+        3. Walk the hero north past the collapse
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: |
+        Please include the full output — `node tools/debug.mjs --scenario=<name>` boots
+        with every console message and page error, which is usually more useful than what
+        the devtools console shows by default.
+      render: shell
+
+  - type: markdown
+    attributes:
+      value: |
+        Note: `[assets] texture budget reached (150MB) — new maps degrade to 512px` is
+        expected on boot and is not a bug. It is `AssetForge` working as designed under
+        its soft VRAM ceiling.
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      value: |
+        - OS:
+        - GPU:
+        - Browser + version:
+        - Node version:
+    validations:
+      required: true
