@@ -1,0 +1,11 @@
+# Every pull request requires review from the maintainer before it can merge.
+#
+# Combined with "Require review from Code Owners" in the branch rules, this is what
+# stops a contributor -- human or agent -- from approving and merging their own work.
+#
+# Note for contributors: `src/main.js`, `src/core/Engine.js`, `src/game/modules.js`,
+# `src/game/Scenarios.js`, `index.html` and `tools/*` are the integration spine every
+# module is written against. Changing them is sometimes right, but say why in the PR.
+# See ENGINE_CONTRACT.md.
+
+* @iamlukethedev
