@@ -1,0 +1,96 @@
+name: Visual defect
+description: Something renders wrong — wedges, flat colour, tiling, blown highlights, floating objects
+labels: ["visual"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Visual defects are this project's main defect class, and the hardest to act on
+        from a description alone. A cropped zoom plus the scenario name is worth more
+        than several paragraphs — please include one if you can.
+
+  - type: dropdown
+    id: scenario
+    attributes:
+      label: Scenario
+      description: Which capture shows it? `live` means you saw it playing, not in a capture.
+      options:
+        - live (playing in the browser)
+        - hub
+        - overworld
+        - dungeon
+        - combat
+        - boss
+        - night
+        - closeup
+        - inventory
+        - multiple / all
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What you see
+      description: Describe the defect and roughly where in frame it appears.
+      placeholder: |
+        Hard-edged black polygon crossing the lower-left third of the play area,
+        unrelated to any light source. Straight sides, no feathering.
+    validations:
+      required: true
+
+  - type: textarea
+    id: crop
+    attributes:
+      label: Cropped zoom
+      description: |
+        Paste an image. A whole 1600x900 frame hides the defects that matter, so a zoom
+        of the affected region is much more useful:
+
+        ```
+        node tools/crop.mjs --in=shots/boss.png --x=0.5 --y=0.5 --w=0.25 --scale=4
+        ```
+      placeholder: Drag and drop the crop here.
+
+  - type: dropdown
+    id: path
+    attributes:
+      label: Which path did you verify on?
+      description: |
+        The harness and the live game are structurally different worlds — the harness boots
+        straight into a biome via `?shot=X`, the live game does not. Bugs exist that only one
+        of them can see, so knowing which you used matters.
+      options:
+        - Live path (npm run dev, played it)
+        - Harness capture (tools/shot.mjs)
+        - Both
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: measured
+    attributes:
+      label: Measured numbers, if you have them
+      description: Output from `tools/sheet.mjs --analyze` or `tools/actors.mjs` for the affected frame.
+      placeholder: "night: mean=0.185 sd=0.208 p99=0.906 blk%=14.5"
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      value: |
+        - OS:
+        - GPU:
+        - Browser + version:
+        - Quality tier (`&q=`), if not default:
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before filing
+      options:
+        - label: I checked `KNOWN_ISSUES.md` and this is not already tracked there
+          required: true

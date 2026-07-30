@@ -1,5 +1,8 @@
 # THE NINTH VIGIL
 
+[![CI](https://github.com/iamlukethedev/The-Ninth-Vigil/actions/workflows/ci.yml/badge.svg)](https://github.com/iamlukethedev/The-Ninth-Vigil/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A Diablo-class isometric action RPG that runs in a browser tab, built on Three.js — in which
 **every texture, mesh, skeleton, animation, sound and note of music is generated procedurally at
 runtime.** There are no image files, no models, no fonts, no audio files, and no network fetches.
@@ -7,7 +10,7 @@ The repository contains no binary art assets at all, because there are none to c
 
 ![The hero at character range](shots/closeup.png)
 
-Roughly 107,000 lines across 142 ES modules, 21 engine systems, WebGL2 via Three.js r185. No
+Roughly 107,000 lines across 142 ES modules, 22 engine systems, WebGL2 via Three.js r185. No
 engine, no editor, no asset pipeline.
 
 ---
@@ -223,6 +226,8 @@ judged by capturing frames and measuring them, not by reasoning about the code.
 
 | tool | purpose |
 |---|---|
+| `node tools/guard.mjs` | enforces the hard rules — no `Math.random()`, no runtime fetches, no external asset references, no stubs, no dependencies off the allowlist. Seconds, no browser. CI gates on it |
+| `node tools/smoke.mjs` | asserts the game boots, every module loads, every shader program **links**, and two independent runs of a scenario are byte-identical. CI gates on it |
 | `node tools/shot.mjs --all --w=1600 --h=900` | deterministic headless capture of all 8 scenarios |
 | `node tools/sheet.mjs --analyze` | contact sheet plus objective frame metrics — lifted blacks, missing highlights, contrast collapse, oversaturation |
 | `node tools/crop.mjs --in=shots/combat.png --x=0.5 --y=0.5 --w=0.25 --scale=4` | crop and nearest-neighbour zoom. Essential: a 1600x900 frame viewed whole hides the defects that matter |
@@ -231,7 +236,13 @@ judged by capturing frames and measuring them, not by reasoning about the code.
 | `node tools/debug.mjs --scenario=combat` | boot with full console and error output |
 | `node tools/probe.mjs --port=5190` | live scene-graph inspection |
 
-`npm run check` runs the capture and the analysis together.
+`npm run check` runs the capture and the analysis together; `npm run guard` and `npm run smoke` are
+the two that CI enforces on every push and pull request.
+
+CI runs on GitHub-hosted runners, which have no GPU, so the smoke job renders through SwiftShader.
+That makes its pixels differ from a local hardware capture — which is fine, because the assertion is
+that two independent page loads agree with *each other*, alongside every module loading and every
+shader linking. Cross-machine pixel equality is not a property this project has or needs.
 
 `CRITIC_RUBRIC.md` defines ten scored axes and fifteen **instant-fail flags** — things like a
 black or single-colour frame, untextured flat-colour geometry, obvious texture tiling, or uniform
@@ -350,21 +361,26 @@ Four documents carry the project's institutional memory, and they are worth read
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a PR:
+Issues and pull requests are welcome. **[CONTRIBUTING.md](CONTRIBUTING.md)** is the full guide; the
+short version is:
 
 - Read `ENGINE_CONTRACT.md`. It is short, and it is the difference between a patch that lands and
   a patch that breaks a shader link.
-- **No new runtime dependencies, and no external assets.** If your fix needs a texture, generate
-  it in `src/core/texgen/`.
+- **No new dependencies, and no external assets.** If your fix needs a texture, generate it in
+  `src/core/texgen/`.
 - **Prove visual changes in pixels.** Include a before and after crop of the same region at the
   same scale, and state the measured numbers (luma, pixel size, draw calls — whatever the change
   claims to move). `node tools/crop.mjs` produces them.
+- **Verify on the live path**, not only in the harness. The harness cannot see an entire class of
+  bug, and this has cost real time.
 - Keep determinism: no `Math.random()`, no wall-clock time in simulation code. Two captures of the
   same scenario must still `md5` identically.
 - Respect the [design rules](#design-rules).
 - Do not edit `src/main.js`, `src/core/Engine.js`, `src/game/modules.js`, `src/game/Scenarios.js`,
   `index.html` or `tools/*` without a deliberate reason. They are the integration spine every
   module is written against.
+
+Run `npm run guard && npm run smoke` before pushing — those are what CI checks.
 
 A note on provenance, since it is relevant to how you read the code: this project was built
 largely by AI coding agents working against `ENGINE_CONTRACT.md` and `CRITIC_RUBRIC.md`, with the
@@ -375,6 +391,6 @@ because that is what they were.
 
 ## License
 
-ISC. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 Three.js is BSD-3-Clause and is not vendored here; `npm install` fetches it.

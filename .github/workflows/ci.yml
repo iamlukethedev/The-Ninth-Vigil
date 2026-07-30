@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Convention guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Parses every module and enforces the hard rules from ENGINE_CONTRACT.md:
+      # no Math.random, no runtime fetches, no remote URLs, no external asset
+      # references, no stubs, and no dependencies outside the allowlist.
+      - run: node tools/guard.mjs
+
+  smoke:
+    name: Boot + determinism
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Runners have no GPU, so this renders through SwiftShader. That makes the
+      # pixels differ from a local hardware capture, which is fine: the assertion
+      # is that two independent page loads agree with EACH OTHER, plus that every
+      # module loads and every shader program links. Kept small and short because
+      # software rasterising this scene is slow.
+      - name: Smoke test (software rendering)
+        run: node tools/smoke.mjs --software --scenario=closeup --frames=30 --w=640 --h=360
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-failure
+          path: shots/_debug/
+          if-no-files-found: ignore
+          retention-days: 7

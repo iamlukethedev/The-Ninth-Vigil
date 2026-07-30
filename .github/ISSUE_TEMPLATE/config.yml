@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Read the engine contract first
+    url: https://github.com/iamlukethedev/The-Ninth-Vigil/blob/main/ENGINE_CONTRACT.md
+    about: Module lifecycle, engine services, the event bus, determinism rules and the performance budget. Binding for any code change.
+  - name: Known issues
+    url: https://github.com/iamlukethedev/The-Ninth-Vigil/blob/main/KNOWN_ISSUES.md
+    about: The authoritative list of open defects, with measured before/after numbers. Check here before filing a visual defect.
+  - name: Contributing guide
+    url: https://github.com/iamlukethedev/The-Ninth-Vigil/blob/main/CONTRIBUTING.md
+    about: The four hard rules, how to prove a visual change in pixels, and how to verify on the live path.

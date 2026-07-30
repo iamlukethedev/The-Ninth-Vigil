@@ -11,10 +11,12 @@
     "shots": "node tools/shot.mjs --all --w=1920 --h=1080",
     "sheet": "node tools/sheet.mjs --analyze",
     "debug": "node tools/debug.mjs",
+    "guard": "node tools/guard.mjs",
+    "smoke": "node tools/smoke.mjs",
     "check": "node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze"
   },
-  "keywords": ["threejs", "arpg", "webgl"],
-  "license": "ISC",
+  "keywords": ["threejs", "arpg", "webgl", "procedural-generation"],
+  "license": "MIT",
   "dependencies": {
     "three": "^0.185.1"
   },
