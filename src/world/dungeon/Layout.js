@@ -49,6 +49,19 @@ export class Layout {
     this.open = new Uint8Array(n);
     this.nav = new Uint8Array(n);
     this.clear = new Float32Array(n);
+    /**
+     * Cells no obstacle may close: the clear span of every doorway plus the walk
+     * up to it. See `protectRect`.
+     */
+    this.protect = new Uint8Array(n);
+    /**
+     * Obstacle cells dropped for standing in a doorway. Non-zero means a piece
+     * is drawn in a portal it no longer blocks — geometry the player can walk
+     * through, which is a defect, but a far smaller one than a sealed level.
+     */
+    this.refusedCells = 0;
+    /** Where those refusals happened, so the warning can name the offender. */
+    this.refusedAt = [];
 
     /** @type {Array<object>} */ this.rooms = [];
     /** @type {Array<object>} */ this.corridors = [];
@@ -436,6 +449,54 @@ export class Layout {
 
   /* ------------------------------------------------------- obstacles ---- */
 
+  /**
+   * Reserve a doorway that no later obstacle may close.
+   *
+   * `PhysWorld._wallsFromMask` builds the collision world out of `nav`, so a
+   * call to `blockRect` is not decoration — it is a full-height wall. Dressing
+   * does not know where the doors are, so a sarcophagus, a column or the altar
+   * could be stamped into a portal and the rooms behind it left the game: on the
+   * shipped seed 4 of 17 doorways were sealed and 304 m^2 of 1404 m^2 was
+   * standable but unreachable. The floor was still drawn, so it read as an
+   * invisible wall across an open door, which is how it was reported.
+   *
+   * Enforcing it in the primitive rather than at the call sites is not a
+   * stylistic choice, and two failed attempts paid for the distinction. Guarding
+   * placements means skipping one, and a skipped stamp changes the mask, which
+   * changes `clearanceAt`, which changes which candidates `scatter` rejects —
+   * and `scatter` draws from the seeded stream on every attempt, so the whole
+   * level re-rolls. Measured, main connected area at body width: 1100 m^2
+   * untouched, 1394 m^2 refusing cells here, 861 m^2 refusing placements
+   * instead. Same intent, and the version that edits placement is worse than
+   * doing nothing. Refusing cells changes no decision and consumes no
+   * randomness, so the layout is identical and strictly more of it is joined up.
+   *
+   * The cost is honest and small: a piece may end up drawn across a doorway it
+   * no longer blocks, so the player can clip its corner. `refusedCells` counts
+   * that, and generation says so.
+   */
+  protectRect(x, z, w, d) {
+    const W = this.W;
+    /* Any cell the opening touches, not only those it covers. Rounding a
+       reservation inward is the tidier reading and it was measured too: it costs
+       up to a cell of opening per side, the grid is 0.5 m and a body is 0.68 m
+       wide, so tidiness took 280 m^2 of the crypt away from the player. */
+    const i0 = Math.max(0, this.iOf(x - w * 0.5)), i1 = Math.min(W - 1, this.iOf(x + w * 0.5));
+    const j0 = Math.max(0, this.jOf(z - d * 0.5)), j1 = Math.min(W - 1, this.jOf(z + d * 0.5));
+    for (let j = j0; j <= j1; j++) {
+      const row = j * W;
+      for (let i = i0; i <= i1; i++) if (this.open[row + i] === 1) this.protect[row + i] = 1;
+    }
+  }
+
+  /** Record an obstacle cell dropped for standing in a doorway, with its owner. */
+  _refuse(x, z, w, d) {
+    this.refusedCells++;
+    if (this.refusedAt.length < 32) {
+      this.refusedAt.push({ x: +x.toFixed(2), z: +z.toFixed(2), w: +w.toFixed(2), d: +d.toFixed(2) });
+    }
+  }
+
   /** Mark a disc as non-walkable (columns, altars, braziers, sarcophagi). */
   blockCircle(x, z, radius) {
     const W = this.W;
@@ -446,7 +507,9 @@ export class Layout {
       const wz = this.czOf(j), row = j * W;
       for (let i = i0; i <= i1; i++) {
         const dx = this.cxOf(i) - x, dz = wz - z;
-        if (dx * dx + dz * dz <= r2) this.nav[row + i] = 0;
+        if (dx * dx + dz * dz > r2) continue;
+        if (this.protect[row + i]) { this._refuse(x, z, radius * 2, radius * 2); continue; }
+        this.nav[row + i] = 0;
       }
     }
   }
@@ -458,8 +521,54 @@ export class Layout {
     const j0 = Math.max(0, this.jOf(z - d * 0.5)), j1 = Math.min(W - 1, this.jOf(z + d * 0.5));
     for (let j = j0; j <= j1; j++) {
       const row = j * W;
-      for (let i = i0; i <= i1; i++) this.nav[row + i] = 0;
+      for (let i = i0; i <= i1; i++) {
+        if (this.protect[row + i]) this._refuse(x, z, w, d);
+        else this.nav[row + i] = 0;
+      }
     }
+  }
+
+  /**
+   * Largest region a body of `radius` can reach, and how much floor it cannot.
+   *
+   * Asked at body width, not per cell. A mask can be joined up cell-by-cell and
+   * still be in pieces for a body: the gap either side of a sarcophagus is
+   * walkable floor that nothing 0.68 m wide can use. Asked at cell width this
+   * answered "one region, nothing stranded" about a level where a fifth of the
+   * floor could not be reached, which is worse than not asking at all.
+   * `refreshClearance` has already measured the clearances, so this is a flood
+   * fill and nothing more.
+   */
+  connectivity(radius = 0.4) {
+    const W = this.W, n = W * W, clear = this.clear;
+    const ok = new Uint8Array(n);
+    for (let k = 0; k < n; k++) ok[k] = this.nav[k] && clear[k] >= radius ? 1 : 0;
+    const seen = new Uint8Array(n), stack = new Int32Array(n);
+    const area = this.cell * this.cell;
+    let total = 0, best = 0, bestCell = -1, regions = 0;
+    for (let k = 0; k < n; k++) if (ok[k]) total++;
+    for (let s = 0; s < n; s++) {
+      if (!ok[s] || seen[s]) continue;
+      let top = 0, size = 0;
+      stack[top++] = s; seen[s] = 1;
+      while (top) {
+        const k = stack[--top]; size++;
+        const i = k % W, j = (k / W) | 0;
+        if (i > 0 && ok[k - 1] && !seen[k - 1]) { seen[k - 1] = 1; stack[top++] = k - 1; }
+        if (i < W - 1 && ok[k + 1] && !seen[k + 1]) { seen[k + 1] = 1; stack[top++] = k + 1; }
+        if (j > 0 && ok[k - W] && !seen[k - W]) { seen[k - W] = 1; stack[top++] = k - W; }
+        if (j < W - 1 && ok[k + W] && !seen[k + W]) { seen[k + W] = 1; stack[top++] = k + W; }
+      }
+      regions++;
+      if (size > best) { best = size; bestCell = s; }
+    }
+    return {
+      regions,
+      totalArea: total * area,
+      mainArea: best * area,
+      strandedArea: (total - best) * area,
+      mainAt: bestCell < 0 ? null : [this.cxOf(bestCell % W), this.czOf((bestCell / W) | 0)],
+    };
   }
 
   /**

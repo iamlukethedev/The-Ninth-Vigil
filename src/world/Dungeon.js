@@ -876,11 +876,33 @@ export class Dungeon {
     /* ---- architecture ---- */
     this._raiseWalls(layout, eng.freshRand(this.seed ^ 0x2222), focus);
     this._raisePortals(layout, eng.freshRand(this.seed ^ 0x3333));
+    /* A jamb and the reservation it defines are stamped in the same pass and can
+       share a boundary cell, which is quantisation, not a prop in a doorway.
+       Start counting after the doors exist so the tally means only what it says:
+       dressing tried to close a way through. */
+    layout.refusedCells = 0;
+    layout.refusedAt.length = 0;
     this._raiseVaults(layout, eng.freshRand(this.seed ^ 0x4444), focus);
     this._raiseColumns(layout, eng.freshRand(this.seed ^ 0x5555));
     this._dress(layout, eng.freshRand(this.seed ^ 0x6666), focus);
 
     layout.refreshClearance();
+    /* A stranded room is invisible to everything else: it draws, it lights, it
+       passes the shot harness. Say so here or the first thing that notices is a
+       player walking at a doorway that will not let them through. */
+    const conn = layout.connectivity();
+    if (conn.strandedArea > 1) {
+      console.warn(`[dungeon] ${conn.strandedArea.toFixed(0)} m^2 of ${conn.totalArea.toFixed(0)} m^2 ` +
+        `walkable floor cannot be reached (${conn.regions} regions, seed ${this.seed})`);
+    }
+    if (layout.refusedCells > 0) {
+      const at = layout.refusedAt[0];
+      console.warn(`[dungeon] ${layout.refusedCells} doorway cells kept open under dressing ` +
+        `(seed ${this.seed}) — a piece is drawn in a portal it does not block, ` +
+        `first at ${at.x}, ${at.z} (${at.w} x ${at.d})`);
+    }
+    conn.refusedCells = layout.refusedCells;
+    this.connectivity = conn;
     this.navMask = {
       data: layout.nav, clearance: layout.clear, W: layout.W, cell: layout.cell,
       originX: layout.originX, originZ: layout.originZ,
@@ -1052,6 +1074,14 @@ export class Dungeon {
             d.axis === 'x' ? SPEC.portal.jamb : SPEC.portal.thick + 0.2,
             d.axis === 'x' ? SPEC.portal.thick + 0.2 : SPEC.portal.jamb);
         }
+        /* Reserve what is left between the jambs, plus the walk up to it, so no
+           later obstacle can close the only way through. This is the one place
+           that knows the real opening: `d.span` is the whole doorway, which on a
+           multi-arch portal counts the stone between the arches as passable. */
+        const APPROACH = 1.6;
+        layout.protectRect(px, pz,
+          d.axis === 'x' ? want * 1.9 : APPROACH * 2,
+          d.axis === 'x' ? APPROACH * 2 : want * 1.9);
         const roll = r();
         if (roll < 0.18) {
           this._pushPiece(kit.portcullis(want * 2 - 0.12, SPEC.portal.spring - 0.2, (r() * 2) | 0),
