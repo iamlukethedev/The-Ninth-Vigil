@@ -190,8 +190,31 @@ export class Steering {
       const relZ = (vz - a * svz) * k - nb.vz;
       const t = timeToCollision(-nb.dx, -nb.dz, relX, relZ, nb.rr);
       if (t >= horizon) continue;
-      if (t <= 0) return Infinity;                 // already inside: unusable
-      const term = w / t;
+      let term;
+      if (t <= 0) {
+        /* Already touching or interpenetrating.
+         *
+         * This used to `return Infinity`, which reads as caution and is actually
+         * paralysis: it scores EVERY candidate the same, standing still included,
+         * so `resolve` never beats its initial zero and the agent stops moving
+         * for good. Two bodies that come to rest in exact contact — d === rr,
+         * which is precisely where a settled pack sits — froze each other for the
+         * remainder of the fight, and `depenetrate` could not help because at
+         * zero overlap there is nothing to push apart. Measured in `combat`: a
+         * brute and a ghoul, touching, both motionless for 360 straight frames
+         * while both wanted to move.
+         *
+         * So score it, signed by whether this candidate separates us, and let the
+         * search find the way out. Bad enough that a clear velocity always wins;
+         * ordered so that moving apart beats standing still beats pushing in. */
+        const d = nb.d > 1e-4 ? nb.d : 1e-4;
+        const sp = agent.maxSpeed > 1e-3 ? agent.maxSpeed : 1;
+        // `nb.dx/dz` points from the neighbour to us, so this is the escape axis.
+        const away = (relX * nb.dx + relZ * nb.dz) / (d * sp);
+        term = (w / 0.05) * (1 - 0.5 * (away > 1 ? 1 : away < -1 ? -1 : away));
+      } else {
+        term = w / t;
+      }
       if (term > worst) worst = term;
     }
     const dvx = vx - prefX, dvz = vz - prefZ;
@@ -216,18 +239,33 @@ export class Steering {
     if (speed < 1e-4) return out;
 
     const probe = Math.min(look, 1.1) * 1.0;
-    if (nav.lineOfSight(agent.px, agent.pz, agent.px + vx * probe, agent.pz + vz * probe, r)) return out;
 
-    // sample rotations either way, nearest first
-    for (let k = 1; k <= 6; k++) {
-      const a = (k / 6) * (Math.PI * 0.92);
-      for (let s = -1; s <= 1; s += 2) {
-        const ca = Math.cos(a * s), sa = Math.sin(a * s);
-        const nx = vx * ca - vz * sa;
-        const nz = vx * sa + vz * ca;
-        if (nav.lineOfSight(agent.px, agent.pz, agent.px + nx * probe, agent.pz + nz * probe, r)) {
-          out.x = nx; out.z = nz;
-          return out;
+    /* Twice: once as the real body, then as a narrower one.
+     *
+     * Nav clearance is ADVICE about where a body will fit; `Physics._pinActor` is
+     * what actually keeps it out of geometry. So before concluding there is
+     * nowhere to go, ask again as something slimmer — a brute that squeezes past
+     * a boulder and gets shoved straight afterwards reads as a brute pushing
+     * through, while one that stands still reads as a bug.
+     *
+     * This path only started mattering when solid props entered the grid: a 2.1 m
+     * wide brute wants 1.07 m of clearance, a dressed crypt does not always have
+     * it, and every candidate below was vetoed. Measured, that froze two of nine
+     * actors in `combat` for the entire fight. */
+    for (let w = 0; w < 2; w++) {
+      const rr = w === 0 ? r : r * 0.55;
+      if (nav.lineOfSight(agent.px, agent.pz, agent.px + vx * probe, agent.pz + vz * probe, rr)) return out;
+      // sample rotations either way, nearest first
+      for (let k = 1; k <= 6; k++) {
+        const a = (k / 6) * (Math.PI * 0.92);
+        for (let s = -1; s <= 1; s += 2) {
+          const ca = Math.cos(a * s), sa = Math.sin(a * s);
+          const nx = vx * ca - vz * sa;
+          const nz = vx * sa + vz * ca;
+          if (nav.lineOfSight(agent.px, agent.pz, agent.px + nx * probe, agent.pz + nz * probe, rr)) {
+            out.x = nx; out.z = nz;
+            return out;
+          }
         }
       }
     }
@@ -311,20 +349,34 @@ export class Steering {
     }
   }
 
-  /** Push an agent back onto walkable ground after integration. */
+  /**
+   * Push an agent back onto walkable ground after integration.
+   *
+   * One clearance bar throughout, and that is load bearing. This used to ACCEPT
+   * at `radius * 0.92` while RELOCATING to somewhere that only promised
+   * `radius * 0.8`, so an agent whose surroundings offered something in between
+   * was rejected, snapped to a cell, rejected again next frame, snapped to the
+   * same cell — pinned there, at zero net velocity, for as long as it lived.
+   * Latent until solid props tightened the clearance field enough to land big
+   * bodies in that band, at which point it froze two of nine actors in `combat`
+   * for an entire fight. When no cell clears the bar, leave the agent where it
+   * is: Physics keeps it out of the geometry and `AI._stuckCheck` walks it out,
+   * both of which beat teleporting it back and forth.
+   */
   clampToNav(agent) {
     const nav = this.nav;
     if (!nav || !nav.built) return;
-    if (nav.isFree(agent.px, agent.pz, agent.radius * 0.92)) return;
+    const need = agent.radius * 0.92;
+    if (nav.isFree(agent.px, agent.pz, need)) return;
     const g = this._gradient(agent.px, agent.pz);
     const gl = Math.hypot(g.x, g.z);
     if (gl > 1e-4) {
       const step = nav.cell * 0.9;
       const nx = agent.px + (g.x / gl) * step;
       const nz = agent.pz + (g.z / gl) * step;
-      if (nav.isFree(nx, nz, agent.radius * 0.8)) { agent.px = nx; agent.pz = nz; return; }
+      if (nav.isFree(nx, nz, need)) { agent.px = nx; agent.pz = nz; return; }
     }
-    const f = nav.nearestFree(agent.px, agent.pz, agent.radius * 0.8, 3.2, _nf);
+    const f = nav.nearestFree(agent.px, agent.pz, need, 3.2, _nf);
     if (f.found) { agent.px = f.x; agent.pz = f.z; }
   }
 }

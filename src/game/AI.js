@@ -50,6 +50,11 @@ const _now = () => (typeof performance !== 'undefined' && performance.now ? perf
 /** LOD interval (frames between brain ticks) per LOD level. */
 const LOD_INTERVAL = [1, 2, 4, 8];
 
+/** Scratch contact for `_standable`, so probing the collision world allocates nothing. */
+const _contact = {
+  dx: 0, dy: 0, dz: 0, depth: 0, nx: 0, ny: 0, nz: 0, kind: -1, hit: false, ground: false,
+};
+
 /**
  * Canonical AI animation name -> candidate clip names, best first. Bestiary owns
  * the clips; if it advertises which ones exist we pick the closest match here
@@ -930,6 +935,17 @@ export class AI {
       cx /= this.agents.length; cz /= this.agents.length;
     } else { cx = this._navCentre?.x ?? 0; cz = this._navCentre?.z ?? 0; }
 
+    /* Physics builds the static world in its own update, which the manifest runs
+       AFTER this one, so the first nav build of a scenario lands before the prop
+       boxes it wants to stamp exist — and `dungeon:built` bumps the revision
+       again later. Rebuild whenever the two disagree. Cheap to test and rare to
+       fire: the revision only moves on a scenario or a new interior, never per
+       frame. `staticRevision` starts at -1, so "physics was not ready yet" and
+       "the world changed under us" are the same case. */
+    const phys = this.engine.get('physics');
+    const rev = phys && !phys.__dead ? phys.world?.revision : undefined;
+    if (typeof rev === 'number' && rev !== nav.staticRevision) this._needsNavRebuild = true;
+
     if (this._needsNavRebuild || !nav.built) {
       this._needsNavRebuild = false;
       nav.rebuild(cx, cz);
@@ -955,11 +971,20 @@ export class AI {
    * flat, carve a slope-validated walkable pocket and log it once. The pocket is
    * a persistent nav stamp, so it survives tile recentres, and the whole thing
    * disappears the moment Terrain's mask agrees with reality.
+   *
+   * `cx, cz` is a CENTROID, which is the catch: average a pack spread through a
+   * crypt and the mean lands inside a wall more often than not, which read as
+   * "the mask is lying again" and carved a pocket through the masonry — the grid
+   * lost its walls, the hero was routed into them, and the bug reported was a
+   * player stuck on an obstacle. So a wall must be able to say no. Terrain slope
+   * cannot: interior walls stand on a flat slab and pass that test perfectly.
+   * Ask the collision world instead, and only override ground it agrees is open.
    */
   _rescueNav(cx, cz) {
     const nav = this.nav;
     if (!nav || !nav.built) return;
     if (nav.isFree(cx, cz, 0.55)) return;
+    if (!this._standable(cx, cz)) return;                         // real geometry, not a bad mask
     const pockets = this._pockets ?? (this._pockets = []);
     for (let i = 0; i < pockets.length; i++) {
       const p = pockets[i];
@@ -974,6 +999,19 @@ export class AI {
     for (const a of this.agents) { a.clearPath(); a.pathVersion = -1; }
     console.info(`[ai] carved a ${r.toFixed(1)} m walkable pocket at (${cx.toFixed(1)}, ${cz.toFixed(1)}) — `
       + `terrain reports this ground unwalkable but the encounter is standing on it`);
+  }
+
+  /**
+   * Could a body stand here, per the collision world? Optimistic when there is
+   * no collision world to ask, which is the case the nav rescue exists for.
+   */
+  _standable(x, z) {
+    const phys = this.engine.get('physics');
+    const world = phys && !phys.__dead ? phys.world : null;
+    if (!world || typeof world.solveSphere !== 'function' || typeof world.heightAt !== 'function') return true;
+    try {
+      return !world.solveSphere(x, world.heightAt(x, z) + 0.95, z, 0.34, _contact);
+    } catch { return true; }
   }
 
   /** Largest radius around a point over which the terrain stays gently sloped. */
