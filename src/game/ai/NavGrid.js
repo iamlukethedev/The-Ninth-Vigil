@@ -52,6 +52,15 @@ export class NavGrid {
     this.cost = new Float32Array(n);          // 1 + wall-proximity penalty
     /** Clearance measured against the collision world — see `_refineClearance`. */
     this.tight = new Float32Array(n).fill(Infinity);
+    /**
+     * Which of the 3x3 probe positions the clearance in `clear` was measured at,
+     * 0..8 with 4 meaning dead centre. `clear` answers "can a body get through
+     * this cell", which is a claim about ONE point in it, not about the centre —
+     * so a route has to be handed that point or it aims at stone. See `repX`.
+     */
+    this.rep = new Uint8Array(n).fill(4);
+    /** Probe spacing, shared by `_refineClearance` and `repX`/`repZ`. */
+    this.repOff = this.cell * 0.45;
 
     // A* scratch (generation-stamped so we never clear a 44 k array)
     this._g = new Float32Array(n);
@@ -99,6 +108,20 @@ export class NavGrid {
   cz(iz) { return this.originZ + (iz + 0.5) * this.cell; }
   inside(ix, iz) { return ix >= 0 && iz >= 0 && ix < this.W && iz < this.W; }
 
+  /**
+   * The point in cell `k` that `clear[k]` actually describes.
+   *
+   * Anything that turns a cell into a place to walk to must ask for this and not
+   * for `cx`/`cz`. `_refineClearance` keeps the ROOMIEST of nine probes, so in a
+   * doorway whose opening is off the cell lattice the roomy point can be a
+   * quarter of a cell from the middle — and the middle can be inside the jamb.
+   * Emitting centres put 19 % of the crypt's walkable cells on ground the hero
+   * cannot stand on, and the hero walked into the jamb of a 1.75 m door the grid
+   * was describing as 3.25 m wide.
+   */
+  repX(k) { return this.cx(k % this.W) + ((this.rep[k] % 3) - 1) * this.repOff; }
+  repZ(k) { return this.cz((k / this.W) | 0) + (((this.rep[k] / 3) | 0) - 1) * this.repOff; }
+
   /** True when a world point is inside the current tile with `margin` to spare. */
   covers(x, z, margin = 0) {
     return x >= this.originX + margin && x <= this.originX + this.span - margin &&
@@ -132,6 +155,7 @@ export class NavGrid {
 
     // Measured clearances belong to the geometry under the OLD tile.
     this.tight.fill(Infinity);
+    this.rep.fill(4);
 
     const terrain = this._terrain();
     const dungeon = this._dungeon();
@@ -321,8 +345,13 @@ export class NavGrid {
         const k = row + i;
         if (!walk[k] || clear[k] <= 0 || clear[k] > band) continue;
         const wx = this.originX + (i + 0.5) * cell;
-        let best = 0;
-        for (let s = 0; s < 9 && best < clear[k]; s++) {
+        /* All nine, every time. The old loop stopped at the first probe that met
+           the chamfer's guess, which is enough to decide "passable" but not
+           enough to say WHERE — and where is what the route needs, so a cell
+           could be entered on the strength of a sample 0.25 m off centre and
+           then be walked to at its centre, which is a different place. */
+        let best = 0, bestS = 4;
+        for (let s = 0; s < 9; s++) {
           const sx = wx + (s % 3 - 1) * o;
           const sz = wz + (((s / 3) | 0) - 1) * o;
           let gap = probe;
@@ -330,8 +359,9 @@ export class NavGrid {
             const y = world.heightAt(sx, sz) + 0.95;
             if (world.solveSphere(sx, y, sz, probe, c)) gap = probe - c.depth;
           } catch { gap = probe; }
-          if (gap > best) best = gap;
+          if (gap > best) { best = gap; bestS = s; }
         }
+        this.rep[k] = bestS;
         if (best >= clear[k]) continue;
         tight[k] = best < 0 ? 0 : best;
         tightened++;
@@ -470,13 +500,26 @@ export class NavGrid {
     return this.clear[j * this.W + i];
   }
 
-  /** Can a disc of `radius` stand here? Off-tile answers optimistically. */
+  /**
+   * Can a disc of `radius` stand at this POINT? Off-tile answers optimistically.
+   *
+   * `clear[k]` is one measurement taken somewhere in the cell, so reading it as
+   * the answer for every point in the cell is how a route came to be drawn
+   * through a door jamb: half a metre away from where the room was measured, the
+   * room is not there. Clearance is a distance-to-obstacle field, so it is
+   * 1-Lipschitz — it cannot fall faster than one metre per metre travelled — and
+   * that gives a lower bound on the room here for free, with no extra probing.
+   * Costing the walk from the measured point is what makes this a question about
+   * a point rather than about a cell.
+   */
   isFree(x, z, radius = 0.4) {
     const i = this.ix(x), j = this.iz(z);
     if (!this.inside(i, j)) return true;
     const k = j * this.W + i;
     if (!this.walk[k]) return false;
-    return this.clear[k] >= Math.min(radius, 7 * this.cell) - 1e-4;
+    const dx = x - this.repX(k), dz = z - this.repZ(k);
+    const here = this.clear[k] - Math.sqrt(dx * dx + dz * dz);
+    return here >= Math.min(radius, 7 * this.cell) - 1e-4;
   }
 
   /**
@@ -520,14 +563,14 @@ export class NavGrid {
           if (!this.inside(i, j)) continue;
           const k = j * this.W + i;
           if (!this.walk[k] || this.clear[k] < radius - 1e-4) continue;
-          const wx = this.cx(i), wz = this.cz(j);
+          const wx = this.repX(k), wz = this.repZ(k);
           const d = (wx - x) * (wx - x) + (wz - z) * (wz - z);
           if (d < bestD) { bestD = d; best = k; }
         }
       }
       if (best >= 0) {
-        o.x = this.cx(best % this.W);
-        o.z = this.cz((best / this.W) | 0);
+        o.x = this.repX(best);
+        o.z = this.repZ(best);
         o.found = true;
         return o;
       }
@@ -686,8 +729,8 @@ export class NavGrid {
     let k = end;
     let guard = 0;
     while (guard++ < 8192) {
-      raw[n * 2] = this.cx(k % W);
-      raw[n * 2 + 1] = this.cz((k / W) | 0);
+      raw[n * 2] = this.repX(k);
+      raw[n * 2 + 1] = this.repZ(k);
       n++;
       if (k === start || n * 2 + 2 >= raw.length) break;
       k = from[k];

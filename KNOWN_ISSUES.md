@@ -302,27 +302,71 @@ reference; that measurement is part of the Wave 2 exit criteria.
 
 ---
 
-## 7. One crypt destination cannot be walked to — live `dungeon`
+## 7. Routes were drawn through stone — live `dungeon` — FIXED
 
-**No flag** (gameplay, not a frame defect) · severity 3 · **open**
+**No flag** (gameplay, not a frame defect) · severity 3 · **fixed**
 
-Out of 21 click-to-move destinations across three scenarios — every one chosen because
-something solid sits on the straight line to it — 20 are reached. The exception is
-`(-0.99, 13.67)` in the default crypt seed. A body-width flood fill of the collision world says
-it *is* reachable, so this is not an enclosed room, but the only route threads several gaps of
-around 0.5 m for a 0.68 m hero. A* plans a 91 m detour for a 13 m straight line, and the hero
-fails partway along it.
+The grid was answering a question about a *cell* when it was asked a question about a *point*.
+`_refineClearance` probes nine positions per cell and keeps the ROOMIEST, which is the right
+answer for "can a body get through here" and keeps 1.1 m corridors usable — but every consumer
+then used it as the clearance *at the cell centre*, and in a doorway that does not line up with
+the cell lattice the roomy point can be a quarter-cell away with the centre inside the jamb.
 
-Behaviour on failure is at least correct rather than broken: it walks as far as it can, stops,
-and drops the order after ~2.2 s of no progress. No grinding, no cancelled-on-first-contact.
+Measured on the default crypt, 260 planned routes over 2426 standable points:
 
-**Fix, if it is ever worth it:** the residual is the last of the grid's optimism.
-`NavGrid._refineClearance` records the *best* clearance available anywhere in a cell, which keeps
-1.1 m corridors usable (essential — the centre-only alternative walls them off) at the price of
-admitting a cell whose good half the hero cannot actually reach. Honest sub-cell routing needs
-finer cells near geometry, not another heuristic. Do **not** "fix" it by capping the detour
-ratio: legitimate routes in these three scenarios never exceed ×1.63, but a cap denies the
-hero a door that is genuinely behind it, which fails more visibly than this does.
+| | before | after |
+|---|---|---|
+| routes passing through stone | 87.3 % | 1.9 % |
+| segments where `lineOfSight` said clear but was not | 1606 | 0 |
+| arrivals (distance-proportional time budget) | 96 % | 100 % |
+
+Two changes, both in `NavGrid.js`, no new probing and no new memory beyond one `Uint8Array`:
+
+- **Emit the point that was measured.** `_refineClearance` now records *which* of the nine
+  probes won (`rep`), and `repX`/`repZ` reconstruct it. A* waypoints and `nearestFree` return
+  that point instead of the cell centre, so a route aims at the gap rather than at the jamb
+  beside it.
+- **Cost the walk in `isFree`.** Clearance is a distance field, so it is 1-Lipschitz and cannot
+  fall faster than a metre per metre. Subtracting the distance from the query point to the
+  measured point turns the cell's answer into a sound lower bound for *this* point, for free.
+
+The old note here said honest sub-cell routing needed finer cells near geometry. It did not:
+it needed the grid to say where it had measured. Its warning against capping the detour ratio
+still stands, and no cap was added.
+
+Monsters were the risk — the best-of-nine optimism exists partly to stop brutes freezing in
+doorways — so it was checked directly: 6 of 6 agents moving, mean 1.97 m in 8 s, zero new
+`stuckHits`, `deferred` 0.
+
+---
+
+## 8. Dressing seals doorways, stranding part of the level — live `dungeon`
+
+**No flag** (gameplay, not a frame defect) · severity 2 · **open — this is the one the player hit**
+
+`Physics._wallsFromMask` builds the collision world out of the nav mask, so anything that calls
+`blockRect`/`blockCircle` is not decoration — it is a full-height wall. Dressing does not check
+where the doors are, so a sarcophagus, a column or the altar can be stamped into a portal, and
+the rooms behind it leave the game. Nothing announces it; the floor is still drawn, which is
+exactly what the player's screenshot shows — a visible gap that cannot be walked through.
+
+On the shipped seed: **4 of 17 doorways sealed**, four regions totalling **~128 m² of 730 m²**
+standable but unreachable, the worst being the crypt's south door covered by the altar's plinth
+and stair pad (`_dress` centres the altar on the hall's back wall; a corridor arrived at the
+same place, and nothing arbitrated).
+
+**Do not fix it the way I first tried.** Guarding individual placements — altar, `scatter`,
+columns, the hall's foreground cluster — makes the level *no better*, because skipping a
+placement changes how much of the seeded RNG stream the next one consumes, so the whole layout
+re-rolls. Measured connected area, main region: 602 m² before, 379 m² with the altar guard
+alone, 409 m² with all four guards. That is not a fix, it is a re-roll, and this seed rolled
+worse. Reverted.
+
+**The fix that would actually hold** is a guarantee rather than better odds: compute the
+connectivity skeleton (corridor centrelines plus door approaches) *before* dressing, forbid
+every stamp from touching it, and assert at the end of generation that the walkable mask is a
+single connected component. The assert is the valuable half — it converts "unlucky seed" from
+something a player finds into something generation cannot emit.
 
 ---
 
