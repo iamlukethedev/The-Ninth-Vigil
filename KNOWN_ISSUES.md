@@ -340,9 +340,21 @@ doorways — so it was checked directly: 6 of 6 agents moving, mean 1.97 m in 8 
 
 ---
 
-## 8. Dressing seals doorways, stranding part of the level — live `dungeon`
+## 8. Dressing seals doorways, stranding part of the level — live `dungeon` — FIXED
 
-**No flag** (gameplay, not a frame defect) · severity 2 · **open — this is the one the player hit**
+**No flag** (gameplay, not a frame defect) · severity 2 · **fixed — this is the one the player hit**
+
+Measured over 24 seeds, body-width connectivity of the generated crypt:
+
+| | before | after |
+|---|---|---|
+| seeds that ship unreachable floor | 10 of 24 | 1 of 24 |
+| mean stranded area | 278.3 m² | 20.4 m² |
+| worst seed | 1271 m² | 489 m² |
+| mean reachable area | 2098 m² | 2372 m² |
+
+On the seed the player was standing in: 304 m² stranded across three pockets before,
+22.7 m² in one after, measured against the real collision world at the hero's 0.34 m radius.
 
 `Physics._wallsFromMask` builds the collision world out of the nav mask, so anything that calls
 `blockRect`/`blockCircle` is not decoration — it is a full-height wall. Dressing does not check
@@ -355,18 +367,40 @@ standable but unreachable, the worst being the crypt's south door covered by the
 and stair pad (`_dress` centres the altar on the hall's back wall; a corridor arrived at the
 same place, and nothing arbitrated).
 
-**Do not fix it the way I first tried.** Guarding individual placements — altar, `scatter`,
-columns, the hall's foreground cluster — makes the level *no better*, because skipping a
-placement changes how much of the seeded RNG stream the next one consumes, so the whole layout
-re-rolls. Measured connected area, main region: 602 m² before, 379 m² with the altar guard
-alone, 409 m² with all four guards. That is not a fix, it is a re-roll, and this seed rolled
-worse. Reverted.
+**The fix** is `Layout.protectRect`. `_raisePortals` is the only code that knows a doorway's
+true opening — `door.span` counts the stone between arches of a multi-arch portal as passable —
+so as it stamps each jamb it reserves what is left between them plus 1.6 m of approach either
+side. `blockCircle`/`blockRect` then refuse to close a reserved cell.
 
-**The fix that would actually hold** is a guarantee rather than better odds: compute the
-connectivity skeleton (corridor centrelines plus door approaches) *before* dressing, forbid
-every stamp from touching it, and assert at the end of generation that the walkable mask is a
-single connected component. The assert is the valuable half — it converts "unlucky seed" from
-something a player finds into something generation cannot emit.
+**Do not "improve" this by guarding the placements instead.** Two attempts died there. Skipping
+a stamp changes the mask, which changes `clearanceAt`, which changes which candidates `scatter`
+rejects — and `scatter` draws from the seeded stream on *every* attempt, accepted or not — so
+the level re-rolls and lands wherever luck puts it. Drawing each piece's randoms unconditionally
+is not enough, because the coupling is through the mask, not through the piece. Measured, main
+reachable area on the shipped seed: 1100 m² untouched, **1394 m² refusing cells**, 861 m²
+refusing placements. The version that edits placement is worse than doing nothing. Refusing
+cells decides nothing and consumes no randomness, so the layout is bit-identical and strictly
+more of it is joined up.
+
+Two further traps, both paid for:
+
+- **Round the reservation outward, not inward.** Inward is the tidier reading of "a reservation
+  must be a subset of what it names", and it costs up to one cell of opening per side. The grid
+  is 0.5 m and a body is 0.68 m, so tidiness took 280 m² of the crypt away from the player.
+- **Assert at body width, not per cell.** The first assert flood-filled the raw mask and
+  reported "one region, nothing stranded" for a level with 573 m² unreachable, because floor
+  either side of a sarcophagus is walkable cell by cell and useless to anything 0.68 m wide.
+  `Layout.connectivity(radius)` now filters on the clearance field `refreshClearance` has
+  already computed, and generation warns when it is not all one piece.
+
+**Known cost, reported not hidden.** A piece can still be *drawn* across a doorway it no longer
+blocks — on the shipped seed that is the altar, whose plinth clips the hall's south portal, 46
+cells. `refusedCells` counts it and generation names the offender on the console. The player can
+clip that corner; the alternative was a third of the level behind a door that would not open.
+Moving the altar is the obvious next step and is *not* free: it perturbs `clearanceAt` and so
+re-rolls dressing, which needs the 24-seed sweep to justify, not one screenshot.
+
+One seed in 24 still strands 489 m². Not chased.
 
 ---
 
