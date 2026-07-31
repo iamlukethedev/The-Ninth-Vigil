@@ -540,7 +540,13 @@ export class Physics {
       const vd = actor.velocity.x * nx + actor.velocity.z * nz;
       if (vd < 0) { actor.velocity.x -= nx * vd; actor.velocity.z -= nz * vd; }
     }
-    if (actor.moveTarget && l > maxStep * 0.9) actor.moveTarget = null;
+    /* A shove used to cancel the actor's walk order outright. It no longer does:
+       deciding that a destination is unreachable needs history, and the only
+       thing with that history is whatever issued the order (for the hero,
+       `Hero._watchProgress`). Killing it from here meant one firm contact ended
+       the journey, which is precisely how a click past an obstacle turned into
+       the hero stopping against it. Making the position legal is this module's
+       job; re-planning is not. */
     return true;
   }
 

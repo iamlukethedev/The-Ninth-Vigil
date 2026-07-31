@@ -302,6 +302,30 @@ reference; that measurement is part of the Wave 2 exit criteria.
 
 ---
 
+## 7. One crypt destination cannot be walked to — live `dungeon`
+
+**No flag** (gameplay, not a frame defect) · severity 3 · **open**
+
+Out of 21 click-to-move destinations across three scenarios — every one chosen because
+something solid sits on the straight line to it — 20 are reached. The exception is
+`(-0.99, 13.67)` in the default crypt seed. A body-width flood fill of the collision world says
+it *is* reachable, so this is not an enclosed room, but the only route threads several gaps of
+around 0.5 m for a 0.68 m hero. A* plans a 91 m detour for a 13 m straight line, and the hero
+fails partway along it.
+
+Behaviour on failure is at least correct rather than broken: it walks as far as it can, stops,
+and drops the order after ~2.2 s of no progress. No grinding, no cancelled-on-first-contact.
+
+**Fix, if it is ever worth it:** the residual is the last of the grid's optimism.
+`NavGrid._refineClearance` records the *best* clearance available anywhere in a cell, which keeps
+1.1 m corridors usable (essential — the centre-only alternative walls them off) at the price of
+admitting a cell whose good half the hero cannot actually reach. Honest sub-cell routing needs
+finer cells near geometry, not another heuristic. Do **not** "fix" it by capping the detour
+ratio: legitimate routes in these three scenarios never exceed ×1.63, but a cap denies the
+hero a door that is genuinely behind it, which fails more visibly than this does.
+
+---
+
 ## Closed (no longer reproduces)
 
 Verified against the current 8-scenario capture:
