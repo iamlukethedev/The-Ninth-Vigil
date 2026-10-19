@@ -1409,7 +1409,7 @@ class ContactShadows {
     if (moved || elapsed - this._propAt > CONTACT_PROP_REFRESH || !this._props.length) {
       this._propAt = elapsed;
       this._fx = F.x; this._fz = F.z;
-      this._pick(list, F.x, F.z);
+      this._pick(list, F.x, F.z, props);
     }
     const sel = this._props;
     for (let i = 0; i < sel.length; i++) {
@@ -1419,21 +1419,29 @@ class ContactShadows {
       // One broad lobe, sized off the prop's own Poisson footprint, plus a
       // tighter core so a barrel gets a dark ring at its staves and not a
       // uniform grey disc the size of a table.
-      _lobes[0] = 0; _lobes[1] = 0; _lobes[2] = r * 0.62; _lobes[3] = 0.62;
-      _lobes[4] = 0; _lobes[5] = 0; _lobes[6] = r * 1.32; _lobes[7] = 0.40;
+      const w = rec.__cw ?? 1;
+      _lobes[0] = 0; _lobes[1] = 0; _lobes[2] = r * 0.62; _lobes[3] = 0.62 * w;
+      _lobes[4] = 0; _lobes[5] = 0; _lobes[6] = r * 1.32; _lobes[7] = 0.40 * w;
       this._want(`p${rec.__cs}`, rec.x, rec.z, rec.groundY,
         Math.min(2.2, r + 0.2), _lobes, 2, elapsed, true);
     }
   }
 
   /** Partial selection of the props worth a slot, leaving room for characters. */
-  _pick(list, fx, fz) {
+  _pick(list, fx, fz, props) {
     const room = Math.max(0, CONTACT_SLOTS - 24);
     const out = this._props;
     out.length = 0;
+    const weigh = typeof props?.contactWeight === 'function' ? props : null;
     for (let i = 0; i < list.length; i++) {
       const rec = list[i];
       if (!rec || rec.dead) continue;
+      // Ground cover has a wide footprint and no height. Ranked by footprint
+      // alone it took 50 of 72 slots on the moor and printed a black hole under
+      // each clump, so Props says how much of a caster each record really is.
+      const w = weigh ? weigh.contactWeight(rec) : 1;
+      if (!(w > 0)) continue;
+      rec.__cw = w;
       if (!Number.isFinite(rec.x) || !Number.isFinite(rec.z)) continue;
       const r = rec.r ?? 0;
       if (r < 0.13) continue;                 // a skull needs no cast shadow
@@ -1442,11 +1450,12 @@ class ContactShadows {
       if (d2 > 1600) continue;                // 40 m: past the frame either way
       /*
         * Rank by screen-area-ish: a big base far away still matters more than a
-        * tiny one underfoot. `__k` (sort key) and `__cs` (stable slot key) are
-        * scratch fields written onto Props' own records — namespaced, never read
-        * by anyone else, and cheaper than a parallel Map over 700 entries.
+        * tiny one underfoot. `__k` (sort key), `__cs` (stable slot key) and
+        * `__cw` (contact weight) are scratch fields written onto Props' own
+        * records — namespaced, never read by anyone else, and cheaper than a
+        * parallel Map over 700 entries.
         */
-      rec.__k = d2 / Math.max(0.05, r * r);
+      rec.__k = d2 / Math.max(0.05, r * r * w);
       if (rec.__cs === undefined) rec.__cs = i;
       out.push(rec);
     }

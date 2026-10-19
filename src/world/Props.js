@@ -2051,6 +2051,26 @@ export class Props {
     return out;
   }
 
+  /**
+   * How hard Decals' contact layer should ground this record, 0..1. Same gate as
+   * the prop's own blob above: carpet cover (grass, heather) and wall-mounted
+   * pieces get nothing. Solid casters get full weight; open, low dressing
+   * (bramble, roots, scree, bones) lets most of the sky through and gets a light
+   * touch.
+   *
+   * The contact layer sizes lobes off `rec.r`, which is FOOTPRINT, not mass. A
+   * 1.5 m heather mat is 1.5 m wide and 5 cm tall, so at full weight it printed a
+   * near-black 3 m disc under every clump, with nothing visible above it to
+   * explain the shadow — on the moor 50 of the 72 prop slots went to carpet.
+   */
+  contactWeight(rec) {
+    if (!rec || rec.dead || rec.broken || rec.hidden) return 0;
+    const def = KINDS[rec.kind];
+    if (!def) return 1;
+    if (def.noBlob || def.carpet || def.mounted || (def.blob ?? 1) <= 0) return 0;
+    return def.cast ? 1 : 0.35;
+  }
+
   /** True if a capsule of radius `r` at (x,z) would intersect solid dressing. */
   blocksAt(x, z, r = 0.35) {
     const near = this.queryNear({ x, z }, r);
