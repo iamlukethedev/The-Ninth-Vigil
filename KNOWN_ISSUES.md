@@ -404,6 +404,49 @@ One seed in 24 still strands 489 m². Not chased.
 
 ---
 
+## 9. Black holes scattered across the moor — `overworld`, `night`, live boot — FIXED
+
+**Flag: "Black, blank, or single-color frame"** (local) · severity 7 · **fixed**
+
+Dozens of soft, near-black discs, 1-3 m across, all over the open moor with nothing
+standing above most of them. The live game boots to the moor, so this was the first
+thing a player saw.
+
+It was `decals:contact`. `_pick` ranks props by footprint (`rec.r`), and footprint is
+not mass: a heather mat is 1.5 m wide and 5 cm tall. On `overworld`, **50 of the 72
+prop slots** went to grass and heather, each stamped with the boulder-strength
+two-lobe patch (0.62 + 0.40, capped at 0.80). Props already knew better — its own
+blob layer skips `noBlob` / `carpet` / `mounted` kinds — but the contact layer never
+asked.
+
+**Fix:** `Props.contactWeight(rec)` applies the same gate and returns 0 for carpet
+and mounted pieces, 1 for solid casters (`cast: true`), and 0.35 for open, low
+dressing (bramble, roots, scree, bones). `_pick` skips weight 0, ranks by `r² · w`,
+and the lobe strengths are scaled by `w`.
+
+**How it was found, so nobody repeats the dead end:** hiding a group with
+`.visible = false` proves nothing here — Props, Weather and Decals re-assert
+visibility every frame, so the first round of "hide X, blobs remain" was testing
+nothing. Hide by `material.visible = false` instead. Also ruled out by measurement:
+every post pass, sun and CSM shadows, cloud shadows, terrain AO, puddles, wetness,
+and NaN propagation.
+
+## 10. Moor ridges read as snow — `overworld`, live boot — FIXED
+
+**Flag: "Milky lifted blacks or a washed-out grey frame"** (the inverse case of
+entry 3) · severity 6 · **fixed**
+
+The moor `post` grade had `whitePoint 0.50` at `contrast 1.52` — a ~2.8x stretch
+that clipped every lit slope to white. Rendering with the post chain bypassed shows
+grey slate; the snow was entirely the grade. It satisfied entry 3's p99 check by
+turning half the frame into highlight.
+
+Now `whitePoint 0.56` at `contrast 1.40`. Measured: mean 0.321 → 0.265, p99 0.875
+→ 0.75 (floor 0.72), near-black 4.2 % → 3.6 %. 0.62 looked best but measured p99
+0.688 and failed the floor; 0.58 measured 0.719.
+
+---
+
 ## Closed (no longer reproduces)
 
 Verified against the current 8-scenario capture:
