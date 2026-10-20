@@ -818,7 +818,19 @@ BIOME_LIGHTING.crypt = {
   //     1.22 * sin(64) = 1.0965  ->  1.64 * sin(42) = 1.0965.
   // So the floor keeps the value the art direction chose for it to four figures,
   // and a vertical face goes from 0 to 1.64 * cos(42) = 1.22.
-  skylight: { kelvin: 10500, intensity: 1.64, elevation: 42, azimuth: 330, coolBias: 0.32, saturation: 0.95 },
+  //
+  // INTENSITY 1.64 -> 1.31: that floor value turned out to be the snow. Zeroing
+  // this key on a frozen `closeup` took the colourless-white share of the frame
+  // from 17.7 % to 3.6 % and the white grain off every rubble top, because a
+  // horizontal face's normal-map grain under a strong cold key IS frost to the eye.
+  // It is also the largest single term in the "near-white enemies": monster pixels
+  // on `combat` average 0.63 luma with it and 0.45 without. 0.8x keeps the cold
+  // counterpoint and the wall split (floor 0.88, wall 0.97). Shipped together with
+  // the grade's new ceiling, the captures measure: colourless-white share 18 -> 10 %
+  // on `closeup`, 12 -> 8 % on `dungeon`, and the pack 0.63 -> 0.57. Lower than ~1.15
+  // pushes `closeup` p99 toward the 0.72 highlight floor. Elevation is not the
+  // lever: dropping it to 30 deg made `closeup` frostier, not less.
+  skylight: { kelvin: 10500, intensity: 1.31, elevation: 42, azimuth: 330, coolBias: 0.32, saturation: 0.95 },
   // Ground bounce was 0x17100b — warm umber. Inside a crypt the floor bounce is
   // whatever the floor is, and the floor is cold damp stone.
   hemi: { sky: 0x33506f, ground: 0x14171d, intensity: 0.56 },
