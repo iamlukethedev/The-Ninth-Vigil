@@ -168,7 +168,13 @@ export const LOOKS = {
       // moor and multiplied the remaining blue by 1/0.8. Modest pedestal, low
       // ceiling for a real highlight on wet rock, and the saturation pulled
       // down hard because this is the one look measuring a colour *cast*.
-      blackPoint: 0.138, whitePoint: 0.50, blackSoft: 0.10, contrast: 1.52, pivot: 0.40,
+      //
+      // The ceiling was 0.50 at contrast 1.52: a 2.8x stretch that clipped every
+      // lit slope to white, so the ridges above the bog read as SNOW, not slate.
+      // It passed the p99 highlight check by turning half the frame into
+      // highlight. 0.56 / 1.40 keeps p99 above the 0.72 floor (0.75) on wet rock and
+      // water glints while the ridges hold a grey value structure.
+      blackPoint: 0.138, whitePoint: 0.56, blackSoft: 0.10, contrast: 1.40, pivot: 0.40,
       shadowLift: 1.00, shadowKnee: 0.070, shadowChroma: 0.82,
       // Pedestal 0.138 with soft 0.10 and the only look with no shadow lift at
       // all: measured, it put EVERY input under 0.04 at 0.00/255 and 0.08 at
