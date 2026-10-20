@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/iamlukethedev/The-Ninth-Vigil/security/advisories/new
+    about: Please report security problems privately, not as a public issue. See SECURITY.md.
   - name: Read the engine contract first
     url: https://github.com/iamlukethedev/The-Ninth-Vigil/blob/main/ENGINE_CONTRACT.md
     about: Module lifecycle, engine services, the event bus, determinism rules and the performance budget. Binding for any code change.
