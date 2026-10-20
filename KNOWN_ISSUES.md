@@ -267,6 +267,29 @@ silhouette has almost no consistent internal value structure.
 **Fix:** three frequency tiers on bone/cloth in `texgen`, additive only, so D
 and E inherit it without editing anything.
 
+**Partly addressed — the value half, not the texture half.** Most of the
+whiteness was not the monster materials. Measured with a monster-pixel mask on a
+frozen `combat` frame (render, then render again with every monster material at
+`material.visible = false`, and diff):
+
+| ablation | pack mean luma | pixels over 0.75 |
+|---|---|---|
+| as shipped before | 0.630 | 41.2 % |
+| crypt skylight key off | 0.445 | 19.0 % |
+| character rim off | 0.529 | 24.6 % |
+| key and rim both off | 0.323 | 4.6 % |
+| albedo floor 0 and albedo gain halved | 0.531 | 26.5 % |
+| hemisphere, env, scene rim, spot shaft off (each) | 0.624-0.630 | 40-41 % |
+
+So the cold skylight key is the largest term, the character rim the second, and
+the recipe albedos are a minor one. The skylight cut and the grade change under
+entry 5 take the pack to **0.571 mean, 30.7 % over 0.75** in the shipped
+capture. The rim was left alone: at 0.6x it buys only another 0.026 of mean, and
+its gains were already cut once for this same defect (see `RECIPES.rim`).
+
+Still open: at gameplay distance the bodies carry almost no readable surface,
+which is what this entry's fix asks for and what a value retune cannot supply.
+
 ---
 
 ## 5. Untextured blue-grey rubble — `closeup`, `combat`, `dungeon`
@@ -288,6 +311,55 @@ of `dungeon.png`.
 **Fix:** real surface on the rubble material (the project generates all its
 textures procedurally in `src/core/texgen/`), plus contact grounding where a
 block meets the floor so the intersection is not a hard line.
+
+### 5a. The rubble tops read as snow — REDUCED, not closed
+
+The current version of this complaint is not "blue-grey" but **frost**: every
+up-facing rubble top in `closeup` carries a white granular coat. Measured as the
+share of the frame over 0.55 luma at under 0.15 saturation (`blk%`-style, hue
+blind on purpose — a metric that also requires blue over red can be "fixed" by
+warming the light without making anything less white).
+
+It is two stages compounding, found by ablation on a frozen frame:
+
+- **The crypt skylight.** The fictional cold key is aimed to deliver most of its
+  1.64 to up-faces, and the stone's normal-map grain under a strong key is the
+  coat. Zeroing it took `closeup` from 17.7 % to **3.6 %** and visibly removed the
+  coat (and took the frame to mean 0.211, 6.5 % near-black, so "off" is not the
+  fix). Elevation is not the lever: 30 and 24 degrees made it frostier.
+- **The grade's top end.** `whitePoint 0.84` stretched those tops into the top
+  band and `highlightDesat 0.44` then took most of their chroma.
+
+**Ruled out:** the prop dust layer (`uPropDust`, 0.00 change — the crypt rubble
+is `dungeon:stone`, which does not carry it), SSR, decals, weather dust, motes,
+`dungeon:stone` roughness and env intensity, the hemisphere, and the crypt white
+balance (halving `wb` moved the white share by +0.5 pp and only warmed the
+stone). `Weather.fog` lifts the floor (mean 0.298 → 0.243 hidden) but is not the
+coat.
+
+Shipped: skylight 1.64 → 1.31, crypt `whitePoint` 0.84 → 0.90,
+`highlightDesat` 0.44 → 0.70, and `closeup`'s override 0.80 → 0.88 so it stays
+under the look's ceiling. Measured on the canonical captures:
+
+| scenario | white share before | after | mean before → after | p99 after |
+|---|---|---|---|---|
+| closeup | 18.0 % | **10.0 %** | 0.300 → 0.259 | 0.781 |
+| dungeon | 12.0 % | **8.0 %** | 0.308 → 0.274 | 0.875 |
+| combat | 11.9 % | **8.1 %** | 0.315 → 0.280 | 0.875 |
+
+All eight scenarios still pass `sheet.mjs --analyze`; the five non-crypt
+scenarios are unchanged. The before/after crops show the foreground blocks and
+floor going from frosted to grey stone, but **the background rubble tops in
+`closeup` still read frosted**. Clearing the rest by light alone darkens the
+frame toward the p99 floor (key 1.15 put `closeup` at p99 0.75); what is left is
+the grain itself, so the remaining fix belongs with the rubble's surface above.
+
+**Stale numbers elsewhere.** `HitFeel.js`, `Telegraph.js`, `StainMaterial.js`
+and `director/Shrines.js` budget against "the crypt look is blackPoint 0.028 /
+whitePoint 0.72 / contrast 1.38". Those are the `town` look's numbers; the crypt
+was 0.014 / 0.84 / 1.30 before this change and is 0.014 / 0.90 / 1.30 now. Not
+corrected here because each module's ceiling would need re-measuring, not
+re-commenting.
 
 ---
 
