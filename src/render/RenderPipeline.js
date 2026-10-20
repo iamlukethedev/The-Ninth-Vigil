@@ -114,7 +114,9 @@ const SCENARIOS = {
   // metered at the room's ceiling the lower-left flagstones clipped to
   // near-white and the whole frame read milky. Lower ceiling than the room, and
   // a white point under the look's so the armour's speculars still reach 1.
-  closeup: { look: 'crypt', bloom: 0.075, vol: 0.70, wet: 0.55, dof: 'closeup', grain: 0.030, vignette: 0.32, ao: 1.0, ssr: 0.5, skyRays: 0.25, key: 0.162, gain: 2.30, white: 0.80 },
+  // Moved up with the look (0.84 -> 0.90): left at 0.80 it alone held the
+  // colourless-white share of this frame at 15 % after the crypt frost fix.
+  closeup: { look: 'crypt', bloom: 0.075, vol: 0.70, wet: 0.55, dof: 'closeup', grain: 0.030, vignette: 0.32, ao: 1.0, ssr: 0.5, skyRays: 0.25, key: 0.162, gain: 2.30, white: 0.88 },
   // The inventory frame is ~85 % un-graded HUD, so the curve here is authored
   // for the SLIVER OF WORLD visible between the panels and nothing else: at the
   // town look's own ceiling that world sat at 2 % grey and read as a black hole

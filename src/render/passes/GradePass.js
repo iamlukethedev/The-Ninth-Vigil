@@ -73,14 +73,23 @@ export const LOOKS = {
       // 0.008 with a soft floor, and the shadow lift rebuilds the bottom decade
       // into cold slate instead of a hole. whitePoint 0.80 + shoulder 0.72 is
       // what puts a real specular on wet stone and armour.
-      blackPoint: 0.014, whitePoint: 0.84, blackSoft: 0.30, contrast: 1.30, pivot: 0.42,
+      //
+      // FROST. At whitePoint 0.84 with highlightDesat 0.44 every lit up-face was
+      // stretched into the top band and then had ~3/4 of its chroma pulled, so the
+      // cold key on rubble tops and bone came out colourless white: the crypt read
+      // as snow. Measured on a frozen `closeup` with the ceiling at 0.90 (pixels
+      // over 0.55 luma at under 0.15 saturation): 17.7 % -> 11.0 % from these two
+      // numbers alone, p99 still 0.81. See LightRig `crypt.skylight` for the rest.
+      // The cold plate (`wb`) is untouched on purpose: halving it moved that share
+      // by half a point (the wrong way) and only warmed the stone.
+      blackPoint: 0.014, whitePoint: 0.90, blackSoft: 0.30, contrast: 1.30, pivot: 0.42,
       shadowLift: 2.30, shadowKnee: 0.070, shadowChroma: 0.76,
       // The mildest toe of any look, because the crypt's 0.014 pedestal is the
       // one that was not crushing much: measured, the fixed bake alone already
       // brings a 0.02 input to 2.1/255 here where `hell` reaches 1.3. The toe
       // takes it to 3.1/255 and leaves everything from 0.16 up untouched.
       toeKnee: 0.100, toeGamma: 0.85,
-      saturation: 0.54, highlightDesat: 0.44, tintAmount: 0.26, shoulder: 0.64,
+      saturation: 0.54, highlightDesat: 0.70, tintAmount: 0.26, shoulder: 0.64,
       shadowTint: [0.90, 0.965, 1.10], highlightTint: [1.08, 1.0, 0.91],
     },
   },
