@@ -33,6 +33,26 @@ jobs:
       # repos and asserts on the violations each one produces.
       - run: node tools/guard.test.mjs
 
+  # The same gate on Windows, because the bug it guards against was a Windows
+  # one. The guard's rule scope was POSIX-only, so on Windows it silently
+  # skipped every rule -- and CI only ran on Linux, where the old pattern
+  # already worked, so nothing ever caught it. The unit tests now cover the
+  # path normalisation directly, but running the real guard on a real Windows
+  # runner is the check that would have caught the original defect.
+  guard-windows:
+    name: Convention guard (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node tools/guard.mjs
+      - run: node tools/guard.test.mjs
+
   smoke:
     name: Boot + determinism
     runs-on: ubuntu-latest

@@ -23,21 +23,52 @@
  *   1. The rule scope was POSIX-only (`/^src\//`) while `relative()` returns
  *      backslash paths on Windows, so every rule was skipped under Windows and
  *      the guard reported OK on a file containing four separate violations.
- *      The scope now accepts both separators.
+ *      Paths are now NORMALISED to forward slashes before the scope test, so
+ *      the scope is one convention on every platform — and the normalisation
+ *      is a tested function, not an assumption.
  *   2. `index.html` was never scanned — it is where an external asset would
  *      actually be introduced, and it is named as integration spine in
- *      ENGINE_CONTRACT.md and .github/CODEOWNERS. It is now checked for
- *      remote URLs and external asset references.
+ *      ENGINE_CONTRACT.md and .github/CODEOWNERS. Every `*.html` file is now
+ *      checked, for remote URLs and external asset references. The rules also
+ *      read script and style CONTENT, because a CDN usually arrives as an
+ *      import map or an inline `import` rather than as a `src` attribute.
  */
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, extname, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, extname, relative, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /* fileURLToPath, not URL.pathname — the latter percent-encodes, so any checkout
    with a space in its path scans a directory that does not exist. */
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const SKIP = new Set(['node_modules', '.git', 'dist', 'shots']);
+
+/* --- path normalisation ------------------------------------------------- *
+ *
+ * `relative()` returns native separators, so the same file is
+ * `src/game/ai/NavGrid.js` on POSIX and `src\game\ai\NavGrid.js` on Windows.
+ * A scope written for one is silently inert on the other — which is exactly
+ * how the original POSIX-only scope ended up skipping every rule on Windows
+ * while the parse check still ran and the guard still printed OK.
+ *
+ * Normalising once, here, means every scope below can be written in the one
+ * convention, and it means the fix is a tested function rather than a
+ * tolerant regex that is easy to revert by accident.
+ */
+export function normalizeRel(rel) {
+  return String(rel).split(sep).join('/');
+}
+
+/** Does a rule scope match a repository-relative path? */
+export function matchesScope(scope, rel) {
+  if (!scope) return true;
+  return scope.test(normalizeRel(rel));
+}
+
+/* Only scan when invoked directly, so `guard.test.mjs` can import the helpers
+   above without triggering a scan of the real repository. */
+const IS_MAIN = !!process.argv[1]
+  && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 
 /**
  * Blank out comments, preserving line and column positions so reported line
@@ -80,15 +111,12 @@ function stripComments(src) {
   return out.join('');
 }
 
-/* Scope is matched against `relative(ROOT, p)`, and that string is
-   separator-dependent: `src/game/ai/NavGrid.js` on POSIX, `src\game\ai\NavGrid.js`
-   on Windows. A POSIX-only `/^src\//` therefore matched NOTHING under Windows,
-   which silently skipped all five rules for every Windows contributor while the
-   parse check still ran — so the guard reported OK and looked like it was
-   working. Measured: a file in `src/` containing `Math.random()`, `fetch()`, a
-   remote URL and a `.png` reference passed with 0 violations on Windows and was
-   caught immediately once the scope accepted both separators. */
-const SRC_SCOPE = /^src[\\/]/;
+/* Scope is a NORMALISED, forward-slash path — see normalizeRel above. The
+   original scope was /^src\// against a raw `relative()` string, which on
+   Windows is `src\game\ai\NavGrid.js` and matched nothing, so all five rules
+   were skipped for every Windows contributor while the parse check still ran
+   and the guard still printed OK. */
+const SRC_SCOPE = /^src\//;
 
 const RULES = [
   {
@@ -136,122 +164,268 @@ function walk(dir, out = []) {
   return out;
 }
 
-/**
- * The HTML entry points, which the JS walker above never sees.
+/* ------------------------------------------------------------------ *
+ * HTML entry points
+ * ------------------------------------------------------------------ *
+ * The JS walker above never sees an HTML file, and an HTML file is where an
+ * external asset would ACTUALLY be introduced — a CDN `<script>`, an import
+ * map, a remote font in a `<style>` block. `index.html` is named as
+ * integration spine in both ENGINE_CONTRACT.md and .github/CODEOWNERS.
  *
- * `index.html` is where an external asset would ACTUALLY be introduced — a CDN
- * `<script>`, a Google Fonts `<link>`, a remote `<img>` — and it is named as
- * integration spine in both ENGINE_CONTRACT.md and .github/CODEOWNERS. The
- * guard's rules are all scoped to `src/`, and the walker only collects
- * `.js`/`.mjs`, so a CDN in `index.html` passed the "no remote URLs / no
- * external assets" rules cleanly. Measured: adding a jsDelivr `<script>` and a
- * jsDelivr `<link rel=stylesheet>` to index.html left the guard reporting
- * `0 violations` with exit 0.
+ * Four findings shaped these rules, each measured rather than assumed:
  *
- * These are checked separately rather than through `stripComments`, because
- * that scanner tracks JS string delimiters and has no meaning in HTML. The
- * match is deliberately narrow: an attribute VALUE that is an absolute or
- * protocol-relative URL, or an asset path. A URL in prose (a comment, a
- * paragraph of text) is not a violation — only something the browser would
- * actually load.
+ *   - A plain `<a href="https://...">` is a LINK, not a load. The browser
+ *     fetches nothing until it is followed, so it is not a violation. Only
+ *     elements that cause a subresource fetch are matched.
+ *   - The load is not always in an attribute. An import map, an inline
+ *     `<script type="module">` importing from a CDN, and a `<style>` block
+ *     with `@import url(...)` all pull remote code or assets with no `src` or
+ *     `href` in sight. Script and style CONTENT is scanned too.
+ *   - A URL outside a src/href attribute is not a violation — but a
+ *     COMMENTED-OUT `<script src="https://...">` is, because it is one edit
+ *     from being live, and flagging it is the cheap direction to be wrong in.
+ *     The rule is about what the page LOADS, not about what it mentions.
+ *   - An asset path may carry a query string or a fragment
+ *     (`stone.png?v=2`), which a plain extension match missed.
  */
-const HTML_ENTRIES = ['index.html'];
+
+/* Elements whose URL attributes make the browser fetch something.
+   `<a>` is deliberately absent — a hyperlink loads nothing until followed. */
+const HTML_LOADING_TAGS = new Set([
+  'script', 'link', 'img', 'image', 'source', 'audio', 'video', 'iframe',
+  'embed', 'object', 'track', 'input', 'use', 'base',
+]);
+
+/* Attributes that carry a URL the browser will act on. */
+const HTML_URL_ATTRS = new Set([
+  'src', 'href', 'srcset', 'poster', 'data', 'xlink:href',
+  'action', 'formaction', 'background', 'manifest', 'codebase',
+]);
+
+/* One attribute, quoted or unquoted. */
+const ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'`=<>]+))/g;
+
+/* One tag. The alternation lets a `>` sit inside a quoted attribute value. */
+const TAG_RE = /<([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+
+/* A script or style block, with its attributes and its content. */
+const BLOCK_RE = /<(script|style)\b((?:"[^"]*"|'[^']*'|[^>"'])*)>([\s\S]*?)<\/\1\s*>/gi;
+
+/* A quoted string inside script or style content. */
+const INLINE_STRING_RE = /(["'`])([^"'`\n]*)\1/g;
+
+/* A CSS url() reference. */
+const INLINE_URL_RE = /url\(\s*([^)]*?)\s*\)/gi;
+
+/* A remote URL introduced by a quote, a backtick or a paren. The prefix
+   match is deliberate: "see https://..." inside a string is still a remote
+   URL, and a CDN is free to hide behind a longer string. */
+const INLINE_REMOTE_RE = /["'(`]\s*(?:https?:\/\/|\/\/)/gi;
+
+/* An absolute or protocol-relative URL, as a whole value. */
+const REMOTE_VALUE_RE = /^(?:https?:)?\/\//i;
+
+/* A local asset path, optionally carrying a query string or a fragment. */
+const ASSET_VALUE_RE = /\.(png|jpe?g|gif|webp|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|glb|gltf|fbx|obj|dae|hdr|exr|ktx2?|basis|webm|aac|css|svg)(?:[?#][^\s]*)?$/i;
+
 const HTML_RULES = [
   {
     id: 'no-remote-urls',
     why: 'No CDNs, no remote textures, no remote fonts. The page must not reference anything over the network.',
-    // An attribute value that is an absolute URL, or a protocol-relative one
-    // (`//cdn.example.com/x.js`), which the browser resolves as a remote load.
-    re: /(?:src|href)\s*=\s*["']\s*(?:https?:\/\/|\/\/)[^"'\s>]+/gi,
   },
   {
     id: 'no-external-assets',
     why: 'No external assets, ever. Generate it in src/core/texgen/ instead.',
-    // A LOCAL asset path in a src/href — the browser would fetch it at runtime.
-    // The negative lookahead keeps a remote URL out of this rule's report, so
-    // one offending line is reported once, by the rule that explains it best.
-    re: /(?:src|href)\s*=\s*["'](?!(?:https?:)?\/\/)[^"'\s>]*\.(png|jpe?g|gif|webp|woff2?|ttf|otf|eot|mp3|wav|ogg|m4a|glb|gltf|fbx|obj|dae|hdr|exr|ktx2?|basis|webm|aac|css|svg)["']/gi,
   },
 ];
 
-const files = walk(ROOT);
-const failures = [];
+/** Classify a URL-ish value: 'remote', 'asset', or null. */
+export function classifyValue(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  if (REMOTE_VALUE_RE.test(s)) return 'remote';
+  if (ASSET_VALUE_RE.test(s)) return 'asset';
+  return null;
+}
 
-/* --- 1. every file must parse --- */
-for (const p of files) {
-  try {
-    execFileSync(process.execPath, ['--check', p], { stdio: 'pipe' });
-  } catch (e) {
-    failures.push({ id: 'syntax', file: relative(ROOT, p), line: 0, text: String(e.stderr).split('\n')[1] ?? 'parse error', why: 'File does not parse.' });
+function report(failures, id, file, line, text) {
+  const rule = HTML_RULES.find((r) => r.id === id);
+  failures.push({ id, file, line, text: String(text).trim(), why: rule.why });
+}
+
+/** The URL-bearing attributes of one tag, and what each of them points at. */
+function scanTagAttrs(tagName, attrString, file, line, failures) {
+  if (!HTML_LOADING_TAGS.has(tagName)) return;
+  ATTR_RE.lastIndex = 0;
+  let m;
+  while ((m = ATTR_RE.exec(attrString)) !== null) {
+    const name = m[1].toLowerCase();
+    if (!HTML_URL_ATTRS.has(name)) continue;
+    const value = m[2] ?? m[3] ?? m[4] ?? '';
+    /* srcset holds a comma-separated candidate list: "a.png 1x, b.png 2x". */
+    const candidates = name === 'srcset'
+      ? value.split(',').map((c) => c.trim().split(/\s+/)[0]).filter(Boolean)
+      : [value];
+    for (const c of candidates) {
+      const kind = classifyValue(c);
+      if (kind === 'remote') report(failures, 'no-remote-urls', file, line, c);
+      else if (kind === 'asset') report(failures, 'no-external-assets', file, line, c);
+    }
   }
 }
 
-/* --- 2. convention rules, comments stripped --- */
-for (const p of files) {
-  const rel = relative(ROOT, p);
-  const raw = readFileSync(p, 'utf8');
-  const stripped = stripComments(raw);
-  for (const rule of RULES) {
-    if (rule.scope && !rule.scope.test(rel)) continue;
-    const lines = (rule.raw ? raw : stripped).split('\n');
-    lines.forEach((line, i) => {
-      rule.re.lastIndex = 0;
-      const m = rule.re.exec(line);
-      if (m) failures.push({ id: rule.id, file: rel, line: i + 1, text: m[0].trim(), why: rule.why });
-    });
+/** The content of a script or style block: imports, @import, url(). */
+function scanInlineContent(content, file, line, failures) {
+  /* Remote: a URL introduced by a quote, a backtick or a paren. */
+  INLINE_REMOTE_RE.lastIndex = 0;
+  let m;
+  while ((m = INLINE_REMOTE_RE.exec(content)) !== null) {
+    const at = line + content.slice(0, m.index).split('\n').length - 1;
+    report(failures, 'no-remote-urls', file, at, m[0]);
+  }
+  /* Asset: a local asset path in a string or a url() call. */
+  const candidates = [];
+  INLINE_STRING_RE.lastIndex = 0;
+  while ((m = INLINE_STRING_RE.exec(content)) !== null) candidates.push(m[2]);
+  INLINE_URL_RE.lastIndex = 0;
+  while ((m = INLINE_URL_RE.exec(content)) !== null) candidates.push(m[1]);
+  for (const c of candidates) {
+    if (classifyValue(c) === 'asset') {
+      const at = line + content.slice(0, content.indexOf(c)).split('\n').length - 1;
+      report(failures, 'no-external-assets', file, at, c);
+    }
   }
 }
 
-/* --- 2b. HTML entry points, scanned separately --- */
-let htmlScanned = 0;
-for (const name of HTML_ENTRIES) {
-  const p = join(ROOT, name);
-  if (!existsSync(p)) continue;
-  htmlScanned++;
-  const raw = readFileSync(p, 'utf8');
-  const lines = raw.split('\n');
-  for (const rule of HTML_RULES) {
-    lines.forEach((line, i) => {
-      rule.re.lastIndex = 0;
-      const m = rule.re.exec(line);
-      if (m) failures.push({ id: rule.id, file: name, line: i + 1, text: m[0].trim(), why: rule.why });
-    });
+/** Scan one HTML file for remote URLs and external asset references. */
+export function scanHtml(text, file, failures) {
+  const lineAt = (idx) => text.slice(0, idx).split('\n').length;
+
+  /* Pass 1: script and style blocks — the tag's attributes AND the content. */
+  let rest = text;
+  BLOCK_RE.lastIndex = 0;
+  let m;
+  while ((m = BLOCK_RE.exec(text)) !== null) {
+    const [full, tag, attrs, content] = m;
+    const startLine = lineAt(m.index);
+    scanTagAttrs(tag.toLowerCase(), attrs, file, startLine, failures);
+    /* The content begins after the open tag, so its first line is the open
+       tag's line plus however many newlines the tag itself spanned. */
+    const openTagEnd = full.indexOf('>') + 1;
+    const head = full.slice(0, openTagEnd);
+    const contentLine = startLine + head.split('\n').length - 1;
+    scanInlineContent(content, file, contentLine, failures);
+    /* Blank the block out of the general pass, preserving newlines so the
+       line numbers below still point at the real source. */
+    rest = rest.replace(full, full.replace(/[^\n]/g, ' '));
+  }
+
+  /* Pass 2: every other tag. */
+  TAG_RE.lastIndex = 0;
+  while ((m = TAG_RE.exec(rest)) !== null) {
+    scanTagAttrs(m[1].toLowerCase(), m[2], file, lineAt(m.index), failures);
   }
 }
 
-/* --- 3. dependency allowlist --- */
-const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-const ALLOWED_RUNTIME = new Set(['three']);
-const ALLOWED_DEV = new Set(['vite', 'playwright']);
-for (const d of Object.keys(pkg.dependencies ?? {})) {
-  if (!ALLOWED_RUNTIME.has(d)) {
-    failures.push({ id: 'no-new-deps', file: 'package.json', line: 0, text: d, why: 'No new runtime dependencies. three only.' });
+/* Every HTML file in the repository, not just the entry point. */
+function walkHtml(dir, out = []) {
+  for (const e of readdirSync(dir)) {
+    if (SKIP.has(e)) continue;
+    const p = join(dir, e);
+    if (statSync(p).isDirectory()) walkHtml(p, out);
+    else if (extname(e).toLowerCase() === '.html') out.push(p);
   }
-}
-for (const d of Object.keys(pkg.devDependencies ?? {})) {
-  if (!ALLOWED_DEV.has(d)) {
-    failures.push({ id: 'no-new-deps', file: 'package.json', line: 0, text: d, why: 'No new dev dependencies. vite and playwright only.' });
-  }
+  return out;
 }
 
-/* --- report --- */
-if (!failures.length) {
-  console.log(`guard: OK — ${files.length} files, ${htmlScanned} html, ${RULES.length + HTML_RULES.length + 2} rules, 0 violations`);
-  process.exit(0);
+/**
+ * Run the scan and report. Exported so `guard.test.mjs` can drive the real
+ * scan against a fixture rather than a copy of it.
+ */
+export function runGuard({ root = ROOT, json = false } = {}) {
+  const files = walk(root);
+  const htmlFiles = walkHtml(root);
+  const failures = [];
+
+  /* --- 1. every file must parse --- */
+  for (const p of files) {
+    try {
+      execFileSync(process.execPath, ['--check', p], { stdio: 'pipe' });
+    } catch (e) {
+      failures.push({ id: 'syntax', file: normalizeRel(relative(root, p)), line: 0, text: String(e.stderr).split('\n')[1] ?? 'parse error', why: 'File does not parse.' });
+    }
+  }
+
+  /* --- 2. convention rules, comments stripped --- */
+  for (const p of files) {
+    /* NORMALISED, so the scope below is one convention on every platform. */
+    const rel = normalizeRel(relative(root, p));
+    const raw = readFileSync(p, 'utf8');
+    const stripped = stripComments(raw);
+    for (const rule of RULES) {
+      if (rule.scope && !rule.scope.test(rel)) continue;
+      const lines = (rule.raw ? raw : stripped).split('\n');
+      lines.forEach((line, i) => {
+        rule.re.lastIndex = 0;
+        const m = rule.re.exec(line);
+        if (m) failures.push({ id: rule.id, file: rel, line: i + 1, text: m[0].trim(), why: rule.why });
+      });
+    }
+  }
+
+  /* --- 2b. HTML entry points, scanned separately --- */
+  for (const p of htmlFiles) {
+    const rel = normalizeRel(relative(root, p));
+    scanHtml(readFileSync(p, 'utf8'), rel, failures);
+  }
+
+  /* --- 3. dependency allowlist --- */
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  const ALLOWED_RUNTIME = new Set(['three']);
+  const ALLOWED_DEV = new Set(['vite', 'playwright']);
+  for (const d of Object.keys(pkg.dependencies ?? {})) {
+    if (!ALLOWED_RUNTIME.has(d)) {
+      failures.push({ id: 'no-new-deps', file: 'package.json', line: 0, text: d, why: 'No new runtime dependencies. three only.' });
+    }
+  }
+  for (const d of Object.keys(pkg.devDependencies ?? {})) {
+    if (!ALLOWED_DEV.has(d)) {
+      failures.push({ id: 'no-new-deps', file: 'package.json', line: 0, text: d, why: 'No new dev dependencies. vite and playwright only.' });
+    }
+  }
+
+  return { ok: failures.length === 0, files: files.length, html: htmlFiles.length, rules: RULES.length + HTML_RULES.length + 2, violations: failures };
 }
 
-const byRule = new Map();
-for (const f of failures) {
-  if (!byRule.has(f.id)) byRule.set(f.id, []);
-  byRule.get(f.id).push(f);
-}
-console.log(`guard: ${failures.length} violation(s) across ${byRule.size} rule(s)\n`);
-for (const [id, list] of byRule) {
-  console.log(`  ${id} — ${list[0].why}`);
-  for (const f of list.slice(0, 20)) {
-    console.log(`    ${f.file}${f.line ? ':' + f.line : ''}  ${f.text}`);
+function main() {
+  const report = runGuard({ json: process.argv.includes('--json') });
+
+  /* --- report --- */
+  if (process.argv.includes('--json')) {
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(report.violations.length ? 1 : 0);
   }
-  if (list.length > 20) console.log(`    ... and ${list.length - 20} more`);
-  console.log('');
+
+  if (!report.violations.length) {
+    console.log(`guard: OK — ${report.files} files, ${report.html} html, ${report.rules} rules, 0 violations`);
+    process.exit(0);
+  }
+
+  const byRule = new Map();
+  for (const f of report.violations) {
+    if (!byRule.has(f.id)) byRule.set(f.id, []);
+    byRule.get(f.id).push(f);
+  }
+  console.log(`guard: ${report.violations.length} violation(s) across ${byRule.size} rule(s)\n`);
+  for (const [id, list] of byRule) {
+    console.log(`  ${id} — ${list[0].why}`);
+    for (const f of list.slice(0, 20)) {
+      console.log(`    ${f.file}${f.line ? ':' + f.line : ''}  ${f.text}`);
+    }
+    if (list.length > 20) console.log(`    ... and ${list.length - 20} more`);
+    console.log('');
+  }
+  process.exit(1);
 }
-process.exit(1);
+
+if (IS_MAIN) main();
