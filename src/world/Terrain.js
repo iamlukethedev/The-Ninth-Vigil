@@ -382,7 +382,12 @@ export class Terrain {
     try {
       const s = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('shot') : null;
       const map = { hub: 'town', inventory: 'town', overworld: 'moor', night: 'moor', dungeon: 'crypt', combat: 'crypt', closeup: 'crypt', boss: 'hell' };
-      if (s && map[s]) boot = map[s];
+      /* Own-property check, NOT a truthiness test: `map['toString']` is the
+         inherited Object.prototype function, which is truthy, so `?shot=toString`
+         made `boot` a function and `BIOMES[fn].size` was undefined — the
+         terrain then rebuilt to NaN and was caught and logged at the rebuild
+         try/catch. */
+      if (s && Object.hasOwn(map, s)) boot = map[s];
     } catch { /* no location — keep default */ }
 
     this.rebuild(boot);
@@ -397,11 +402,18 @@ export class Terrain {
 
   async applyScenario(name, cfg) {
     const env = cfg?.env ?? {};
-    const biome = BIOMES[env.biome] ? env.biome : 'moor';
+    /* Own-property check, NOT a truthiness test: `BIOMES['toString']` is the
+       inherited Object.prototype function, which is truthy, so a scenario
+       carrying `env.biome = 'toString'` would have been accepted as a biome
+       and then read `.size` off a function — undefined, and a NaN terrain. */
+    const biome = Object.hasOwn(BIOMES, env.biome) ? env.biome : 'moor';
     if (biome !== this.biome || !this._built) this.rebuild(biome);
 
-    const preset = BIOME_PRESETS[biome] ?? BIOME_PRESETS.moor;
-    const w = WEATHER_WET[env.weather] ?? 0.1;
+    /* Own-property checks: `biome` and `env.weather` both come from scenario
+       data, and `??` only catches null/undefined — so an inherited
+       Object.prototype member survived and `preset.wetBase` read undefined. */
+    const preset = Object.hasOwn(BIOME_PRESETS, biome) ? BIOME_PRESETS[biome] : BIOME_PRESETS.moor;
+    const w = Object.hasOwn(WEATHER_WET, env.weather) ? WEATHER_WET[env.weather] : 0.1;
     this._wetTarget = Math.min(1, preset.wetBase + w * (1 - preset.wetBase * 0.5));
     this._wet = this._wetTarget;                       // snap: screenshots must be settled
     this._rain = env.weather === 'rain' || env.weather === 'storm' ? 1 : 0;
@@ -453,8 +465,11 @@ export class Terrain {
    * ================================================================ */
 
   rebuild(biomeName) {
-    const B = BIOMES[biomeName] ?? BIOMES.moor;
-    this.biome = BIOMES[biomeName] ? biomeName : 'moor';
+    /* Own-property check, NOT `BIOMES[biomeName] ?? BIOMES.moor`. `??` only
+       catches null/undefined, so an inherited Object.prototype member survives
+       it and `B.size` reads undefined — a NaN terrain. */
+    const B = Object.hasOwn(BIOMES, biomeName) ? BIOMES[biomeName] : BIOMES.moor;
+    this.biome = Object.hasOwn(BIOMES, biomeName) ? biomeName : 'moor';
     this.size = B.size;
     this._x0 = -B.size * 0.5;
     this._z0 = -B.size * 0.5;
@@ -1833,7 +1848,7 @@ export class Terrain {
     const preset = BIOME_PRESETS[this.biome] ?? BIOME_PRESETS.moor;
     const kind = p?.kind ?? 'clear';
     const inten = typeof p?.intensity === 'number' ? Math.max(0, Math.min(1, p.intensity)) : 1;
-    const w = (WEATHER_WET[kind] ?? 0.1) * inten;
+    const w = (Object.hasOwn(WEATHER_WET, kind) ? WEATHER_WET[kind] : 0.1) * inten;
     this._wetTarget = Math.min(1, preset.wetBase + w * (1 - preset.wetBase * 0.5));
     this._rain = (kind === 'rain' || kind === 'storm') ? inten : 0;
   }
