@@ -75,12 +75,23 @@ export class Engine {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const q = new URLSearchParams(location.search).get('q');
     const tier = q ?? 'ultra';
-    const cfg = {
+    const TIERS = {
       low:   { tier: 'low',   shadowRes: 1024, cascades: 2, ssao: false, ssr: false, taa: false, volumetric: false, dpr: Math.min(dpr, 1) },
       med:   { tier: 'med',   shadowRes: 2048, cascades: 3, ssao: true,  ssr: false, taa: true,  volumetric: true,  dpr: Math.min(dpr, 1) },
       high:  { tier: 'high',  shadowRes: 2048, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 1.5) },
       ultra: { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 2) },
-    }[tier] ?? null;
+    };
+    /* Own-property check, NOT `TIERS[tier] ?? null`. `??` only catches
+       null/undefined, so an inherited Object.prototype member survives it:
+       `?q=toString` made `TIERS['toString']` the inherited FUNCTION, `?? null`
+       did not fire, the `??` fallback did not fire either, and `this.quality`
+       became a function instead of a config. The same defect also defeated
+       the `?q=low` low-end mitigation -- `engine.quality.tier` was undefined,
+       so AssetForge fell back to 'ultra' and the VRAM budget went 64 MB -> 180
+       MB. Measured live before the fix:
+         ?q=toString -> engineQualityType "function", engineQualityTier null
+       `Object.hasOwn` is the check that means what it says. */
+    const cfg = Object.hasOwn(TIERS, tier) ? TIERS[tier] : null;
     return cfg ?? { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true, ssr: true, taa: true, volumetric: true, dpr: 1 };
   }
 
