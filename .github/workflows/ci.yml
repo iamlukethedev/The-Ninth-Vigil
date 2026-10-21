@@ -26,6 +26,12 @@ jobs:
       # no Math.random, no runtime fetches, no remote URLs, no external asset
       # references, no stubs, and no dependencies outside the allowlist.
       - run: node tools/guard.mjs
+      # Proves the guard still catches what it claims. The guard had a rule
+      # scope that matched nothing on Windows, so it reported OK on a file
+      # containing four separate violations -- and nothing tested it, so the
+      # gap was invisible. This runs the guard against throwaway fixture
+      # repos and asserts on the violations each one produces.
+      - run: node tools/guard.test.mjs
 
   smoke:
     name: Boot + determinism
