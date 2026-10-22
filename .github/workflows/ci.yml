@@ -25,20 +25,25 @@ jobs:
       # Parses every module and enforces the hard rules from ENGINE_CONTRACT.md:
       # no Math.random, no runtime fetches, no remote URLs, no external asset
       # references, no stubs, and no dependencies outside the allowlist.
-      - run: node tools/guard.mjs
+      - run: npm run guard
       # Proves the guard still catches what it claims. The guard had a rule
       # scope that matched nothing on Windows, so it reported OK on a file
       # containing four separate violations -- and nothing tested it, so the
       # gap was invisible. This runs the guard against throwaway fixture
       # repos and asserts on the violations each one produces.
-      - run: node tools/guard.test.mjs
+      #
+      # The fixtures deliberately include backslash-shaped source paths, so a
+      # revert of the path normalisation fails HERE too, and not only on the
+      # windows-latest job below.
+      - run: npm run guard:test
 
   # The same gate on Windows, because the bug it guards against was a Windows
   # one. The guard's rule scope was POSIX-only, so on Windows it silently
   # skipped every rule -- and CI only ran on Linux, where the old pattern
   # already worked, so nothing ever caught it. The unit tests now cover the
-  # path normalisation directly, but running the real guard on a real Windows
-  # runner is the check that would have caught the original defect.
+  # path normalisation directly on both platforms, but running the real guard
+  # on a real Windows runner is still the check that would have caught the
+  # original defect.
   guard-windows:
     name: Convention guard (Windows)
     runs-on: windows-latest
@@ -50,8 +55,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node tools/guard.mjs
-      - run: node tools/guard.test.mjs
+      - run: npm run guard
+      - run: npm run guard:test
 
   smoke:
     name: Boot + determinism

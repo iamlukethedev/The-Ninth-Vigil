@@ -2,7 +2,7 @@
 /**
  * Guard self-test — proves the convention guard actually catches what it claims.
  *
- *   node tools/guard.test.mjs
+ *   node tools/guard.test.mjs          (or: npm run guard:test)
  *
  * WHY THIS EXISTS. The guard had gaps that no test would have caught, because
  * nothing tested it: its rule scope was POSIX-only, so under Windows every rule
@@ -21,6 +21,16 @@
  * touch the working tree and needs no browser, no network and no new
  * dependency.
  *
+ * THE FIXTURES ARE EXPLICITLY SEPARATED BY PLATFORM. `fixture()` copies
+ * `guard.mjs` and `guard-rules.mjs` into the fixture's `tools/`, because the
+ * guard resolves its root from its OWN location — run it from a path whose
+ * parent is not the repository and it scans the repository that holds it.
+ * `fixtureWindowsPaths()` additionally adds a `src\game\` DIRECTORY, whose name
+ * contains a literal backslash. That is what makes this suite platform-proof:
+ * a fixture whose source paths are backslash-shaped behaves as a Windows
+ * checkout on Linux, macOS and Windows alike, so a revert of the normalisation
+ * is detected on every platform instead of only on the `windows-latest` job.
+ *
  * The assertions read the guard's JSON output rather than its human-readable
  * report, because a test that parses exact spacing and em dashes breaks when
  * someone rewords a message — and a test that breaks on a reword is a test
@@ -32,11 +42,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'nod
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { normalizeRel, matchesScope, classifyValue } from './guard.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { normalizeRel, matchesScope, classifyValue } from './guard-rules.mjs';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
-const GUARD = join(ROOT, 'tools', 'guard.mjs');
 
 /* --- fixture helpers ---------------------------------------------------- */
 
@@ -44,8 +53,19 @@ function fixture(name) {
   const dir = mkdtempSync(join(tmpdir(), `guard-fixture-${name}-`));
   mkdirSync(join(dir, 'src'), { recursive: true });
   mkdirSync(join(dir, 'tools'), { recursive: true });
-  copyFileSync(GUARD, join(dir, 'tools', 'guard.mjs'));
+  copyFileSync(join(ROOT, 'tools', 'guard.mjs'), join(dir, 'tools', 'guard.mjs'));
+  copyFileSync(join(ROOT, 'tools', 'guard-rules.mjs'), join(dir, 'tools', 'guard-rules.mjs'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }));
+  return dir;
+}
+
+/* A fixture whose source paths carry WINDOWS separators. The directory name
+   contains a literal backslash, so `relative(root, p)` returns
+   `src\game\a.js` here — and on Linux the same string is what a POSIX checkout
+   would produce if the normalisation were reverted. */
+function fixtureWindowsPaths(name) {
+  const dir = fixture(name);
+  mkdirSync(join(dir, 'src\\game'));
   return dir;
 }
 
@@ -93,13 +113,24 @@ const cases = [];
 
 function testCase(name, fn) { cases.push({ name, fn }); }
 
-/* --- the path normalisation, which is what the Windows fix rests on --- */
+/* --- the path normalisation, which is what the cross-platform fix rests on --- */
 
 testCase('normalizeRel turns a backslash path into a forward-slash path', () => {
   const got = normalizeRel('src\\game\\ai\\NavGrid.js');
   return got === 'src/game/ai/NavGrid.js'
     ? null
     : `expected "src/game/ai/NavGrid.js", got "${got}"`;
+});
+
+testCase('normalizeRel is platform-independent: it rewrites backslashes even when path.sep is a forward slash', () => {
+  /* The bug: `split(sep).join('/')` is a no-op on POSIX, so a backslash path
+     handed to a POSIX guard came back unchanged and missed a /^src\// scope.
+     Asserted explicitly rather than derived from `path.sep`, so it holds on
+     every platform. */
+  const got = normalizeRel('src\\game\\ai\\NavGrid.js');
+  return got === 'src/game/ai/NavGrid.js'
+    ? null
+    : `expected backslashes to be rewritten, got "${got}"`;
 });
 
 testCase('the src scope matches a backslash path, which is what Windows produces', () => {
@@ -117,6 +148,28 @@ testCase('the src scope still matches a forward-slash path', () => {
 
 testCase('the src scope does not match a path outside src/', () => {
   return matchesScope(/^src\//, 'tools/guard.mjs') ? 'tools/ matched the src/ scope' : null;
+});
+
+testCase('a Windows-shaped path END TO END: backslash dirs still get every rule', () => {
+  /* The regression that mattered was not the unit function but the SCOPE:
+     with a reverted normalisation the five src/ rules are skipped entirely, so
+     a file in `src\` carrying four violations reports OK. These paths are
+     constructed as backslashes explicitly, so a revert is caught here on
+     Linux and macOS too — not only on the Windows job. */
+  const dir = fixtureWindowsPaths('winpaths');
+  try {
+    writeFileSync(join(dir, 'src\\game', 'a.js'),
+      "export function f() { return Math.random(); }\n"
+      + "export function g() { return fetch('/x'); }\n"
+      + "export const u = 'https://cdn.example.com/x.js';\n"
+      + "export const t = 'stone.png';\n");
+    const r = run(dir);
+    for (const rule of ['no-math-random', 'no-runtime-fetch', 'no-remote-urls', 'no-external-assets']) {
+      const problem = expectRule(r, rule);
+      if (problem) return problem;
+    }
+    return null;
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 testCase('classifyValue tells remote, asset and neither apart', () => {
@@ -268,6 +321,37 @@ testCase('an inline module script importing from a CDN is caught', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+testCase('a protocol-relative CDN in an inline script is caught', () => {
+  const dir = fixture('htmlinlineproto');
+  try {
+    /* `'//cdn.example.com/x.js'` has a HOST after `//`, so it is a load. It
+       shares a block with the bare `'// note'` case below, which is not. */
+    writeFileSync(join(dir, 'index.html'),
+      '<!doctype html><html><head>\n'
+      + '  <script type="module">\n'
+      + "    import * as x from '//cdn.example.com/x.js';\n"
+      + '  </script>\n'
+      + '</head></html>\n');
+    return expectRule(run(dir), 'no-remote-urls');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+testCase('a bare `//` in a string is NOT a remote URL', () => {
+  const dir = fixture('htmlslashnote');
+  try {
+    /* `'// note'` starts with two slashes but has no host, so it is not a
+       fetch. Flagging it would train people to ignore the rule. */
+    writeFileSync(join(dir, 'index.html'),
+      '<!doctype html><html><head>\n'
+      + '  <script type="module">\n'
+      + "    const note = '// note';\n"
+      + "    const label = '// TODO: explain this';\n"
+      + '  </script>\n'
+      + '</head></html>\n');
+    return expectClean(run(dir));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 testCase('a CSS @import of a remote font is caught', () => {
   const dir = fixture('htmlcssimport');
   try {
@@ -318,6 +402,29 @@ testCase('an asset path with a query string is caught', () => {
   try {
     writeFileSync(join(dir, 'index.html'), '<!doctype html><html><head><img src="stone.png?v=2" alt="" /></head></html>\n');
     return expectRule(run(dir), 'no-external-assets');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+testCase('a repeated asset value reports each occurrence on its own line', () => {
+  /* `stone.png` appears twice in the same block. `content.indexOf(c)` always
+     resolved to the FIRST occurrence, so the second hit was reported on the
+     first one's line. */
+  const dir = fixture('htmlrepeat');
+  try {
+    writeFileSync(join(dir, 'index.html'),
+      '<!doctype html><html><head>\n'
+      + '  <script type="module">\n'
+      + "    const a = 'stone.png';\n"
+      + "    const b = 'stone.png';\n"
+      + '  </script>\n'
+      + '</head></html>\n');
+    const r = run(dir);
+    const hits = (r.json?.violations ?? []).filter((v) => v.id === 'no-external-assets' && v.file === 'index.html');
+    if (hits.length !== 2) return `expected 2 asset hits, got ${hits.length} (${JSON.stringify(hits.map((h) => [h.line, h.text]))})`;
+    const lines = hits.map((h) => h.line).sort((a, b) => a - b);
+    if (lines[0] === lines[1]) return `both hits reported line ${lines[0]} — a repeated value is not located per occurrence`;
+    if (lines[0] !== 3 || lines[1] !== 4) return `expected lines 3 and 4, got ${JSON.stringify(lines)}`;
+    return null;
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -379,11 +486,51 @@ testCase('a dependency outside the allowlist is caught', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+/* --- the direct-run guarantee ------------------------------------------- *
+ *
+ * The guard used to decide whether to run with a self-referential
+ * `import.meta.url` comparison. If that check ever misfired, the tool started,
+ * did nothing, and exited 0 — which CI reads as a pass. The rules now live in
+ * `guard-rules.mjs` and `guard.mjs` runs unconditionally, so that failure mode
+ * is gone by construction. These two cases pin the property instead of assuming
+ * it: importing the rules must not scan, and invoking the guard must always
+ * produce a report. */
+
+testCase('importing guard-rules.mjs does not run a scan or exit the process', async () => {
+  const dir = fixture('importsideeffect');
+  try {
+    /* `guard-rules.mjs` holds no I/O. If it ever gained an import side effect
+       that scanned or exited, this dynamic import would reject or kill the
+       suite — a failure, never a silent pass. */
+    /* `pathToFileURL`, not a bare path: on Windows an absolute path is not a
+       valid ESM specifier. */
+    const mod = await import(pathToFileURL(join(dir, 'tools', 'guard-rules.mjs')).href);
+    return typeof mod.normalizeRel === 'function' && typeof mod.scanHtml === 'function'
+      ? null
+      : 'guard-rules.mjs did not export the expected helpers';
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+testCase('the guard ALWAYS reports: an invocation can never silently exit 0', () => {
+  /* A guard that decided "I was imported, so I will do nothing" exited 0
+     without ever reporting. There is no such branch any more, so every
+     invocation must produce a JSON report — including this clean fixture. */
+  const dir = fixture('alwaysreports');
+  try {
+    writeFileSync(join(dir, 'src', 'main.js'), "export const x = 1;\n");
+    const r = run(dir);
+    if (!r.json) return `guard produced no JSON report (stdout: ${JSON.stringify(r.out.slice(0, 200))})`;
+    if (typeof r.json.files !== 'number') return 'guard report has no file count — it did not actually scan';
+    if (r.json.files === 0) return 'guard reported 0 files — it scanned nothing';
+    return null;
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 /* --- run ---------------------------------------------------------------- */
 
 let failed = 0;
 for (const c of cases) {
-  const problem = c.fn();
+  const problem = await c.fn();
   if (problem) {
     failed++;
     console.log(`  ✗ ${c.name}\n      ${problem}`);
