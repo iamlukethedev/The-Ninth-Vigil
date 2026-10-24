@@ -295,14 +295,17 @@ judged by capturing frames and measuring them, not by reasoning about the code.
 | `node tools/smoke.mjs` | asserts the game boots, every module loads, every shader program **links**, and two independent runs of a scenario reach identical simulation state. `--pixels` adds a canvas hash. CI gates on it |
 | `node tools/shot.mjs --all --w=1600 --h=900` | deterministic headless capture of all 8 scenarios |
 | `node tools/sheet.mjs --analyze` | contact sheet plus objective frame metrics — lifted blacks, missing highlights, contrast collapse, oversaturation |
+| `node tools/diff.mjs --scenario=combat` | pixel diff of a new capture against the committed baseline for that scenario: changed %, max channel delta, per-region numbers, changed bounding box, and a red/blue diff PNG in `shots/_diff/`. Non-zero when it moved |
 | `node tools/crop.mjs --in=shots/combat.png --x=0.5 --y=0.5 --w=0.25 --scale=4` | crop and nearest-neighbour zoom. Essential: a 1600x900 frame viewed whole hides the defects that matter |
 | `node tools/actors.mjs --port=5190` | actor visibility audit — is a character not drawing, off-frame, too small, or indistinguishable from the floor |
 | `node tools/live.mjs --port=5190` | capture the live browser path, which catches bugs the harness cannot see |
 | `node tools/debug.mjs --scenario=combat` | boot with full console and error output |
 | `node tools/probe.mjs --port=5190` | live scene-graph inspection |
 
-`npm run check` runs the capture and the analysis together; `npm run guard` and `npm run smoke` are
-the two that CI enforces on every push and pull request.
+`npm run check` runs the capture and the analysis together; `npm run guard`, `npm run smoke` and the
+two tool self-tests (`node tools/guard.test.mjs`, `node tools/diff.test.mjs`) are what CI enforces on
+every push and pull request. The pixel diff itself is deliberately *not* a CI gate: it compares
+against baselines captured on one machine, and a different GPU legitimately renders differently.
 
 CI runs on GitHub-hosted runners, which have no GPU, so the smoke job renders through SwiftShader.
 Two consequences worth knowing if you touch it. Chromium's compositor **hangs indefinitely** when

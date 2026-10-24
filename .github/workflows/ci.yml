@@ -26,6 +26,13 @@ jobs:
       # no Math.random, no runtime fetches, no remote URLs, no external asset
       # references, no stubs, and no dependencies outside the allowlist.
       - run: node tools/guard.mjs
+      # Proves the pixel-diff gate measures and fails as documented, against
+      # synthetic fixtures in a temp dir. The diff tool is a gate, so its exit
+      # code is the product: this runs the real CLI and asserts on exit 0/1/2,
+      # the changed-pixel count, max channel delta, the bounding box, the
+      # written diff PNG, and one spot pixel decoded from a committed baseline.
+      # No browser, no GPU, no dev server -- png.mjs is node:zlib.
+      - run: node tools/diff.test.mjs
       # Proves the guard still catches what it claims. The guard had a rule
       # scope that matched nothing on Windows, so it reported OK on a file
       # containing four separate violations -- and nothing tested it, so the
