@@ -73,8 +73,23 @@ node tools/smoke.mjs    # boots, loads all modules, links shaders, proves determ
 npm run check           # capture all 8 scenarios + objective frame analysis
 ```
 
-`guard` and `smoke` are what CI runs. `npm run check` needs a GPU and is the one
-you run locally before claiming a visual fix.
+`npm run check` runs the capture and the analysis together, and **fails** when a captured frame
+trips a hard analysis rule (see below), so a broken frame cannot be reported as a green run.
+`guard` and `smoke` are what CI runs — plus the two tool self-tests. `npm run check` needs a GPU and
+is the one you run locally before claiming a visual fix.
+
+### What `sheet.mjs --analyze` fails on, and what it only reports
+
+The analysis exits **1** when a frame trips a *hard* rule: nearly black (`mean < 0.05`), too bright
+(`mean > 0.5`, target 0.16-0.34), or a flat palette (`< 90` distinct colour buckets). Those mean the
+frame is not a lit, textured scene — a rendering failure or a `CRITIC_RUBRIC.md` instant fail.
+
+Everything else prints with an `[advisory]` tag and does **not** fail the run: lifted blacks,
+no highlights, low contrast, blown-out highlights, oversaturation. Those describe a scene whose
+value range drifted, which is a judgement call about the look and not proof the renderer broke; the
+committed baselines currently sit close enough to those ranges that a legitimate atmosphere pass
+would cross one. `--no-fail` exists to inspect a known-bad frame, and it prints every hard failure it
+suppressed so a suppressed run can never be mistaken for a clean one.
 
 ## Proving a visual change
 
