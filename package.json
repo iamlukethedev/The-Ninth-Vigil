@@ -13,6 +13,7 @@
     "debug": "node tools/debug.mjs",
     "guard": "node tools/guard.mjs",
     "guard:test": "node tools/guard.test.mjs",
+    "paths:test": "node tools/paths.test.mjs",
     "smoke": "node tools/smoke.mjs",
     "check": "node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze"
   },
