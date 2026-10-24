@@ -68,13 +68,24 @@ exception and disable itself rather than killing the frame loop.
 ## Run the checks
 
 ```bash
-node tools/guard.mjs    # the rules above, enforced. Seconds. CI gates on this.
+npm run guard           # the rules above, enforced. Seconds. CI gates on this.
+npm run guard:test      # proves the guard still catches what it claims. Seconds. CI gates on this.
 node tools/smoke.mjs    # boots, loads all modules, links shaders, proves determinism
 npm run check           # capture all 8 scenarios + objective frame analysis
 ```
 
-`guard` and `smoke` are what CI runs. `npm run check` needs a GPU and is the one
+`guard`, `guard:test` and `smoke` are what CI runs. `npm run check` needs a GPU and is the one
 you run locally before claiming a visual fix.
+
+Run `guard:test` too. The guard had a rule scope that matched nothing on Windows, so it
+reported `OK` on a file containing four separate violations — and nothing tested it, so the gap
+was invisible until someone ran the guard by hand. The test suite is what keeps that from
+happening again; it is fast, it needs no browser, and it fails if the guard stops working.
+
+The guard's rules live in `tools/guard-rules.mjs` and the runner in `tools/guard.mjs`. That
+split is load-bearing: `guard.mjs` runs whenever it is invoked, so there is no "was I imported?"
+branch that could misfire and exit 0 having scanned nothing. Keep it that way — a guard that
+can silently decide to do nothing is a guard that reports OK forever.
 
 ## Proving a visual change
 
