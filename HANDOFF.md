@@ -68,8 +68,10 @@ sitting on a history of `b2a0838` / `a4a9118` / `d2aad35` / `f9f0cfd`. None of t
 four objects exists in this repository — `git cat-file -t` returns *Not a valid
 object name* for every one of them — and the twelve files had already landed as
 `89eea7c wave 3: contact-AO resolve, moor landform, character tiers,
-click-to-move` before anyone could read the instruction. This paragraph is that
-block's tombstone; there is no tree to recover.
+click-to-move`, whose `src/` diffstat is **exactly** the twelve files:
+`12 files changed, 1770 insertions(+), 189 deletions(-)` — the same `+1770 -189`
+this block quoted as uncommitted. This paragraph is that block's tombstone; there
+is no tree to recover.
 
 **What is actually current:**
 
