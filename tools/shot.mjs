@@ -16,6 +16,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { resolveInside } from './paths.mjs';
 import net from 'node:net';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -120,7 +121,7 @@ const browser = await chromium.launch({
 const list = args.all ? Object.keys(SCENARIOS) : [String(args.scenario ?? 'combat')];
 let failed = false;
 for (const s of list) {
-  const out = resolve(ROOT, String(args.out ?? `shots/${s}.png`));
+  const out = resolveInside(String(args.out ?? `shots/${s}.png`), '--out=');
   const frames = Number(args.frames ?? SCENARIOS[s]?.frames ?? 120);
   try {
     const { problems, perf } = await shoot(browser, s, out, w, h, frames);

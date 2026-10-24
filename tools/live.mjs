@@ -10,6 +10,7 @@
 import { chromium } from 'playwright';
 import { resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { resolveInside } from './paths.mjs';
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -19,7 +20,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 const port = arg('port', '5190');
 const url = arg('url', `http://localhost:${port}/`);
 const wait = Number(arg('wait', 8)) * 1000;
-const out = resolve(ROOT, arg('out', 'shots/_live.png'));
+const out = resolveInside(arg('out', 'shots/_live.png'), '--out=');
 
 const browser = await chromium.launch({ args: ['--use-angle=metal', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
