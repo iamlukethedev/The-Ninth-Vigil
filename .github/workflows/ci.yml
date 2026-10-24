@@ -56,3 +56,10 @@ jobs:
       # asserting cross-machine equality would produce a permanently red build.
       - name: Smoke test (software rendering)
         run: node tools/smoke.mjs --software --scenario=combat --frames=45 --w=480 --h=270
+      # Proves the frame analysis actually gates: the analyser used to print
+      # "FLAT PALETTE" and exit 0, so `npm run check` could not fail on a broken
+      # frame. Runs here rather than in the guard job because sheet.mjs decodes
+      # through Chromium, which this job installs. Fixtures are synthetic
+      # screenshots in a temp dir; the real baselines are only read.
+      - name: Sheet analysis gate self-test
+        run: node tools/sheet.test.mjs

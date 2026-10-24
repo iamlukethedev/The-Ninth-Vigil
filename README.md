@@ -294,7 +294,7 @@ judged by capturing frames and measuring them, not by reasoning about the code.
 | `node tools/guard.mjs` | enforces the hard rules — no `Math.random()`, no runtime fetches, no external asset references, no stubs, no dependencies off the allowlist. Seconds, no browser. CI gates on it |
 | `node tools/smoke.mjs` | asserts the game boots, every module loads, every shader program **links**, and two independent runs of a scenario reach identical simulation state. `--pixels` adds a canvas hash. CI gates on it |
 | `node tools/shot.mjs --all --w=1600 --h=900` | deterministic headless capture of all 8 scenarios |
-| `node tools/sheet.mjs --analyze` | contact sheet plus objective frame metrics — lifted blacks, missing highlights, contrast collapse, oversaturation |
+| `node tools/sheet.mjs --analyze` | contact sheet plus objective frame metrics — lifted blacks, missing highlights, contrast collapse, oversaturation. Exits non-zero on a *hard* failure (nearly black, too bright, flat palette); the rest are tagged advisory. `--no-fail` reports without gating |
 | `node tools/crop.mjs --in=shots/combat.png --x=0.5 --y=0.5 --w=0.25 --scale=4` | crop and nearest-neighbour zoom. Essential: a 1600x900 frame viewed whole hides the defects that matter |
 | `node tools/actors.mjs --port=5190` | actor visibility audit — is a character not drawing, off-frame, too small, or indistinguishable from the floor |
 | `node tools/live.mjs --port=5190` | capture the live browser path, which catches bugs the harness cannot see |
