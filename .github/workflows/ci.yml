@@ -32,9 +32,12 @@ jobs:
       # gap was invisible. This runs the guard against throwaway fixture
       # repos and asserts on the violations each one produces.
       #
-      # The fixtures deliberately include backslash-shaped source paths, so a
-      # revert of the path normalisation fails HERE too, and not only on the
-      # windows-latest job below.
+      # The `src/` rule cases feed the rules a literal backslash path — what
+      # `relative()` returns on Windows — so a revert of the path
+      # normalisation fails HERE. That is the job it has to do: a
+      # path.sep-based normalisation is correct on Windows and broken on POSIX,
+      # so the windows-latest job below cannot catch that revert, and this one
+      # is the only job that can.
       - run: npm run guard:test
 
   # The same gate on Windows, because the bug it guards against was a Windows
@@ -44,6 +47,11 @@ jobs:
   # path normalisation directly on both platforms, but running the real guard
   # on a real Windows runner is still the check that would have caught the
   # original defect.
+  #
+  # Note what this job does NOT prove: the old `path.sep`-based normalisation
+  # was correct on Windows, so reverting it passes here. The rule cases hand
+  # the rules a backslash path on every platform, so the POSIX job is what
+  # catches that revert.
   guard-windows:
     name: Convention guard (Windows)
     runs-on: windows-latest

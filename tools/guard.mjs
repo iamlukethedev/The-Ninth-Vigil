@@ -18,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { join, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  RULES, HTML_RULES, normalizeRel, stripComments, scanHtml,
+  RULES, HTML_RULES, normalizeRel, scanHtml, scanSource,
 } from './guard-rules.mjs';
 
 /* fileURLToPath, not URL.pathname — the latter percent-encodes, so any checkout
@@ -67,19 +67,10 @@ export function runGuard({ root = ROOT } = {}) {
 
   /* --- 2. convention rules, comments stripped --- */
   for (const p of files) {
-    /* NORMALISED, so the scope below is one convention on every platform. */
-    const rel = normalizeRel(relative(root, p));
-    const raw = readFileSync(p, 'utf8');
-    const stripped = stripComments(raw);
-    for (const rule of RULES) {
-      if (rule.scope && !rule.scope.test(rel)) continue;
-      const lines = (rule.raw ? raw : stripped).split('\n');
-      lines.forEach((line, i) => {
-        rule.re.lastIndex = 0;
-        const m = rule.re.exec(line);
-        if (m) failures.push({ id: rule.id, file: rel, line: i + 1, text: m[0].trim(), why: rule.why });
-      });
-    }
+    /* The path goes in NORMALISED, so the scope below is one convention on
+       every platform; the rules themselves are applied by scanSource, which is
+       also what the self-test drives. */
+    scanSource(relative(root, p), readFileSync(p, 'utf8'), failures);
   }
 
   /* --- 2b. HTML entry points, scanned separately --- */

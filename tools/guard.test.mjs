@@ -21,15 +21,20 @@
  * touch the working tree and needs no browser, no network and no new
  * dependency.
  *
- * THE FIXTURES ARE EXPLICITLY SEPARATED BY PLATFORM. `fixture()` copies
- * `guard.mjs` and `guard-rules.mjs` into the fixture's `tools/`, because the
- * guard resolves its root from its OWN location — run it from a path whose
+ * THE RULE CASES ARE FED WINDOWS-SHAPED PATHS ON EVERY PLATFORM. `fixture()`
+ * copies `guard.mjs` and `guard-rules.mjs` into the fixture's `tools/`, because
+ * the guard resolves its root from its OWN location — run it from a path whose
  * parent is not the repository and it scans the repository that holds it.
- * `fixtureWindowsPaths()` additionally adds a `src\game\` DIRECTORY, whose name
- * contains a literal backslash. That is what makes this suite platform-proof:
- * a fixture whose source paths are backslash-shaped behaves as a Windows
- * checkout on Linux, macOS and Windows alike, so a revert of the normalisation
- * is detected on every platform instead of only on the `windows-latest` job.
+ *
+ * The `src/` rule cases instead call `scanSource(rel, text)`, the same function
+ * the walker calls, with a literal backslash path. That is what makes them
+ * platform-proof, and it is not cosmetic: a `path.sep`-based normalisation —
+ * the bug the review found — is CORRECT on Windows and broken on POSIX, so the
+ * `windows-latest` job passes with it reverted and only these cases catch it.
+ * The path is passed in rather than faked on disk because a literal backslash
+ * directory cannot exist on Windows, and on POSIX `node --check` rejects such a
+ * path as an invalid module specifier, reporting a phantom syntax violation
+ * that has nothing to do with the rules under test.
  *
  * The assertions read the guard's JSON output rather than its human-readable
  * report, because a test that parses exact spacing and em dashes breaks when
@@ -43,7 +48,7 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { normalizeRel, matchesScope, classifyValue } from './guard-rules.mjs';
+import { normalizeRel, matchesScope, classifyValue, scanSource } from './guard-rules.mjs';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 
@@ -56,16 +61,6 @@ function fixture(name) {
   copyFileSync(join(ROOT, 'tools', 'guard.mjs'), join(dir, 'tools', 'guard.mjs'));
   copyFileSync(join(ROOT, 'tools', 'guard-rules.mjs'), join(dir, 'tools', 'guard-rules.mjs'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }));
-  return dir;
-}
-
-/* A fixture whose source paths carry WINDOWS separators. The directory name
-   contains a literal backslash, so `relative(root, p)` returns
-   `src\game\a.js` here — and on Linux the same string is what a POSIX checkout
-   would produce if the normalisation were reverted. */
-function fixtureWindowsPaths(name) {
-  const dir = fixture(name);
-  mkdirSync(join(dir, 'src\\game'));
   return dir;
 }
 
@@ -150,26 +145,34 @@ testCase('the src scope does not match a path outside src/', () => {
   return matchesScope(/^src\//, 'tools/guard.mjs') ? 'tools/ matched the src/ scope' : null;
 });
 
-testCase('a Windows-shaped path END TO END: backslash dirs still get every rule', () => {
+testCase('a Windows-shaped path gets every rule, and the separator changes nothing', () => {
   /* The regression that mattered was not the unit function but the SCOPE:
-     with a reverted normalisation the five src/ rules are skipped entirely, so
-     a file in `src\` carrying four violations reports OK. These paths are
-     constructed as backslashes explicitly, so a revert is caught here on
-     Linux and macOS too — not only on the Windows job. */
-  const dir = fixtureWindowsPaths('winpaths');
-  try {
-    writeFileSync(join(dir, 'src\\game', 'a.js'),
-      "export function f() { return Math.random(); }\n"
-      + "export function g() { return fetch('/x'); }\n"
-      + "export const u = 'https://cdn.example.com/x.js';\n"
-      + "export const t = 'stone.png';\n");
-    const r = run(dir);
-    for (const rule of ['no-math-random', 'no-runtime-fetch', 'no-remote-urls', 'no-external-assets']) {
-      const problem = expectRule(r, rule);
-      if (problem) return problem;
+     with a reverted normalisation the src/ rules are skipped entirely, so a
+     file in `src\` carrying four violations reports nothing at all.
+
+     Driven through `scanSource(rel, text)` — the same function `guard.mjs`
+     calls for every file it walks — with the path passed IN. That is the only
+     way to put a genuine backslash path in front of the rules on every
+     platform: a literal backslash directory cannot be created on Windows, and
+     on POSIX `node --check` rejects such a path as an invalid module specifier,
+     which would report a phantom syntax violation unrelated to these rules. */
+  const src = "export function f() { return Math.random(); }\n"
+    + "export function g() { return fetch('/x'); }\n"
+    + "export const u = 'https://cdn.example.com/x.js';\n"
+    + "export const t = 'stone.png';\n";
+  const win = [];
+  const posix = [];
+  scanSource('src\\game\\a.js', src, win);
+  scanSource('src/game/a.js', src, posix);
+  const want = ['no-math-random', 'no-runtime-fetch', 'no-remote-urls', 'no-external-assets'];
+  for (const rule of want) {
+    if (!win.some((v) => v.id === rule)) {
+      return `${rule} not reported for a backslash path; got [${win.map((v) => v.id)}] — the Windows regression is back`;
     }
-    return null;
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+  const winIds = win.map((v) => `${v.id}@${v.line}`).join(',');
+  const posixIds = posix.map((v) => `${v.id}@${v.line}`).join(',');
+  return winIds === posixIds ? null : `separator changed the result: backslash [${winIds}] vs POSIX [${posixIds}]`;
 });
 
 testCase('classifyValue tells remote, asset and neither apart', () => {
@@ -189,7 +192,35 @@ testCase('classifyValue tells remote, asset and neither apart', () => {
   return null;
 });
 
-/* --- the JS rules --- */
+/* --- the JS rules ------------------------------------------------------- *
+ *
+ * The rule cases below are driven through `scanSource(rel, text)`, the same
+ * function `guard.mjs` calls for every file it walks, with the relative path
+ * passed IN. The paths are backslash-shaped because that is what `relative()`
+ * returns on Windows, written literally so the cases are identical on every
+ * platform.
+ *
+ * That is deliberate, and it is the whole point of the follow-up. A
+ * `path.sep`-based normalisation is CORRECT on Windows and broken on POSIX, so
+ * the windows-latest job cannot catch a revert of it — only cases that hand the
+ * rules a backslash path regardless of platform can. Passing the path in also
+ * avoids faking one on disk: see the note on the Windows-shaped case above.
+ */
+
+const WIN_REL = 'src\\game\\a.js';
+
+/** Apply the rules to a file at a WINDOWS-shaped path and return the failures. */
+function scanWin(text) {
+  const failures = [];
+  scanSource(WIN_REL, text, failures);
+  return failures;
+}
+
+function expectId(failures, id) {
+  return failures.some((f) => f.id === id)
+    ? null
+    : `${id} not reported for ${WIN_REL}; got [${failures.map((f) => f.id)}]`;
+}
 
 testCase('clean repo reports no violations and exits 0', () => {
   const dir = fixture('clean');
@@ -200,53 +231,45 @@ testCase('clean repo reports no violations and exits 0', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-testCase('Math.random() in src/ is caught', () => {
-  const dir = fixture('mathrandom');
+testCase('the walk is wired to the rules: a violation in src/ is caught end to end', () => {
+  /* The scanSource cases below prove the rules; this one proves guard.mjs
+     actually calls them with a relative path, on a real file it walked to. */
+  const dir = fixture('wired');
   try {
     writeFileSync(join(dir, 'src', 'a.js'), "export function f() { return Math.random(); }\n");
-    return expectRule(run(dir), 'no-math-random');
+    const r = run(dir);
+    const hit = (r.json?.violations ?? []).find((v) => v.id === 'no-math-random');
+    if (!hit) return expectRule(r, 'no-math-random');
+    const want = join(dir, 'src', 'a.js');
+    return hit.file === 'src/a.js'
+      ? null
+      : `expected the relative path "src/a.js", got "${hit.file}" (fixture ${want})`;
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+testCase('Math.random() in src/ is caught', () =>
+  expectId(scanWin("export function f() { return Math.random(); }\n"), 'no-math-random'));
 
 testCase('a comment ASSERTING no Math.random() is not a violation', () => {
-  const dir = fixture('mathcomment');
-  try {
-    writeFileSync(join(dir, 'src', 'a.js'), "// Math.random() is banned here.\nexport const x = 1;\n");
-    return expectClean(run(dir));
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  const clean = scanWin("// Math.random() is banned here.\nexport const x = 1;\n");
+  if (clean.length) return `a comment-only file reported [${clean.map((f) => f.id)}]`;
+  /* Non-vacuous: real code at the SAME path IS caught. Without this the case
+     above would pass even if the scope had stopped matching this path. */
+  const dirty = scanWin("export function f() { return Math.random(); }\n");
+  return dirty.length ? null : 'the scope did not match this path, so the case above proves nothing';
 });
 
-testCase('fetch() in src/ is caught', () => {
-  const dir = fixture('fetch');
-  try {
-    writeFileSync(join(dir, 'src', 'a.js'), "export function f() { return fetch('/x'); }\n");
-    return expectRule(run(dir), 'no-runtime-fetch');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+testCase('fetch() in src/ is caught', () =>
+  expectId(scanWin("export function f() { return fetch('/x'); }\n"), 'no-runtime-fetch'));
 
-testCase('a remote URL in src/ is caught', () => {
-  const dir = fixture('remoteurl');
-  try {
-    writeFileSync(join(dir, 'src', 'a.js'), "export const u = 'https://cdn.example.com/x.js';\n");
-    return expectRule(run(dir), 'no-remote-urls');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+testCase('a remote URL in src/ is caught', () =>
+  expectId(scanWin("export const u = 'https://cdn.example.com/x.js';\n"), 'no-remote-urls'));
 
-testCase('an external asset path in src/ is caught', () => {
-  const dir = fixture('asset');
-  try {
-    writeFileSync(join(dir, 'src', 'a.js'), "export const t = 'stone.png';\n");
-    return expectRule(run(dir), 'no-external-assets');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+testCase('an external asset path in src/ is caught', () =>
+  expectId(scanWin("export const t = 'stone.png';\n"), 'no-external-assets'));
 
-testCase('a TODO stub in src/ is caught', () => {
-  const dir = fixture('stub');
-  try {
-    writeFileSync(join(dir, 'src', 'a.js'), "// TODO: implement the real thing\nexport const x = 1;\n");
-    return expectRule(run(dir), 'no-stub-code');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+testCase('a TODO stub in src/ is caught', () =>
+  expectId(scanWin("// TODO: implement the real thing\nexport const x = 1;\n"), 'no-stub-code'));
 
 testCase('a file that does not parse is caught', () => {
   const dir = fixture('syntax');

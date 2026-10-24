@@ -153,6 +153,34 @@ export const RULES = [
   },
 ];
 
+/**
+ * Apply the rules to ONE file, given its repository-relative path.
+ *
+ * This is the seam the tests drive. It takes the path as an ARGUMENT rather
+ * than asking the filesystem for one, so a Windows-shaped path can be tested on
+ * every platform: `relative()` is what differs between platforms, and it is the
+ * caller's job, not this function's. `guard.mjs` calls it with
+ * `relative(root, p)` for every file it walks.
+ *
+ * `text` is the RAW source. Comment stripping (and the one rule that must see
+ * comments) is handled here, so callers cannot accidentally pass the wrong
+ * variant.
+ */
+export function scanSource(rel, text, failures) {
+  const norm = normalizeRel(rel);
+  const stripped = stripComments(text);
+  for (const rule of RULES) {
+    if (!matchesScope(rule.scope, norm)) continue;
+    const lines = (rule.raw ? text : stripped).split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      rule.re.lastIndex = 0;
+      const m = rule.re.exec(lines[i]);
+      if (m) failures.push({ id: rule.id, file: norm, line: i + 1, text: m[0].trim(), why: rule.why });
+    }
+  }
+  return failures;
+}
+
 /* ------------------------------------------------------------------ *
  * HTML entry points
  * ------------------------------------------------------------------ *
