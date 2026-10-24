@@ -1,31 +1,81 @@
 # KNOWN ISSUES — authoritative open list
 
-Re-triaged against a **fresh 8-scenario capture** taken after the cascade fix
-(commit `d2aad35`). Everything here has been reproduced on the current build;
-anything from the previous list that no longer reproduces is in
-[Closed](#closed-no-longer-reproduces) at the bottom rather than being re-fixed.
+Measured from the **eight captures committed in `3355968`** — "shots: recapture
+the crypt scenarios after the frost fix" — the last commit that touches `shots/`:
+
+```bash
+git log -1 --format='%h %s' -- shots/        # 3355968 shots: recapture the crypt scenarios after the frost fix
+git rev-list --count 3355968..HEAD -- shots/ # 0
+```
+
+The previous revision of this table said it was measured after the cascade fix
+`d2aad35`. That object is not in this repository (`git cat-file -t d2aad35` →
+*Not a valid object name*), and the rows it carried described a different build:
+`boss` blk% 25.5 against 3.3 measured, `overworld` p99 0.656 against 0.750
+measured. The rows below were regenerated with `node tools/sheet.mjs --analyze`,
+which reads the committed PNGs and does **not** boot the game — so the table is
+only ever as current as `shots/`. Re-run it before acting on a row.
 
 Every entry is tagged with the `CRITIC_RUBRIC.md` instant-fail flag it trips.
 Entries with no flag are quality items, not instant-fails, and are out of scope
 until the flags are at zero.
 
-**Measured baseline** (`node tools/sheet.mjs --analyze`, 1600x900):
+**Measured baseline** (`node tools/sheet.mjs --analyze` over `shots/*.png`, 1600x900):
 
 | scenario | mean | sd | p01 | p99 | blk% | sat | colors | verdict |
 |---|---|---|---|---|---|---|---|---|
-| boss | 0.122 | 0.165 | 0 | 0.844 | 25.5 | 0.425 | 425 | in range |
-| closeup | 0.247 | 0.215 | 0 | 0.781 | 12.6 | 0.264 | 162 | in range |
-| combat | 0.300 | 0.245 | 0 | 0.906 | 7.6 | 0.323 | 570 | in range |
-| dungeon | 0.287 | 0.236 | 0 | 0.906 | 8.9 | 0.278 | 347 | in range |
-| hub | 0.120 | 0.158 | 0 | 0.781 | 28.7 | 0.332 | 295 | in range |
-| inventory | 0.204 | 0.193 | 0 | 0.844 | 10.8 | 0.277 | 305 | in range |
-| night | 0.100 | 0.149 | 0 | 0.813 | 34.7 | 0.439 | 392 | in range |
-| overworld | 0.152 | 0.171 | 0 | **0.656** | 29.9 | 0.231 | 304 | **no highlights** |
+| boss | 0.173 | 0.178 | 0 | 0.844 | 3.3 | 0.318 | 532 | in range |
+| closeup | 0.259 | 0.207 | 0 | 0.781 | 2.3 | 0.209 | 158 | in range |
+| combat | 0.280 | 0.211 | 0 | 0.875 | 1.3 | 0.269 | 447 | in range |
+| dungeon | 0.274 | 0.215 | 0 | 0.875 | 1.6 | 0.252 | 331 | in range |
+| hub | 0.143 | 0.164 | 0 | 0.813 | 9.4 | 0.298 | 315 | in range |
+| inventory | 0.208 | 0.192 | 0 | 0.844 | 7.4 | 0.266 | 313 | in range |
+| night | 0.189 | 0.209 | 0 | 0.906 | 13.7 | 0.339 | 550 | in range |
+| overworld | 0.265 | 0.204 | 0 | **0.750** | 3.6 | 0.220 | 370 | in range — p99 is 0.030 over the 0.72 floor |
 
-Determinism: `dungeon` captured twice is byte-identical
+`sheet.mjs` warns when `p99 < 0.72`, so `overworld` clears the highlight floor by
+**0.030** and is the tightest frame in the table — five of the eight scenarios sit
+at 0.84 or above, the moor does not. That margin, not the mean, is the thing to
+watch if you touch the moor grade.
+
+Determinism, draw calls and frame time were measured in the capture session that
+produced `3355968`; they need a GPU and a browser, so they were **not**
+re-measured for this revision. `dungeon` captured twice was byte-identical
 (`94f3dd269cfab7f22fa4bdca6602e260`). Draw calls 880 against a 900 budget,
 4.38 M triangles, `p99` 97-103 ms on the first frame (shader link, one-off),
 `avg` 8.6-9.3 ms thereafter — inside the 16.6 ms budget.
+
+## Canonical world scale — 1 unit = 1 metre
+
+`README.md` and `HANDOFF.md` both point at this document for the scale table, and
+four source files already cite it by name (`src/chars/Skeleton.js`,
+`src/game/ai/Archetypes.js`, `src/world/Dungeon.js`, `src/world/props/Ruin.js`) —
+it was missing. Everything here is read from the code that ships, with the line
+it comes from, so a disagreement is a one-command check.
+
+| what | value | where |
+|---|---|---|
+| unit convention | 1 unit = 1 m. `+Y` up, `+Z` forward, `+X` the character's **left** | `src/chars/Skeleton.js:11-14` |
+| hero figure | 1.85 m tall, 0.62 m across the shoulders, 7.4 heads. Stands on `y = 0`, boot sole at `y = 0.008` | `src/chars/Skeleton.js:11-12,30-31` (`HERO_HEIGHT`, `SOLE_Y`) |
+| hero collision capsule | radius **0.34 m**, height 1.85 m, step 0.42 m, max slope 52°, ground snap 0.45 m | `src/combat/physics/Character.js:36-45` (`CHAR_DEFAULTS`) |
+| body width for nav | 0.68 m (2 × capsule radius) — connectivity is asserted at body width, never per cell | `src/game/ai/NavGrid.js` clearance field; §8 below |
+| nav grid cell | **0.55 m** at `high`/`med`, **0.68 m** at `low`; span 116 m / 96 m (~44 100 cells) | `src/game/AI.js:176-177`, `src/game/ai/NavGrid.js:6,44` |
+| monster spec heights | skeleton 1.90, ghoul 1.72, cultist 1.88, hound 1.05, brute 3.20, wraith 2.05, boss **6.50** | `src/chars/Bestiary.js:1798-1804` |
+| texture world scale | stone **1.62 m** per tile, floor cobble **2.05 m** per tile | `src/world/Dungeon.js:112,115` |
+| sett (floor cobble) | **0.23 m** — 9 setts per 2.05 m tile, i.e. 0.124 × hero height | `src/world/Dungeon.js:115` |
+| great hall | 21.0-26.0 m interior (`42 + floor(r()*11)` half-extent) | `src/world/dungeon/Layout.js:136-144` |
+| crypt vault | springs at 4.3 m; the isometric camera culls interior ceilings | `src/world/dungeon/Layout.js:132-133` |
+
+Ratios worth having in your head, because they are what "scale is wrong" looks
+like: a sett is **1/8 of the hero** (0.23 m vs 1.85 m); the hero is **1/11** of the
+smallest hall (1.85 m vs 21 m); the boss is **3.5 heroes** tall (6.50 m).
+
+**One inconsistency, flagged rather than silently averaged.** The ashlar block
+width is described three ways: 0.50 m (`src/world/dungeon/Pieces.js:18`), 0.54 m
+(the 3-blocks-per-1.62 m-tile arithmetic in `src/world/Dungeon.js:112`) and
+0.55 m (`src/world/props/Ruin.js:5,202,535`). Up to 5 cm apart, in comments only —
+the geometry is built in `Pieces.js`. Resolve it against the built mesh before you
+tune masonry against it.
 
 ---
 
@@ -239,19 +289,16 @@ rather than letting N sprites sum past 1.0.
 
 ---
 
-## 3. Overworld has no highlights — `overworld`
+## 3. Overworld has no highlights — RETIRED (fixed), see [Closed](#closed-no-longer-reproduces)
 
-**Flag: "Milky lifted blacks or a washed-out grey frame"** (inverse — the frame
-is uniformly dull) · severity 7 · **open** · lanes D + G
+The number this entry was written around — `p99 = 0.656`, "the only scenario that
+fails its check" — is from the pre-fix build. On the committed `overworld.png`
+`sheet.mjs` reports **`p99 = 0.750` against a 0.72 floor**, so it passes, by 0.030.
+Fixed by the moor grade change in `258c69e`, which is §10's entry.
 
-`sheet.mjs` is explicit: `p99 = 0.656`, the only scenario that fails its
-check. Nothing in the frame is bright. The moor reads as one large dark mass
-with no specular, no wet highlights, no rim on the ridgelines, and the sky —
-much improved over the previous flat grey card — still does not put a bright
-patch anywhere the terrain can catch.
-
-**Fix:** a real value range on the moor. Wet rock specular, a brighter horizon
-band the ridges can rim against, and aerial perspective so distance separates.
+Kept as a stub rather than deleted so the §3 cross-references in `HANDOFF.md` and
+in this file's other entries do not dangle. Do not re-open it from here; the
+measurement and the warning about the lever are in [Closed](#closed-no-longer-reproduces).
 
 ---
 
@@ -369,8 +416,12 @@ re-commenting.
 · severity 5 · **open** · lane D
 
 Dead-straight continuous mortar joints run the full width of the frame in
-`dungeon.png`. Sett width has not yet been measured against the 1.85 m hero
-reference; that measurement is part of the Wave 2 exit criteria.
+`dungeon.png`. Sett width is **0.23 m** — 9 per 2.05 m texture tile
+(`src/world/Dungeon.js:115`), which is 0.124 × the 1.85 m hero, i.e. eight setts
+to a hero. So the measurement this entry was waiting on now exists (see
+[Canonical world scale](#canonical-world-scale--1-unit--1-metre)); what is still
+open is the art call — whether 0.23 m against a 1.85 m hero reads correctly at
+gameplay distance, and how to break the joint continuity.
 
 ---
 
@@ -458,7 +509,8 @@ Two further traps, both paid for:
 
 - **Round the reservation outward, not inward.** Inward is the tidier reading of "a reservation
   must be a subset of what it names", and it costs up to one cell of opening per side. The grid
-  is 0.5 m and a body is 0.68 m, so tidiness took 280 m² of the crypt away from the player.
+  is 0.55 m at the `high`/`med` tier (`src/game/AI.js:177`; 0.68 m at `low`) and a
+  body is 0.68 m, so tidiness took 280 m² of the crypt away from the player.
 - **Assert at body width, not per cell.** The first assert flood-filled the raw mask and
   reported "one region, nothing stranded" for a level with 573 m² unreachable, because floor
   either side of a sarcophagus is walkable cell by cell and useless to anything 0.68 m wide.
@@ -522,6 +574,17 @@ Now `whitePoint 0.56` at `contrast 1.40`. Measured: mean 0.321 → 0.265, p99 0.
 ## Closed (no longer reproduces)
 
 Verified against the current 8-scenario capture:
+
+- **Overworld has no highlights** (was §3: severity 7, "open", lanes D + G, and
+  the table's only failing row). `overworld.png` measures **p99 0.750** against
+  the 0.72 floor `sheet.mjs` warns at — a **0.030** margin, which is the
+  thinnest in the table, not a comfortable pass. Fixed by `258c69e`, the moor
+  grade change recorded in §10 (`whitePoint` 0.50 → 0.56, `contrast` 1.52 →
+  1.40): mean 0.321 → 0.265, p99 0.875 → 0.750, blk% 4.2 → 3.6. The entry's own
+  "Fix" (wet-rock specular, a brighter horizon band, aerial perspective) was
+  **not** the fix and is not required — do not re-open this by raising
+  `whitePoint` on the moor, because §5a records that the grade's top end is what
+  turned the crypt's rubble tops into frost.
 
 - **Boss arena is a flat brown gradient.** `boss.png` now shows laid radial
   slabs, scorch, per-slab jitter and braziers. `Arena.js` is 990 lines.
