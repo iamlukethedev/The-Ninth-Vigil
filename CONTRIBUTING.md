@@ -128,9 +128,9 @@ it got darker, everything unchanged ghosted grey, so the image shows *where* and
 The gate: exit **1** when more than `--allow-pct` (default **0** percent) of
 pixels differ by more than `--pixel-delta` (default **2/255**, the noise floor),
 exit **2** when it cannot compare at all (no baseline, undecodable file, size
-mismatch), exit **0** otherwise. Default 0 is rule 3 being taken at its word —
-two captures of the same scenario at the same frame count are byte-identical, so
-on the machine that owns the baseline a clean build measures 0.000 % changed.
+mismatch), exit **0** otherwise. Default 0 is rule 3 taken at its word: two
+captures of the same scenario at the same frame count are byte-identical, so any
+pixel beyond the noise floor is a real change and not a re-encode artefact.
 If your change is intended, do not raise the default: attach the diff PNG and
 pass the tolerance you are accepting for that run (`--allow-pct=1.2`), and say
 why in the PR.

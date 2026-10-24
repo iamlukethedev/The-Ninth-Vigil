@@ -29,11 +29,11 @@
  * its own sake — CONTRIBUTING.md rule 3 promises that "two captures of the
  * same scenario stepped the same number of frames must be byte-identical", and
  * this repo's determinism is the property that makes a pixel change
- * attributable to a code change at all. On the machine that owns the baseline,
- * a clean build diffs to 0.000 % (measured, see the PR). Anything above zero
- * is therefore a real change and deserves a human look; if the change is
- * intended, `--allow-pct` records the tolerance you are accepting, and the
- * diff PNG is your evidence.
+ * attributable to a code change at all. CONTRIBUTING.md rule 3 promises that
+ * "two captures of the same scenario stepped the same number of frames must be
+ * byte-identical", so anything above the 2/255 noise floor is a real change and
+ * deserves a human look; if the change is intended, `--allow-pct` records the
+ * tolerance you are accepting, and the diff PNG is your evidence.
  *
  * CROSS-MACHINE COMPARISONS ARE NOT A GATE. A capture from a different GPU or
  * a different rasteriser will differ from a baseline captured on the author's
