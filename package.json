@@ -10,6 +10,8 @@
     "shot": "node tools/shot.mjs",
     "shots": "node tools/shot.mjs --all --w=1920 --h=1080",
     "sheet": "node tools/sheet.mjs --analyze",
+    "diff": "node tools/diff.mjs",
+    "diff:test": "node tools/diff.test.mjs",
     "debug": "node tools/debug.mjs",
     "guard": "node tools/guard.mjs",
     "guard:test": "node tools/guard.test.mjs",

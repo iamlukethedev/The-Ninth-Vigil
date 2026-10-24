@@ -4,6 +4,7 @@
  *
  *   node tools/shot.mjs --scenario=combat --out=shots/combat.png [--w=1920] [--h=1080] [--frames=240]
  *   node tools/shot.mjs --all
+ *   node tools/shot.mjs --scenario=combat --timeout=600000   # slow/software renderer
  *
  * Boots the vite dev server (reusing one if already listening), loads the game
  * with ?shot=<scenario>, waits for window.__NONA__.ready, drives the sim a
@@ -62,7 +63,7 @@ async function ensureServer() {
   throw new Error('vite failed to start on port ' + PORT);
 }
 
-async function shoot(browser, scenario, outPath, w, h, frames) {
+async function shoot(browser, scenario, outPath, w, h, frames, readyTimeout) {
   const page = await browser.newPage({
     viewport: { width: w, height: h },
     deviceScaleFactor: 1,
@@ -79,7 +80,7 @@ async function shoot(browser, scenario, outPath, w, h, frames) {
   });
 
   await page.waitForFunction(() => window.__NONA__ && window.__NONA__.ready === true, null, {
-    timeout: 120000,
+    timeout: readyTimeout,
   });
 
   // Let the engine build the scenario (assets, streaming, GPU warmup).
@@ -106,6 +107,10 @@ async function shoot(browser, scenario, outPath, w, h, frames) {
 
 const w = Number(args.w ?? 1920);
 const h = Number(args.h ?? 1080);
+/* Software rasterisers and GPU-less hosts take minutes to build this scene
+   (measured: ~250 s for a crypt boot on SwiftShader), so the ready wait is
+   tunable. The default is unchanged. */
+const readyTimeout = Number(args.timeout ?? 120000);
 const server = await ensureServer();
 const browser = await chromium.launch({
   args: [
@@ -123,7 +128,7 @@ for (const s of list) {
   const out = resolve(ROOT, String(args.out ?? `shots/${s}.png`));
   const frames = Number(args.frames ?? SCENARIOS[s]?.frames ?? 120);
   try {
-    const { problems, perf } = await shoot(browser, s, out, w, h, frames);
+    const { problems, perf } = await shoot(browser, s, out, w, h, frames, readyTimeout);
     console.log(`OK  ${s.padEnd(10)} -> ${out.replace(ROOT + '/', '')}  ${w}x${h} @${frames}f`);
     if (perf) console.log(`    perf: ${JSON.stringify(perf)}`);
     if (problems.length) {

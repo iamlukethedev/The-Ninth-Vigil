@@ -98,6 +98,49 @@ So for any change that claims to alter what the player sees:
 
 If the defect is still visible in the after crop, you are not done.
 
+### Measure the delta, don't argue about it
+
+Steps 1-5 leave one thing to memory: *which* pixels moved. `tools/diff.mjs`
+answers it as a number, against the eight committed baselines already in
+`shots/`, and it needs no new dependency (PNG decode is `node:zlib`, in
+`tools/png.mjs`):
+
+```bash
+# re-capture the scenario at the baseline's resolution and compare
+node tools/diff.mjs --scenario=overworld
+
+# compare a capture you already have (no dev server, no browser)
+node tools/diff.mjs --scenario=overworld --new=shots/overworld.png
+
+# machine-readable, for a script
+node tools/diff.mjs --scenario=overworld --json
+node tools/diff.mjs --all
+```
+
+It reports, per scenario and per 3x3 region: mean absolute channel delta, the
+max channel delta, the percentage of pixels changed beyond the threshold, and
+the **bounding box** of the change — printed as a `tools/crop.mjs` command so
+step 2 is one paste away. It also writes a diff PNG to `shots/_diff/`
+(gitignored): changed pixels lit red where the frame got brighter and blue where
+it got darker, everything unchanged ghosted grey, so the image shows *where* and
+*which way*.
+
+The gate: exit **1** when more than `--allow-pct` (default **0** percent) of
+pixels differ by more than `--pixel-delta` (default **2/255**, the noise floor),
+exit **2** when it cannot compare at all (no baseline, undecodable file, size
+mismatch), exit **0** otherwise. Default 0 is rule 3 taken at its word: two
+captures of the same scenario at the same frame count are byte-identical, so any
+pixel beyond the noise floor is a real change and not a re-encode artefact.
+If your change is intended, do not raise the default: attach the diff PNG and
+pass the tolerance you are accepting for that run (`--allow-pct=1.2`), and say
+why in the PR.
+
+Cross-machine captures are **not** a gate. A frame rendered on a different GPU
+or a different rasteriser legitimately differs from a baseline captured on
+someone else's machine; the number is informative, not a regression. That is
+also why CI runs `tools/diff.test.mjs` against synthetic fixtures rather than
+diffing the committed baselines.
+
 ### Verify on the live path, not just the harness
 
 `tools/shot.mjs` loads `?shot=X`, so `Terrain.init()` reads the query parameter
