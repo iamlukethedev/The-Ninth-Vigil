@@ -1,0 +1,30 @@
+# Dependabot version updates for THE NINTH VIGIL.
+#
+# The dependency surface is deliberately three packages deep: `three` at runtime,
+# `vite` and `playwright` for development. This file keeps it current; it does
+# NOT turn on Dependabot *security* alerts or security updates, which are
+# repository settings a maintainer controls (see SECURITY.md).
+#
+# Grouped so three dependencies never produce three concurrent PRs. `three`
+# lands alone because a minor bump can move shader behaviour and must be checked
+# against the captured frames, not merged blind.
+
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 4
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      runtime:
+        dependency-type: "production"
+        patterns: ["*"]
+      dev-tooling:
+        dependency-type: "development"
+        patterns: ["*"]

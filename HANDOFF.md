@@ -5,7 +5,8 @@ Everything below the line is a self-contained brief. It assumes zero prior conte
 ---
 
 You are continuing work on **THE NINTH VIGIL**, a Diablo 4–class isometric action RPG built in
-Three.js r185. It is a real, working, feature-complete game: ~98,700 lines across 142 files,
+Three.js r185. It is a real, working, feature-complete game: 107,888 lines across 142 files
+(`wc -l` over `src/**/*.js` at HEAD `1f566b2`),
 21 engine modules, running at 60+ fps.
 
 **Repository:** https://github.com/iamlukethedev/The-Ninth-Vigil
@@ -50,82 +51,49 @@ line explains itself, it stops working.
 
 ---
 
-# ⏸ RESUME HERE — state as of 2026-07-29, stopped for a machine restart
-
-This session was interrupted mid-wave. Read this section before anything else; it overrides
-the work queue further down, which is now partly stale.
-
-### The tree has ~1,770 uncommitted insertions. They are on disk and survive the reboot.
-
-Last commit is `b2a0838 wave 2: world surfaces`. Everything after it is uncommitted but
-**measured and verified** — each lane reported objective before/after numbers, and all 12
-files pass `node --check`. Committing is a formality here, not a risk.
+## ▶ START HERE — state as of 2026-10-24, HEAD `1f566b2`
 
 ```bash
-git log --oneline -4     # b2a0838 wave 2 / a4a9118 wave 1 / d2aad35 lighting fix / f9f0cfd baseline
-git diff --stat -- src   # 12 files, +1770 -189
+git log -1 --format='%H %ad'   # 1f566b2e53585ed55592fceb064caa6d0e4669be Tue Oct 20 21:43:04 2026 -0700
+git status --short             # (no output — working tree clean)
+git rev-list --count HEAD      # 28
 ```
 
-| uncommitted files | what changed | trust level |
-|---|---|---|
-| `render/passes/AOApplyPass.js`, `render/RenderPipeline.js` | contact-AO split into estimate + 3x3 binomial-tent resolve, killing the halftone dither | **measured good** |
-| `world/Terrain.js`, `world/TerrainMaterial.js` | `_moorRelief` landform pass (bedrock ribs, peat hags, groughs) + bleach/soak wear layer | **measured good** |
-| `chars/monsters/{Species,RigKit,MonsterMaterials}.js`, `core/texgen/Kinds.js` | carved skull geometry, plate armour lames, coupled wear layer, new `plate` texgen kind | **measured good** |
-| `core/Input.js`, `chars/Hero.js`, `game/Director.js`, `game/Loot.js` | **click-to-move repair — fixed and verified on the live path** | **measured good** |
+Nothing is uncommitted, and nothing in this file asks you to commit anything.
 
-All of it is safe to commit as a rollback point:
+**What the previous revision of this section claimed, and why it was wrong.** It
+was dated 2026-07-29, "stopped for a machine restart", and described ~1,770
+uncommitted insertions across twelve named files, to be `git add`ed and committed,
+sitting on a history of `b2a0838` / `a4a9118` / `d2aad35` / `f9f0cfd`. None of those
+four objects exists in this repository — `git cat-file -t` returns *Not a valid
+object name* for every one of them — and the twelve files had already landed as
+`89eea7c wave 3: contact-AO resolve, moor landform, character tiers,
+click-to-move` before anyone could read the instruction. This paragraph is that
+block's tombstone; there is no tree to recover.
 
-```bash
-git add src/render src/world src/chars/monsters src/core/texgen src/core/Input.js \
-        src/chars/Hero.js src/game/Director.js src/game/Loot.js
-git commit -m "wave 3: contact-AO resolve, moor landform, character tiers, click-to-move"
-```
+**What is actually current:**
 
-### ⚠️ `shots/` is a mix of two different builds
+- The eight canonical captures are the ones committed in `3355968`, and all eight
+  pass `node tools/sheet.mjs --analyze`. Every number in `KNOWN_ISSUES.md` is
+  measured against those PNGs, and `shots/` has not changed since.
+- Open instant-fail work is `KNOWN_ISSUES.md` §2 (blown additive discs, sev 8) and
+  §5 (untextured blue-grey rubble, sev 8). §4 (pale enemy materials) is half landed:
+  the value half, not the surface half. §6 (tiling) is open and is now purely an
+  art call, because the sett measures 0.23 m against a 1.85 m hero.
+- Fixed, and not to be re-opened: §1 (black wedges), §3 (retired), §7 (routes through
+  stone), §8 (sealed doorways), §9 and §10 (the moor).
+- One loose end with no owner, and it is a real code wart rather than a bug:
+  `Director._handOverToPlayer()` reaches into `CombatSystem`'s damage governor
+  (`src/game/Director.js:388`). The durable fix is for
+  `CombatSystem._readInput()` to latch the release on `input.userActed` instead of
+  on a `BINDS` keypress — the `_govern = false` line at
+  `src/combat/CombatSystem.js:446` — after which the Director workaround can go.
 
-The full 8-scenario recapture was interrupted. Six of eight PNGs are modified, two are stale
-wave-2 frames. **Do not compare or A/B anything until you recapture all eight:**
-
-```bash
-node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze
-```
-
-### The live bugs are fixed; one loose end left to route
-
-Click-to-move is **fixed**, and so are the walking flashes (both in "Recently fixed").
-
-1. ~~**Black/white triangular flashes while the player walks.**~~ **FIXED 2026-07-30.** It was
-   never one bug: five stacked causes, the last two only findable on the live path. The final
-   one was the pooled point practicals casting shadows — see `KNOWN_ISSUES.md` §1e for the
-   measurements and, importantly, for the long list of plausible causes that were *ruled out*,
-   so nobody spends another day on them. Standing-still churn went 10.5 % → 0.41 %.
-   The leading hypothesis recorded here previously (LightPool reusing a slot with a stale
-   shadow camera) was **wrong**: slot ownership really was thrashing and that is now fixed in
-   `LightRig.select()`, but fixing it did not move the flashing at all.
-2. **One follow-up left over from the click-to-move fix, in a file that lane did not own.**
-   `Director._handOverToPlayer()` currently reaches into `CombatSystem._govern` / `_script` /
-   `_userInput` to release the capture-time damage governor. That governor belongs to
-   CombatSystem, and while it is set nothing the player hits can die. The durable fix is one
-   line in `CombatSystem._readInput()` (`src/combat/CombatSystem.js:445-447`): latch the
-   `_govern = false` release on `input.userActed` rather than on a `BINDS` keypress. That also
-   closes a pre-existing hole where keyboard-only play never released the governor at all.
-   The Director workaround is guarded and idempotent, and should be deleted once that lands.
-
-### Where the instant-fail work got to
-
-The goal is the one in `CRITIC_RUBRIC.md`: **drive the instant-fail count to zero.** Three
-waves of parallel, file-partitioned lanes have run. Confirmed fixed and measured (details in
-"Recently fixed" below): sunless interiors casting directional cascades through the ceiling,
-the grade's toe crushing darks to absolute black, blown additive discs, the halftone dither
-from contact AO, the untextured boss, and the featureless moor.
-
-What remains before the final review: the CombatSystem governor loose end above, then a hostile
-pass over all eight frames against the 15 instant-fail flags. `KNOWN_ISSUES.md` is the
-authoritative open list and is more current than the queue in this file.
-
-As of 2026-07-30 all eight scenarios have been recaptured and pass `sheet.mjs --analyze` in AAA
-range, the actor oracle shows all eight actors drawing and in frame at 51-67 px, and a full
-walking lap of the live crypt has no wedge in any frame (worst frame 4.2 % near-black).
+**Where to start:** `AGENTS.md` first — it is the short, contract-shaped entry point.
+Then `CONTRIBUTING.md`, then one open entry from `KNOWN_ISSUES.md`. The prioritised
+queue further down this file is a 2026-07-29 snapshot: everything that mattered
+then is either fixed (under "Recently fixed") or superseded by `KNOWN_ISSUES.md`,
+so read it for its diagnostic notes and file-ownership hints, not as a to-do list.
 
 ### One environment note
 
@@ -150,7 +118,8 @@ running at its VRAM limit, so any new generated map costs resolution somewhere e
 2. `CRITIC_RUBRIC.md` — the 10 scored axes, the 15 instant-fail flags, and the required
    verdict output format. This is how the work is judged.
 3. `KNOWN_ISSUES.md` — every confirmed defect with pixel coordinates, plus the
-   **canonical world scale table (1 unit = 1 metre)**. Getting scale wrong has been the
+   **canonical world scale table (1 unit = 1 metre)**, under the heading
+   `Canonical world scale`. Getting scale wrong has been the
    single most repeated failure on this project.
 
 Then skim `src/core/Engine.js` (services + lifecycle), `src/core/Rand.js` (the deterministic
@@ -330,7 +299,8 @@ and a false pass ends the work prematurely.
 > ⚠️ **This queue is stale as of 2026-07-29.** Several items below — the black wedges (item 1),
 > the additive clipping, the grade toe, the untextured characters, the flat moor — were fixed
 > across waves 1–3 and are recorded in "Recently fixed" instead. **Use `KNOWN_ISSUES.md` as the
-> authoritative open list**, and the RESUME section at the top of this file for what to do next.
+> authoritative open list**, and the "START HERE" section at the top of this file for the
+> current state.
 > The queue is kept here only for the diagnostic notes and file-ownership hints in each entry.
 
 Severity is from the last review. Items marked **RE-RAISED** were previously reported fixed
@@ -577,7 +547,14 @@ deterministic — the simulation hash matches across runs.
   would stop the swapping. *This was not the cause of the flashing* (fixing it moved the metric
   not at all), but it is correct on its own merits and ownership is now stable indefinitely.
 
-### Waves 1–3 (2026-07-29). Commits `d2aad35`, `a4a9118`, `b2a0838`, plus uncommitted work.
+### Waves 1–3 (2026-07-29) — landed as `89eea7c`
+
+> The four SHAs earlier revisions of this file cited for these waves (`d2aad35`,
+> `a4a9118`, `b2a0838`, `f9f0cfd`) are **not in this repository**: `git cat-file -t`
+> returns *Not a valid object name* for each. They came from a tree that was
+> discarded. The work below is in `89eea7c wave 3: contact-AO resolve, moor
+> landform, character tiers, click-to-move` and the commits after it — that is what
+> to `git log`, not the dead SHAs.
 
 - **🔴 Sunless interiors were casting four directional CSM cascades through the ceiling.** This
   is what produced the huge hard-edged black wedges that were item 1 in the queue, and it also
@@ -687,13 +664,15 @@ For each: read the owning files, capture + zoom the named region, look at it, fi
 have not regressed frame time, determinism, or the sampler budget. Re-run
 `node tools/sheet.mjs --analyze` and read the 8 canonical frames before moving on.
 
-**Start with the RESUME section at the top of this file, not with item 1** — item 1 is fixed.
-The one open user-reported bug is the black flashes that appear only while walking. It is a
-live-path bug that no static screenshot can catch, so budget time for driving the browser
-rather than reading canonical frames.
+**Start with the "START HERE" section at the top of this file, not with item 1** — item 1 (the
+black wedges) is fixed and recorded in `KNOWN_ISSUES.md` §1, as are the walking flashes (§1e,
+which was the last open user-reported bug). The open work is `KNOWN_ISSUES.md` §2 and §5. Both
+need the browser: §2's discs and §5's rubble are only judgeable on a live frame at gameplay
+distance, so budget time for driving it rather than reading canonical frames.
 
-**Before you start, sanity-check the build**, because several waves of parallel work were
-mid-flight when this document was written and some of it may be only partially landed:
+**Before you start, sanity-check the build** — these are the three commands that catch a broken
+checkout. None of them was run for the state block above (it was verified with `git log -1`,
+`git status` and `npm run guard`), so treat their output as yours to establish:
 
 ```bash
 node tools/debug.mjs --scenario=combat --frames=40   # all 21 modules must appear in "modules loaded"

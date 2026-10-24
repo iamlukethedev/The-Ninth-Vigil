@@ -1,7 +1,31 @@
-# Every pull request requires review from the maintainer before it can merge.
+# Code ownership for THE NINTH VIGIL.
 #
-# Combined with "Require review from Code Owners" in the branch rules, this is what
-# stops a contributor -- human or agent -- from approving and merging their own work.
+# WHAT THIS FILE DOES TODAY: it names @iamlukethedev as owner of every path, so
+# GitHub can request a review automatically. By itself it does NOT require that
+# review to happen.
+#
+# The enforced rule is the branch ruleset "Protect main" (id 25445741,
+# enforcement: active), read live with:
+#
+#   gh api repos/iamlukethedev/The-Ninth-Vigil/rulesets/25445741
+#
+# It blocks deletion of main, blocks force-pushes, requires the
+# "Convention guard" and "Boot + determinism" status checks, and requires review
+# threads to be resolved. It also reports:
+#
+#   required_approving_review_count: 0     -> no approval is required to merge
+#   require_code_owner_review:        false -> this file's ownership is not enforced
+#
+# So a contributor with write access can open, approve and merge their own pull
+# request once the two checks pass. What protects `main` today is the CI gates and
+# review practice, not a code-owner requirement. Stated plainly because the
+# previous version of this file claimed the opposite.
+#
+# TO ACTUALLY ENFORCE REVIEW, a maintainer changes the ruleset (Settings -> Rules
+# -> Protect main), not this file: set required approving reviews to 1 and enable
+# "Require review from Code Owners". If an admin bypass is wanted, add it
+# deliberately and record it in .github/rulesets/protect-main.json in the same
+# change, so the committed copy and the enforced state cannot drift apart again.
 #
 # Note for contributors: `src/main.js`, `src/core/Engine.js`, `src/game/modules.js`,
 # `src/game/Scenarios.js`, `index.html` and `tools/*` are the integration spine every
