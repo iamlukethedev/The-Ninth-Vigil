@@ -232,14 +232,15 @@ testCase('the decoder reproduces a committed baseline exactly', () => {
   /* The diff is only as trustworthy as the decode. Chromium was used once to
      establish this pixel value (see the PR); hard-coding it here turns that
      one-off check into a regression test that needs no browser and no GPU. */
+  // Re-read with Chromium after the three 0.187 recapture: 35,42,46,255.
   const dec = decodePng(readFileSync(resolve(ROOT, 'shots', 'overworld.png')));
   if (dec.width !== 1600 || dec.height !== 900) {
     return `overworld.png decoded as ${dec.width}x${dec.height}, expected 1600x900`;
   }
   const o = (360 * dec.width + 640) * 4;
   const px = [dec.rgba[o], dec.rgba[o + 1], dec.rgba[o + 2], dec.rgba[o + 3]];
-  if (px.join(',') !== '35,42,45,255') {
-    return `pixel (640,360) decoded as ${px.join(',')}, expected 35,42,45,255 (Chromium agrees)`;
+  if (px.join(',') !== '35,42,46,255') {
+    return `pixel (640,360) decoded as ${px.join(',')}, expected 35,42,46,255 (Chromium agrees)`;
   }
   return null;
 });
