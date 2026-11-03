@@ -61,6 +61,7 @@ const _qt = new THREE.Quaternion();
 const _qtm = new THREE.Quaternion();
 const _eul = new THREE.Euler();
 const _col = new THREE.Color();
+const _box = new THREE.Box3();
 const _m = new THREE.Matrix4();
 const _ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const _cam = new THREE.Vector3();
@@ -2069,6 +2070,32 @@ export class Props {
     if (!def) return 1;
     if (def.noBlob || def.carpet || def.mounted || (def.blob ?? 1) <= 0) return 0;
     return def.cast ? 1 : 0.35;
+  }
+
+  /**
+   * How far the prop actually stands above its ground, in metres: the top of
+   * its parts' bounding boxes under the instance matrix, minus `groundY`.
+   * Props are sunk and tumbled at placement, and on the crypt's flagging a
+   * boulder can end up mostly under the slabs -- r 1.40 m with 0.29 m sunk
+   * below a floor that is itself above `groundY`, leaving a pebble showing.
+   * Contact shadows size off this rather than off the footprint alone.
+   * Static, so measured once per record.
+   */
+  standHeight(rec) {
+    if (!rec) return 0;
+    if (rec.__sh !== undefined) return rec.__sh;
+    let top = -Infinity;
+    try {
+      for (const sl of rec.slots ?? []) {
+        const geo = sl.mesh?.geometry;
+        if (!geo) continue;
+        if (!geo.boundingBox) geo.computeBoundingBox();
+        _box.copy(geo.boundingBox).applyMatrix4(rec.matrix);
+        if (_box.max.y > top) top = _box.max.y;
+      }
+    } catch { top = -Infinity; }
+    rec.__sh = Number.isFinite(top) && Number.isFinite(rec.groundY) ? Math.max(0, top - rec.groundY) : Infinity;
+    return rec.__sh;
   }
 
   /** True if a capsule of radius `r` at (x,z) would intersect solid dressing. */

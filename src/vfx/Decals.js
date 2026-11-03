@@ -1024,9 +1024,13 @@ function makeContactShadowMaterial(uTime) {
         // this soft just reads as dither at gameplay distance.
         a *= 0.84 + 0.16 * vnoise( p * 1.7 + vF.z );
 
-        // The patch is a square; nothing may ever reach its border.
+        // The patch is a square; nothing may ever reach its border. The window
+        // is round: a square one (max of |x|, |y|) cut a large prop's broad
+        // lobe while it was still ~23 % dark, and the shadow took the shape of
+        // the patch -- a soft black square that appeared beside the hero as
+        // the props near it were handed contact slots.
         vec2 e = abs( vLocal - 0.5 ) * 2.0;
-        a *= 1.0 - smoothstep( 0.74, 1.0, max( e.x, e.y ) );
+        a *= 1.0 - smoothstep( 0.62, 1.0, length( e ) );
 
         float fade = vF.y > 0.0 ? clamp( ( uTime - vF.x ) / vF.y, 0.0, 1.0 ) : 1.0;
         a = min( a * uGain * fade * fade * ( 3.0 - 2.0 * fade ), uCap );
@@ -1415,15 +1419,25 @@ class ContactShadows {
     for (let i = 0; i < sel.length; i++) {
       const rec = sel[i];
       if (rec.dead) continue;
-      const r = Math.max(0.14, rec.r ?? 0.4);
+      /* Footprint, but no wider than the prop is TALL: occlusion at the base
+         scales with the height of what stands there. A boulder sunk under the
+         crypt's slabs kept its r 1.40 m and printed a near-black 2 m square
+         around the pebble that showed, beside the hero. */
+      const sh = typeof props.standHeight === 'function' ? props.standHeight(rec) : Infinity;
+      const r = Math.max(0.14, Math.min(rec.r ?? 0.4, sh * 1.6));
       // One broad lobe, sized off the prop's own Poisson footprint, plus a
       // tighter core so a barrel gets a dark ring at its staves and not a
       // uniform grey disc the size of a table.
       const w = rec.__cw ?? 1;
-      _lobes[0] = 0; _lobes[1] = 0; _lobes[2] = r * 0.62; _lobes[3] = 0.62 * w;
-      _lobes[4] = 0; _lobes[5] = 0; _lobes[6] = r * 1.32; _lobes[7] = 0.40 * w;
-      this._want(`p${rec.__cs}`, rec.x, rec.z, rec.groundY,
-        Math.min(2.2, r + 0.2), _lobes, 2, elapsed, true);
+      const fp = Math.min(2.2, r + 0.2);
+      // A lobe stays visible to ~1.4 radii, so keep both inside the round
+      // window (0.62 of the patch half-extent) instead of letting the broad
+      // one run off the patch: at r 1.32 it overflowed every prop wider
+      // than ~0.6 m.
+      const fit = (fp + CONTACT_SLACK) * 0.62 / 1.4;
+      _lobes[0] = 0; _lobes[1] = 0; _lobes[2] = Math.min(r * 0.62, fit); _lobes[3] = 0.62 * w;
+      _lobes[4] = 0; _lobes[5] = 0; _lobes[6] = Math.min(r * 1.32, fit); _lobes[7] = 0.40 * w;
+      this._want(`p${rec.__cs}`, rec.x, rec.z, rec.groundY, fp, _lobes, 2, elapsed, true);
     }
   }
 

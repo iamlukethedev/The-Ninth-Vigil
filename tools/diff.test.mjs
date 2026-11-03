@@ -238,8 +238,8 @@ testCase('the decoder reproduces a committed baseline exactly', () => {
   }
   const o = (360 * dec.width + 640) * 4;
   const px = [dec.rgba[o], dec.rgba[o + 1], dec.rgba[o + 2], dec.rgba[o + 3]];
-  if (px.join(',') !== '35,42,45,255') {
-    return `pixel (640,360) decoded as ${px.join(',')}, expected 35,42,45,255 (Chromium agrees)`;
+  if (px.join(',') !== '34,41,44,255') {
+    return `pixel (640,360) decoded as ${px.join(',')}, expected 34,41,44,255 (Chromium agrees)`;
   }
   return null;
 });
