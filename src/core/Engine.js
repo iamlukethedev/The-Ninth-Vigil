@@ -5,6 +5,8 @@ import { Profiler } from './Profiler.js';
 import { makeRand } from './Rand.js';
 
 const FIXED_DT = 1 / 60;
+/** How early a tick may fire, in seconds — see the pacing note in `_loop`. */
+const TICK_SLACK = 0.002;
 
 /**
  * Core engine: renderer ownership, module registry, fixed-timestep loop,
@@ -219,28 +221,49 @@ export class Engine {
 
   start() {
     this._last = performance.now();
-    this.renderer.setAnimationLoop(() => this._loop());
+    this.renderer.setAnimationLoop((t) => this._loop(t));
   }
   stop() { this.renderer.setAnimationLoop(null); }
 
-  _loop() {
-    const now = performance.now();
-    let frameMs = now - this._last;
+  /** @param {number} [stamp] the frame's vsync timestamp from requestAnimationFrame */
+  _loop(stamp) {
+    /* The vsync stamp, not performance.now(): it lands on exact multiples of
+       the display interval, where now() carries however late this callback
+       ran. See the pacing note below. */
+    const now = Number.isFinite(stamp) ? stamp : performance.now();
+    let frameMs = Math.max(0, now - this._last);
     this._last = now;
     this.profiler.frame(frameMs);
     if (this._resGovern) this._governResolution(frameMs, now);
     if (this.paused) { this.renderFrame(); return; }
 
+    /* Frame pacing. The sim ticks at a fixed 60 Hz but the browser calls us at
+       the display's rate -- 120 Hz on a ProMotion Mac. Ticking on the raw
+       accumulator against a jittery 8.3 ms frame gave 0, 1 or 2 ticks per
+       frame in no fixed order, and since nothing is interpolated between
+       ticks, the camera -- and the whole floor with it -- moved in stop-go
+       jumps. Measured from a 60 fps screen recording, the floor scrolled
+       0,6,0,3,3,6,0,12 px per frame where smooth motion is a steady 3-4.
+
+       So time comes from the vsync stamp, and a tick is allowed TICK_SLACK
+       early. Even exact stamps leave the accumulator sitting on the threshold
+       at 120 Hz, where float error alone decides between 0, 1 and 2 ticks
+       (simulated: tick gaps of 1/2/3 frames in a 152/296/151 split); with
+       the slack every tick lands on every second frame (599 of 599), and the
+       debt carries into the next tick so the sim clock does not drift. A frame that
+       produced no tick is not drawn at all: it would be the same picture,
+       and the canvas keeps the last one (`preserveDrawingBuffer`). Motion is
+       an even 60 fps, and a 120 Hz display renders half as many frames. */
     // Clamp so a stall never produces a spiral of death.
     this._acc += Math.min(frameMs / 1000, 0.1);
     let steps = 0;
-    while (this._acc >= FIXED_DT && steps < 5) {
+    while (this._acc >= FIXED_DT - TICK_SLACK && steps < 5) {
       this.tick(FIXED_DT);
       this._acc -= FIXED_DT;
       steps++;
     }
-    this.clock.alpha = this._acc / FIXED_DT;
-    this.renderFrame();
+    this.clock.alpha = Math.max(0, this._acc) / FIXED_DT;
+    if (steps > 0) this.renderFrame();
   }
 
   /**
