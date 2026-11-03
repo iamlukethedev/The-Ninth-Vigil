@@ -1,12 +1,18 @@
 # KNOWN ISSUES — authoritative open list
 
-Measured from the **eight captures committed in `3355968`** — "shots: recapture
-the crypt scenarios after the frost fix" — the last commit that touches `shots/`:
+Measured from the **eight captures recaptured on three 0.187.0** ("shots:
+recapture all eight baselines on three 0.187"), the last commit that touches
+`shots/`. Check that is still true before trusting a row:
 
 ```bash
-git log -1 --format='%h %s' -- shots/        # 3355968 shots: recapture the crypt scenarios after the frost fix
-git rev-list --count 3355968..HEAD -- shots/ # 0
+git log -1 --format='%h %s' -- shots/        # shots: recapture all eight baselines on three 0.187
 ```
+
+The previous set (`3355968`) had drifted before the three upgrade: on main,
+fresh captures differed from `boss` by 84.6%, `hub` by 2.7% and `inventory`
+by 1.6% of pixels, while the other five reproduced exactly. The new set
+reproduces: a second capture was byte-identical for seven frames, and `boss`
+differed by one pixel at Δ 3/255.
 
 The previous revision of this table said it was measured after the cascade fix
 `d2aad35`. That object is not in this repository (`git cat-file -t d2aad35` →
@@ -24,24 +30,23 @@ until the flags are at zero.
 
 | scenario | mean | sd | p01 | p99 | blk% | sat | colors | verdict |
 |---|---|---|---|---|---|---|---|---|
-| boss | 0.173 | 0.178 | 0 | 0.844 | 3.3 | 0.318 | 532 | in range |
-| closeup | 0.259 | 0.207 | 0 | 0.781 | 2.3 | 0.209 | 158 | in range |
-| combat | 0.280 | 0.211 | 0 | 0.875 | 1.3 | 0.269 | 447 | in range |
-| dungeon | 0.274 | 0.215 | 0 | 0.875 | 1.6 | 0.252 | 331 | in range |
-| hub | 0.143 | 0.164 | 0 | 0.813 | 9.4 | 0.298 | 315 | in range |
-| inventory | 0.208 | 0.192 | 0 | 0.844 | 7.4 | 0.266 | 313 | in range |
-| night | 0.189 | 0.209 | 0 | 0.906 | 13.7 | 0.339 | 550 | in range |
-| overworld | 0.265 | 0.204 | 0 | **0.750** | 3.6 | 0.220 | 370 | in range — p99 is 0.030 over the 0.72 floor |
+| boss | 0.189 | 0.201 | 0 | 0.906 | 2.7 | 0.310 | 575 | in range |
+| closeup | 0.258 | 0.207 | 0 | 0.781 | 2.2 | 0.208 | 160 | in range |
+| combat | 0.281 | 0.211 | 0 | 0.875 | 1.3 | 0.268 | 449 | in range |
+| dungeon | 0.275 | 0.215 | 0 | 0.875 | 1.6 | 0.251 | 329 | in range |
+| hub | 0.144 | 0.164 | 0 | 0.813 | 8.9 | 0.298 | 321 | in range |
+| inventory | 0.208 | 0.192 | 0 | 0.844 | 7.2 | 0.265 | 317 | in range |
+| night | 0.187 | 0.208 | 0 | 0.906 | 13.9 | 0.340 | 558 | in range |
+| overworld | 0.264 | 0.204 | 0 | **0.750** | 3.6 | 0.219 | 370 | in range — p99 is 0.030 over the 0.72 floor |
 
 `sheet.mjs` warns when `p99 < 0.72`, so `overworld` clears the highlight floor by
 **0.030** and is the tightest frame in the table — five of the eight scenarios sit
 at 0.84 or above, the moor does not. That margin, not the mean, is the thing to
 watch if you touch the moor grade.
 
-Determinism, draw calls and frame time were measured in the capture session that
-produced `3355968`; they need a GPU and a browser, so they were **not**
-re-measured for this revision. `dungeon` captured twice was byte-identical
-(`94f3dd269cfab7f22fa4bdca6602e260`). Draw calls 880 against a 900 budget,
+Draw calls and frame time were measured in the capture session that produced
+`3355968` and were **not** re-measured on three 0.187. `dungeon` captured twice
+on three 0.187 was byte-identical (`5645eff6abebf858ad73106923088edc`). Draw calls 880 against a 900 budget,
 4.38 M triangles, `p99` 97-103 ms on the first frame (shader link, one-off),
 `avg` 8.6-9.3 ms thereafter — inside the 16.6 ms budget.
 
