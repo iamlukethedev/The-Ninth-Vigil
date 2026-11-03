@@ -15,7 +15,10 @@ set reproduces: seven frames byte-identical on a second capture, `night` within
 were then retaken once more for the flat hero pool (0.5-11% of pixels, all of
 it the pool's darkening under the hero); each repeats exactly. `combat` was retaken
 again when unshadowed light slots got the shadow tier's eviction veto (21.9%
-of pixels, a torch that now keeps its slot); it repeats exactly.
+of pixels, a torch that now keeps its slot); it repeats exactly. All eight were
+then retaken for prop contact shadows sized by how tall the prop stands, with a
+round edge (0.2-9.2% of pixels: the black holes under sunk rocks and clumps
+went soft); each repeats exactly.
 
 The previous revision of this table said it was measured after the cascade fix
 `d2aad35`. That object is not in this repository (`git cat-file -t d2aad35` →
@@ -33,14 +36,14 @@ until the flags are at zero.
 
 | scenario | mean | sd | p01 | p99 | blk% | sat | colors | verdict |
 |---|---|---|---|---|---|---|---|---|
-| boss | 0.191 | 0.201 | 0 | 0.906 | 2.4 | 0.314 | 583 | in range |
+| boss | 0.192 | 0.201 | 0 | 0.906 | 2.2 | 0.313 | 598 | in range |
 | closeup | 0.259 | 0.207 | 0 | 0.781 | 2.3 | 0.210 | 158 | in range |
-| combat | 0.283 | 0.213 | 0 | 0.875 | 1.2 | 0.272 | 459 | in range |
-| dungeon | 0.275 | 0.215 | 0 | 0.875 | 1.5 | 0.252 | 330 | in range |
+| combat | 0.285 | 0.213 | 0 | 0.875 | 1.1 | 0.271 | 456 | in range |
+| dungeon | 0.276 | 0.214 | 0 | 0.875 | 1.3 | 0.250 | 330 | in range |
 | hub | 0.146 | 0.165 | 0 | 0.813 | 8.7 | 0.297 | 316 | in range |
-| inventory | 0.208 | 0.192 | 0 | 0.844 | 7.2 | 0.266 | 313 | in range |
-| night | 0.191 | 0.209 | 0 | 0.906 | 13.3 | 0.336 | 549 | in range |
-| overworld | 0.266 | 0.203 | 0 | **0.750** | 3.2 | 0.219 | 368 | in range — p99 is 0.030 over the 0.72 floor |
+| inventory | 0.209 | 0.192 | 0 | 0.844 | 7.1 | 0.265 | 313 | in range |
+| night | 0.192 | 0.209 | 0 | 0.906 | 13.0 | 0.336 | 552 | in range |
+| overworld | 0.266 | 0.202 | 0 | **0.750** | 3.0 | 0.219 | 369 | in range — p99 is 0.030 over the 0.72 floor |
 
 `sheet.mjs` warns when `p99 < 0.72`, so `overworld` clears the highlight floor by
 **0.030** and is the tightest frame in the table — five of the eight scenarios sit
