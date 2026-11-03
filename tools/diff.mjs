@@ -57,6 +57,7 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from 
 import { resolve, basename, join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { decodePng, encodePng } from './png.mjs';
+import { resolveInside } from './paths.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const SHOTS = resolve(ROOT, 'shots');
@@ -75,7 +76,17 @@ const ALLOW_PCT = Number(args['allow-pct'] ?? 0);      // % of pixels allowed to
 const SEVERE_DELTA = Number(args['severe-delta'] ?? 16); // "changed a lot", reported separately
 const GRID = Math.max(1, Number(args.grid ?? 3));
 const JSON_OUT = !!args.json;
-const OUT_DIR = resolve(ROOT, String(args.out ?? 'shots/_diff'));
+/* --out= is the one path this tool writes to, so it is held inside the repo like
+   every other tool's output (tools/paths.mjs). --base= and --new= are only read
+   and decoded as PNGs, so they may point anywhere. A refused --out= is a usage
+   error: exit 2, not the "frames differ" exit 1. */
+let OUT_DIR;
+try {
+  OUT_DIR = resolveInside(String(args.out ?? 'shots/_diff'), '--out=');
+} catch (e) {
+  console.error(e.message);
+  process.exit(2);
+}
 
 /* --- measurement -------------------------------------------------------- */
 

@@ -20,12 +20,15 @@
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { decodePng, encodePng } from './png.mjs';
+import { ensureRepoDir } from './paths.mjs';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const DIFF = join(ROOT, 'tools', 'diff.mjs');
+/* Fixtures live under the gitignored shots/_debug/, not the OS temp dir,
+   because diff.mjs refuses an --out= outside the repository. */
+const SCRATCH = ensureRepoDir('shots/_debug');
 
 const W = 96;
 const H = 64;
@@ -85,7 +88,7 @@ const cases = [];
 const testCase = (name, fn) => cases.push({ name, fn });
 
 testCase('identical frames -> zero delta, exit 0', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-same-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-same-'));
   try {
     const a = writePng(join(dir, 'a.png'), frame({ rect: { x: 10, y: 10, w: 20, h: 12, c: [180, 160, 120] } }));
     const b = writePng(join(dir, 'b.png'), frame({ rect: { x: 10, y: 10, w: 20, h: 12, c: [180, 160, 120] } }));
@@ -100,7 +103,7 @@ testCase('identical frames -> zero delta, exit 0', () => {
 });
 
 testCase('one changed pixel -> detected, exit non-zero', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-pixel-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-pixel-'));
   try {
     const a = writePng(join(dir, 'a.png'), frame());
     const b = frame();
@@ -124,7 +127,7 @@ testCase('one changed pixel -> detected, exit non-zero', () => {
 });
 
 testCase('a shifted prop -> bbox spans both positions', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-shift-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-shift-'));
   try {
     const rect = { w: 16, h: 16, c: [200, 180, 120] };
     const a = writePng(join(dir, 'a.png'), frame({ rect: { ...rect, x: 8, y: 8 } }));
@@ -146,7 +149,7 @@ testCase('a shifted prop -> bbox spans both positions', () => {
 });
 
 testCase('a sub-threshold change -> within tolerance, exit 0', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-noise-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-noise-'));
   try {
     const a = writePng(join(dir, 'a.png'), frame());
     /* 1/255 on every channel is below the documented 2/255 noise floor, so a
@@ -163,7 +166,7 @@ testCase('a sub-threshold change -> within tolerance, exit 0', () => {
 });
 
 testCase('a missing baseline -> exit 2, not a pass', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-nobase-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-nobase-'));
   try {
     const b = writePng(join(dir, 'b.png'), frame());
     const r = run(['--scenario=fixture', `--base=${join(dir, 'nope.png')}`, `--new=${b}`, `--out=${join(dir, 'out')}`, '--json']);
@@ -175,7 +178,7 @@ testCase('a missing baseline -> exit 2, not a pass', () => {
 });
 
 testCase('a size mismatch -> exit 2, says which sizes', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-size-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-size-'));
   try {
     const a = writePng(join(dir, 'a.png'), frame());
     const big = new Uint8Array(48 * 32 * 4).fill(90);
@@ -190,8 +193,18 @@ testCase('a size mismatch -> exit 2, says which sizes', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+testCase('an --out= outside the repository is refused with exit 2', () => {
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-escape-'));
+  try {
+    const a = writePng(join(dir, 'a.png'), frame());
+    const r = run(['--scenario=fixture', `--base=${a}`, `--new=${a}`, '--out=../../escape_diff', '--json']);
+    if (r.code !== 2) return `expected exit 2, got ${r.code}`;
+    return null;
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 testCase('the diff PNG is written, decodable, and frame-sized', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nona-diff-out-'));
+  const dir = mkdtempSync(join(SCRATCH, 'nona-diff-out-'));
   try {
     const a = writePng(join(dir, 'a.png'), frame());
     const b = writePng(join(dir, 'b.png'), frame({ rect: { x: 40, y: 20, w: 6, h: 6, c: [250, 250, 250] } }));
