@@ -96,6 +96,7 @@ has; use them instead of reasoning that a change "should" work.
 |---|---|
 | `node tools/guard.mjs` | do the hard rules hold? fast, no browser, CI-gated |
 | `node tools/sheet.mjs --analyze` | per-scenario mean/sd/p01/p99/blk%/sat/colors for `shots/*.png` |
+| `node tools/diff.mjs --scenario=combat` | pixel diff of a fresh capture against the committed baseline; exit 1 when it moved, 2 when it cannot compare |
 | `node tools/crop.mjs --in=shots/combat.png --x=0.5 --y=0.5 --w=0.25 --scale=4` | zoom the region that actually shows the defect |
 | `node tools/shot.mjs --all --w=1600 --h=900` | recapture all 8 scenarios deterministically |
 | `node tools/smoke.mjs` | boots, loads 21 modules, links shaders, proves determinism |
@@ -103,16 +104,18 @@ has; use them instead of reasoning that a change "should" work.
 | `node tools/live.mjs --port=5190` | the un-posed live boot, which the harness cannot reproduce |
 | `node tools/debug.mjs`, `node tools/probe.mjs` | module load / shader-link console, live scene-graph inspection |
 
-There is **no pixel-diff tool**. A before/after comparison is: capture, crop the
-same region of both frames, look at both, and quote the numbers `sheet.mjs`
-prints for each. `shots/_debug/` absorbs scratch captures; committed baselines in
+A before/after comparison is: `node tools/diff.mjs --scenario=<name>` for the
+changed-pixel count, bounding box and a red/blue diff PNG in `shots/_diff/`
+(non-zero exit when the frame moved), then crop that region of both frames, look
+at both, and quote the numbers `sheet.mjs` prints for each. `shots/_debug/` absorbs scratch captures; committed baselines in
 `shots/` are never a scratch directory.
 
-Thresholds `sheet.mjs` warns at (from `tools/sheet.mjs:103-111`): `p01 > 0.06`
-lifted blacks; `p99 < 0.72` no highlights; `sd < 0.13` low contrast; `mean > 0.5`
-too bright; `mean < 0.05` nearly black; `blownPct > 4` blown out (share of pixels
-over 0.96, **not** the `blk%` column, which is true-black share); `meanSat > 0.52`
-oversaturated; `colors < 90` flat palette.
+Thresholds `sheet.mjs` checks (the `RULES` table in `tools/sheet.mjs`). **Hard**,
+exit 1: `mean < 0.05` nearly black; `mean > 0.5` too bright; `colors < 90` flat
+palette. **Advisory**, printed but not fatal: `p01 > 0.06` lifted blacks;
+`p99 < 0.72` no highlights; `sd < 0.13` low contrast; `blownPct > 4` blown out
+(share of pixels over 0.96, **not** the `blk%` column, which is true-black share);
+`meanSat > 0.52` oversaturated.
 
 ## Verifying visually
 
