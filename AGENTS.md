@@ -71,7 +71,7 @@ something a static check can see.
 src/main.js            boot: creates the engine, applies a scenario, starts the loop
 src/core/              Engine (services + lifecycle), Rand (PRNG/noise), AssetForge,
                        texgen/ (all procedural textures), Input, Profiler
-src/game/              modules.js (the 21-module manifest + load order), Scenarios.js
+src/game/              modules.js (the 22-module manifest + load order), Scenarios.js
                        (the 8 judged scenarios), AI/, Director.js, Loot.js, CameraRig.js
 src/render/            Lighting, Sky, Atmosphere, Weather, RenderPipeline, passes/,
                        GradePass looks, LightRig
@@ -103,7 +103,7 @@ has; use them instead of reasoning that a change "should" work.
 | `node tools/diff.mjs --scenario=combat` | pixel diff of a fresh capture against the committed baseline; exit 1 when it moved, 2 when it cannot compare |
 | `node tools/crop.mjs --in=shots/combat.png --x=0.5 --y=0.5 --w=0.25 --scale=4` | zoom the region that actually shows the defect |
 | `node tools/shot.mjs --all --w=1600 --h=900` | recapture all 8 scenarios deterministically |
-| `node tools/smoke.mjs` | boots, loads 21 modules, links shaders, proves determinism |
+| `node tools/smoke.mjs` | boots, loads 22 modules, links shaders, proves determinism |
 | `node tools/actors.mjs --port=5190` | is a character not drawing, off-frame, too small, or lost against the floor? |
 | `node tools/live.mjs --port=5190` | the un-posed live boot, which the harness cannot reproduce |
 | `node tools/debug.mjs`, `node tools/probe.mjs` | module load / shader-link console, live scene-graph inspection |
