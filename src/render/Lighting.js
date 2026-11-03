@@ -1625,8 +1625,17 @@ uniform float nonaRimGain;  // per-material gain
     const bz = len > 1e-3 ? (_tmp.z / len) * bias : 0;
     pool.mesh.position.set(pos.x + bx, (Number.isFinite(pos.y) ? pos.y : 0) + 0.035, pos.z + bz);
 
+    /* Lean the quad onto the ground only when the terrain surface IS the ground.
+       An interior hides it and lays flat flagging over the top, but `normalAt`
+       still answers for the bumpy heightfield underneath: measured walking the
+       crypt, the quad tilted 2-17 degrees and lifted its edge up to 0.83 m off
+       a flat floor, changing every few steps. The soft depth fade then cut
+       away whichever half dipped under the slabs, so the dark patch swung
+       around the hero and read as the floor itself sliding. */
     const terrain = this.engine.get?.('terrain');
-    if (terrain && !terrain.__dead && typeof terrain.normalAt === 'function') {
+    const onTerrain = terrain && !terrain.__dead && terrain.group?.visible !== false;
+    pool.mesh.quaternion.identity();
+    if (onTerrain && typeof terrain.normalAt === 'function') {
       try {
         terrain.normalAt(pos.x, pos.z, _tmp);
         if (_tmp.lengthSq() > 1e-6) {
