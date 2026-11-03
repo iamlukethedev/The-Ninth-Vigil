@@ -1,6 +1,7 @@
 node_modules/
 dist/
 shots/_debug/
+shots/_diff/
 shots/_sheet.png
 *.tmp.mjs
 .DS_Store
