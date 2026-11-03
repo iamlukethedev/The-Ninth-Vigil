@@ -5,6 +5,7 @@
  *   node tools/shot.mjs --scenario=combat --out=shots/combat.png [--w=1920] [--h=1080] [--frames=240]
  *   node tools/shot.mjs --all
  *   node tools/shot.mjs --scenario=combat --timeout=600000   # slow/software renderer
+ *   node tools/shot.mjs --scenario=combat --retries=0        # fail on a lost context instead of retrying once
  *
  * Boots the vite dev server (reusing one if already listening), loads the game
  * with ?shot=<scenario>, waits for window.__NONA__.ready, drives the sim a
@@ -15,7 +16,7 @@
  */
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdirSync, existsSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { resolveInside } from './paths.mjs';
 import net from 'node:net';
@@ -74,6 +75,13 @@ async function shoot(browser, scenario, outPath, w, h, frames, readyTimeout) {
     if (m.type() === 'error' || m.type() === 'warning') problems.push(`[${m.type()}] ${m.text()}`);
   });
   page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
+  /* A lost WebGL context is counted from the first script on, so a loss during
+     boot is seen too. The event does not bubble; a capture-phase listener on
+     the document still receives it from the canvas. */
+  await page.addInitScript(() => {
+    window.__shotContextLost = 0;
+    document.addEventListener('webglcontextlost', () => { window.__shotContextLost++; }, true);
+  });
 
   await page.goto(`http://127.0.0.1:${PORT}/?shot=${scenario}&headless=1`, {
     waitUntil: 'load',
@@ -94,9 +102,24 @@ async function shoot(browser, scenario, outPath, w, h, frames, readyTimeout) {
     await window.__NONA__.step(f, 1 / 60);
   }, frames);
 
-  mkdirSync(dirname(outPath), { recursive: true });
+  /* Refuse, never write, a frame from a run that lost its WebGL context (#26).
+     The renderer recovers into a different image -- measured 86% of pixels
+     changed and ~3.5 levels darker -- so the frame says nothing about the art
+     and would overwrite a good baseline. The screenshot is taken into memory
+     and only written once the run is known to be clean. */
   const canvas = await page.$('canvas');
-  await (canvas ?? page).screenshot({ path: outPath });
+  const png = await (canvas ?? page).screenshot();
+  const lost =
+    (await page.evaluate(() => window.__shotContextLost ?? 0).catch(() => 0)) +
+    problems.filter((p) => p.includes('CONTEXT_LOST_WEBGL')).length;
+  if (lost) {
+    await page.close();
+    const err = new Error('WebGL context was lost during the run; frame refused, nothing written');
+    err.contextLost = true;
+    throw err;
+  }
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, png);
 
   const perf = await page
     .evaluate(() => window.__NONA__.stats?.() ?? null)
@@ -112,6 +135,9 @@ const h = Number(args.h ?? 1080);
    (measured: ~250 s for a crypt boot on SwiftShader), so the ready wait is
    tunable. The default is unchanged. */
 const readyTimeout = Number(args.timeout ?? 120000);
+/* A lost context is the one failure retried, because a clean rerun is exact;
+   anything else fails at once. */
+const RETRIES = Number(args.retries ?? 1);
 const server = await ensureServer();
 /* ANGLE backend is selected per platform, because a hardcoded backend silently
    degrades the capture instead of failing it.
@@ -168,7 +194,17 @@ for (const s of list) {
   const out = resolveInside(String(args.out ?? `shots/${s}.png`), '--out=');
   const frames = Number(args.frames ?? SCENARIOS[s]?.frames ?? 120);
   try {
-    const { problems, perf } = await shoot(browser, s, out, w, h, frames, readyTimeout);
+    let shot;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        shot = await shoot(browser, s, out, w, h, frames, readyTimeout);
+        break;
+      } catch (e) {
+        if (!e.contextLost || attempt >= RETRIES) throw e;
+        console.log(`RETRY ${s}: ${e.message}`);
+      }
+    }
+    const { problems, perf } = shot;
     console.log(`OK  ${s.padEnd(10)} -> ${out.replace(ROOT + '/', '')}  ${w}x${h} @${frames}f`);
     if (perf) console.log(`    perf: ${JSON.stringify(perf)}`);
     if (problems.length) {
