@@ -30,6 +30,9 @@ npm run dev             # http://localhost:5190  (?shot=combat, ?shot=boss)
 npm run build           # vite build -> dist/
 npm run guard           # lint: the hard rules, enforced. No browser. Seconds.
 npm run guard:test      # proves the guard still catches what it claims
+npm run paths:test      # proves the tools refuse --out= paths outside the repo
+npm run diff:test       # proves the pixel-diff gate's exit codes and numbers
+npm run sheet:test      # proves the frame analysis fails on a hard rule (needs chromium)
 npm run smoke           # boot + determinism. Needs chromium; exits non-zero on failure
 npm run check           # capture all 8 scenarios + objective frame analysis. Needs a GPU
 node tools/sheet.mjs --analyze   # metrics for the committed shots/*.png only, no game boot
@@ -39,10 +42,11 @@ node tools/sheet.mjs --analyze   # metrics for the committed shots/*.png only, n
 `Boot + determinism` CI job (run with `--software` on the GPU-less runner). Both
 are required status checks on `main`. `npm run check` is a local tool, not a gate.
 
-Verified on this checkout at HEAD `1f566b2`: `npm run guard` → `OK — 153 files,
-1 html, 9 rules, 0 violations`; `npm run guard:test` → `OK — 13 cases`;
-`npm run build` → `✓ built`; `node tools/sheet.mjs --analyze` → 8 frames, all in
-range. `npm run smoke` and `npm run check` were **not** run (they boot Chromium).
+Verified on this checkout at HEAD `7b3c4bb`: `npm run guard` → `OK — 162 files,
+1 html, 9 rules, 0 violations`; `npm run guard:test` → `OK — 38 cases`;
+`npm run paths:test` → 11 cases, `npm run diff:test` → 9, `npm run sheet:test` → 4;
+`npm run build` → `✓ built`; `node tools/sheet.mjs --analyze` → 8 frames, no hard
+failures. `npm run smoke` and `npm run check` were **not** run for this table.
 
 ## The four hard rules
 
