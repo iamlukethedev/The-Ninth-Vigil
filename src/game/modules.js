@@ -19,6 +19,7 @@ export const MANIFEST = [
   { id: 'water',     path: '/src/world/Water.js',          export: 'Water' },
   { id: 'dungeon',   path: '/src/world/Dungeon.js',        export: 'Dungeon' },
   { id: 'props',     path: '/src/world/Props.js',          export: 'Props' },
+  { id: 'town',      path: '/src/world/Town.js',           export: 'Town' },
   { id: 'weather',   path: '/src/render/Weather.js',       export: 'Weather' },
 
   // --- actors ---

@@ -7,7 +7,7 @@ Everything below the line is a self-contained brief. It assumes zero prior conte
 You are continuing work on **THE NINTH VIGIL**, a Diablo 4–class isometric action RPG built in
 Three.js r185. It is a real, working, feature-complete game: 107,888 lines across 142 files
 (`wc -l` over `src/**/*.js` at HEAD `1f566b2`),
-21 engine modules, running at 60+ fps.
+22 engine modules, running at 60+ fps.
 
 **Repository:** https://github.com/iamlukethedev/The-Ninth-Vigil
 
@@ -247,7 +247,7 @@ the camera moving, everything translates and the frame-to-frame metric saturates
 
 ## Current state — what works
 
-All 21 modules load: `assets sky lighting terrain water dungeon props town weather hero
+All 22 modules load: `assets sky lighting terrain water dungeon props town weather hero
 bestiary ai combat physics loot director camera vfx decals audio hud render`.
 
 - **Procedural PBR material forge** — 13 material families (stone, cobble, wood, metal, gold,
@@ -677,7 +677,7 @@ checkout. None of them was run for the state block above (it was verified with `
 `git status` and `npm run guard`), so treat their output as yours to establish:
 
 ```bash
-node tools/debug.mjs --scenario=combat --frames=40   # all 21 modules must appear in "modules loaded"
+node tools/debug.mjs --scenario=combat --frames=40   # all 22 modules must appear in "modules loaded"
 node tools/actors.mjs --port=5190                    # run 3x; see the oracle table above
 node tools/shot.mjs --all --w=1600 --h=900 && node tools/sheet.mjs --analyze
 ```
