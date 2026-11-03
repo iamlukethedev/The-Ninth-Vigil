@@ -1541,7 +1541,7 @@ export class RenderPipeline {
       this._focus += (target - this._focus) * clamp(this.params.dofFocusLag, 0.01, 1);
       this.passes.dof.setFocus(this._focus);
     }
-    if (this.passes.motionBlur) this.passes.motionBlur.updateMatrices();
+    if (this.passes.motionBlur) this.passes.motionBlur.updateMatrices(this.engine.clock.frame);
     if (this.passes.grain) this.passes.grain.frame = this._frame;
     if (this.passes.composite) this.passes.composite.frame = this._frame;
 

@@ -1,18 +1,19 @@
 # KNOWN ISSUES — authoritative open list
 
 Measured from the **eight captures recaptured on three 0.187.0** ("shots:
-recapture all eight baselines on three 0.187"), the last commit that touches
-`shots/`. Check that is still true before trusting a row:
+recapture all eight baselines on three 0.187"), taken on top of the minimap
+fix, the last commit that touches `shots/`. Check that is still true before
+trusting a row:
 
 ```bash
 git log -1 --format='%h %s' -- shots/        # shots: recapture all eight baselines on three 0.187
 ```
 
-The previous set (`3355968`) had drifted before the three upgrade: on main,
-fresh captures differed from `boss` by 84.6%, `hub` by 2.7% and `inventory`
-by 1.6% of pixels, while the other five reproduced exactly. The new set
-reproduces: a second capture was byte-identical for seven frames, and `boss`
-differed by one pixel at Δ 3/255.
+Against the three 0.185 set from the minimap fix, the upgrade changed 0.5%
+(`inventory`) to 9.8% (`night`) of pixels at Δ > 2/255. Each frame keeps its
+previous size: `hub`, `boss` and `inventory` are 1920x1080, the other five
+1600x900. The new set reproduces: a second capture was identical for all
+eight frames (`dungeon` max Δ 1/255).
 
 The previous revision of this table said it was measured after the cascade fix
 `d2aad35`. That object is not in this repository (`git cat-file -t d2aad35` →
@@ -30,14 +31,14 @@ until the flags are at zero.
 
 | scenario | mean | sd | p01 | p99 | blk% | sat | colors | verdict |
 |---|---|---|---|---|---|---|---|---|
-| boss | 0.189 | 0.201 | 0 | 0.906 | 2.7 | 0.310 | 575 | in range |
+| boss | 0.191 | 0.201 | 0 | 0.906 | 2.4 | 0.312 | 576 | in range |
 | closeup | 0.258 | 0.207 | 0 | 0.781 | 2.2 | 0.208 | 160 | in range |
-| combat | 0.281 | 0.211 | 0 | 0.875 | 1.3 | 0.268 | 449 | in range |
-| dungeon | 0.275 | 0.215 | 0 | 0.875 | 1.6 | 0.251 | 329 | in range |
-| hub | 0.144 | 0.164 | 0 | 0.813 | 8.9 | 0.298 | 321 | in range |
+| combat | 0.281 | 0.210 | 0 | 0.875 | 1.1 | 0.267 | 448 | in range |
+| dungeon | 0.276 | 0.214 | 0 | 0.875 | 1.5 | 0.251 | 329 | in range |
+| hub | 0.146 | 0.164 | 0 | 0.813 | 8.5 | 0.296 | 321 | in range |
 | inventory | 0.208 | 0.192 | 0 | 0.844 | 7.2 | 0.265 | 317 | in range |
-| night | 0.187 | 0.208 | 0 | 0.906 | 13.9 | 0.340 | 558 | in range |
-| overworld | 0.264 | 0.204 | 0 | **0.750** | 3.6 | 0.219 | 370 | in range — p99 is 0.030 over the 0.72 floor |
+| night | 0.188 | 0.207 | 0 | 0.906 | 13.5 | 0.338 | 557 | in range |
+| overworld | 0.266 | 0.203 | 0 | **0.750** | 3.2 | 0.218 | 368 | in range — p99 is 0.030 over the 0.72 floor |
 
 `sheet.mjs` warns when `p99 < 0.72`, so `overworld` clears the highlight floor by
 **0.030** and is the tightest frame in the table — five of the eight scenarios sit

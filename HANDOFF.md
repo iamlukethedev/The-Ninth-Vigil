@@ -75,9 +75,9 @@ is no tree to recover.
 
 **What is actually current:**
 
-- The eight canonical captures were recaptured on three 0.187.0, and all eight
-  pass `node tools/sheet.mjs --analyze`. Every number in `KNOWN_ISSUES.md` is
-  measured against those PNGs.
+- The eight canonical captures were recaptured on three 0.187.0, on top of
+  the minimap fix, and all eight pass `node tools/sheet.mjs --analyze`. Every
+  number in `KNOWN_ISSUES.md` is measured against those PNGs.
 - Open instant-fail work is `KNOWN_ISSUES.md` §2 (blown additive discs, sev 8) and
   §5 (untextured blue-grey rubble, sev 8). §4 (pale enemy materials) is half landed:
   the value half, not the surface half. §6 (tiling) is open and is now purely an
