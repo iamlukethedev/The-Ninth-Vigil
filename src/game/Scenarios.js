@@ -68,7 +68,16 @@ export const SCENARIOS = {
 };
 
 export async function applyScenario(engine, name) {
-  const cfg = SCENARIOS[name] ?? SCENARIOS.combat;
+  /* Own-property check, NOT `SCENARIOS[name] ?? SCENARIOS.combat`. `??` only
+     catches null/undefined, so an inherited Object.prototype member survives
+     it and becomes the "config": `?shot=toString` made `cfg` the inherited
+     function, and `engine.scenario = { name, ...cfg }` then spread a function,
+     which yields no own enumerable properties — so the scenario had no env,
+     camera, spawn or exposure at all, and `ZONE[name]` in the minimap threw
+     `TypeError: (ZONE[name] ?? "UNCHARTED").toUpperCase is not a function`.
+     Measured live before the fix:
+       ?shot=toString -> scenarioName "toString", biome null, exposure 1 */
+  const cfg = Object.hasOwn(SCENARIOS, name) ? SCENARIOS[name] : SCENARIOS.combat;
   engine.scenario = { name, ...cfg };
   engine.renderer.toneMappingExposure = cfg.exposure ?? 1.0;
 

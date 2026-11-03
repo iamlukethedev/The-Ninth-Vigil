@@ -47,7 +47,12 @@ const boot = (async () => {
   // as an unlit, unfogged, un-graded mess. The harness applies one explicitly;
   // the live game must too.
   const requested = params.get('shot') ?? params.get('scenario');
-  const startScenario = SCENARIOS[requested] ? requested : DEFAULT_SCENARIO;
+  /* Own-property check, NOT a truthiness test. `SCENARIOS['toString']` is the
+     inherited Object.prototype function, which is TRUTHY — so `?shot=toString`
+     passed this gate and the game booted into a scenario that does not exist.
+     The truthiness form also accepted `constructor`, `valueOf` and every other
+     inherited member. `Object.hasOwn` is the check that means what it says. */
+  const startScenario = (requested && Object.hasOwn(SCENARIOS, requested)) ? requested : DEFAULT_SCENARIO;
   setProgress(0.97, startScenario);
   try {
     await applyScenario(engine, startScenario);

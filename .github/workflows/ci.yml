@@ -39,6 +39,12 @@ jobs:
       # so the windows-latest job below cannot catch that revert, and this one
       # is the only job that can.
       - run: npm run guard:test
+      # Proves the three tools that take a caller-supplied path still refuse to
+      # leave the checkout. --out="../../escape_test.png" used to write two
+      # levels above the repo without complaint; one shared helper now rejects
+      # it, and this asserts the rejection rather than the line that implements
+      # it.
+      - run: node tools/paths.test.mjs
 
   # The same gate on Windows, because the bug it guards against was a Windows
   # one. The guard's rule scope was POSIX-only, so on Windows it silently

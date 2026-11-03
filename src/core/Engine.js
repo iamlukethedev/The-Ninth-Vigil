@@ -75,12 +75,31 @@ export class Engine {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const q = new URLSearchParams(location.search).get('q');
     const tier = q ?? 'ultra';
-    const cfg = {
+    const TIERS = {
       low:   { tier: 'low',   shadowRes: 1024, cascades: 2, ssao: false, ssr: false, taa: false, volumetric: false, dpr: Math.min(dpr, 1) },
       med:   { tier: 'med',   shadowRes: 2048, cascades: 3, ssao: true,  ssr: false, taa: true,  volumetric: true,  dpr: Math.min(dpr, 1) },
       high:  { tier: 'high',  shadowRes: 2048, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 1.5) },
       ultra: { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 2) },
-    }[tier] ?? null;
+    };
+    /* Own-property check, NOT `TIERS[tier] ?? null`. `??` only catches
+       null/undefined, so an inherited Object.prototype member survives it:
+       `?q=toString` made `TIERS['toString']` the inherited FUNCTION, `?? null`
+       did not fire, the `??` fallback did not fire either, and `this.quality`
+       became a function instead of a config.
+       SCOPE: only keys that are NOT own properties of the literal but ARE
+       inherited break. The four real tiers are own properties, so `?q=low`
+       always resolved to `low` correctly -- measured on main BEFORE the fix:
+         ?q=low -> tier "low", shadowRes 1024
+       The defect is reachable only through inherited names:
+         ?q=toString     -> engineQualityType "function", engineQualityTier null
+         ?q=valueOf      -> same
+         ?q=__proto__    -> cfg is the prototype object, tier undefined
+       An earlier version of this comment claimed the defect also defeated the
+       `?q=low` low-end mitigation and pushed VRAM 64 MB -> 180 MB. That was
+       wrong: it came from reading the `??` semantics, not from measuring, and
+       `?q=low` was never affected. Corrected here.
+       `Object.hasOwn` is the check that means what it says. */
+    const cfg = Object.hasOwn(TIERS, tier) ? TIERS[tier] : null;
     return cfg ?? { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true, ssr: true, taa: true, volumetric: true, dpr: 1 };
   }
 

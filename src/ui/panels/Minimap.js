@@ -79,7 +79,7 @@ export class Minimap {
 
     const uri = this.cv.toDataURL('image/png');
     if (this.map) this.map.style.backgroundImage = `url("${uri}")`;
-    if (this.label) this.label.textContent = (ZONE[name] ?? 'UNCHARTED').toUpperCase();
+    if (this.label) this.label.textContent = (Object.hasOwn(ZONE, name) ? ZONE[name] : 'UNCHARTED').toUpperCase();
   }
 
   /* ------------------------------------------------------------- plan draw */

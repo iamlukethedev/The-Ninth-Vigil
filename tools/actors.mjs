@@ -12,6 +12,8 @@
  *   node tools/actors.mjs [--port=5190] [--scenario=]
  */
 import { chromium } from 'playwright';
+import { join } from 'node:path';
+import { ensureRepoDir } from './paths.mjs';
 
 const arg = (k, d) => {
   const h = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -22,6 +24,11 @@ const scenario = arg('scenario', '');
 const url = `http://127.0.0.1:${port}/${scenario ? `?shot=${scenario}` : ''}`;
 
 const W = 1600, H = 900;
+// shots/_debug/ is gitignored, so a fresh clone does not have it. Created here,
+// like crop/shot/live do, and anchored to the repo root: the write used to be a
+// cwd-relative 'shots/_debug/actors.png', so running this from anywhere but the
+// repo root scattered the file into whatever directory you happened to be in.
+const SHOT = join(ensureRepoDir('shots/_debug'), 'actors.png');
 const browser = await chromium.launch({ args: ['--use-angle=metal', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 await page.goto(url, { waitUntil: 'load', timeout: 60000 });
@@ -82,7 +89,7 @@ const actors = await page.evaluate((dims) => {
 }, { W, H });
 
 // Screenshot once, then sample luma at each actor vs the floor beside it.
-const shot = await page.screenshot({ path: 'shots/_debug/actors.png' });
+const shot = await page.screenshot({ path: SHOT });
 const b64 = shot.toString('base64');
 const samples = await page.evaluate(async ({ b64, actors, W, H }) => {
   const img = new Image();

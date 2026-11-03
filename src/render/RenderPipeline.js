@@ -1224,11 +1224,16 @@ export class RenderPipeline {
     if (this.__dead) return;
     try {
       this.scenario = name;
-      const s = SCENARIOS[name] ?? SCENARIOS.combat;
+      /* Own-property check, NOT `SCENARIOS[name] ?? SCENARIOS.combat`. `??` only
+         catches null/undefined, so an inherited Object.prototype member survives
+         it and becomes the "config" — and every field read below it
+         (`s.white`, `s.gain`, `s.look`) would then be undefined, silently
+         un-tinting the whole grade. */
+      const s = Object.hasOwn(SCENARIOS, name) ? SCENARIOS[name] : SCENARIOS.combat;
       const env = cfg.env ?? {};
       const p = this.params;
 
-      let look = BIOME_LOOK[env.biome] ?? s.look;
+      let look = Object.hasOwn(BIOME_LOOK, env.biome) ? BIOME_LOOK[env.biome] : s.look;
       if (name === 'night' || (env.interior !== true && typeof env.timeOfDay === 'number' && env.timeOfDay < 0.08)) {
         look = 'night';
       }
