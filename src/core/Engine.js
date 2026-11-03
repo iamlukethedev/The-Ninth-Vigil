@@ -85,11 +85,19 @@ export class Engine {
        null/undefined, so an inherited Object.prototype member survives it:
        `?q=toString` made `TIERS['toString']` the inherited FUNCTION, `?? null`
        did not fire, the `??` fallback did not fire either, and `this.quality`
-       became a function instead of a config. The same defect also defeated
-       the `?q=low` low-end mitigation -- `engine.quality.tier` was undefined,
-       so AssetForge fell back to 'ultra' and the VRAM budget went 64 MB -> 180
-       MB. Measured live before the fix:
-         ?q=toString -> engineQualityType "function", engineQualityTier null
+       became a function instead of a config.
+       SCOPE: only keys that are NOT own properties of the literal but ARE
+       inherited break. The four real tiers are own properties, so `?q=low`
+       always resolved to `low` correctly -- measured on main BEFORE the fix:
+         ?q=low -> tier "low", shadowRes 1024
+       The defect is reachable only through inherited names:
+         ?q=toString     -> engineQualityType "function", engineQualityTier null
+         ?q=valueOf      -> same
+         ?q=__proto__    -> cfg is the prototype object, tier undefined
+       An earlier version of this comment claimed the defect also defeated the
+       `?q=low` low-end mitigation and pushed VRAM 64 MB -> 180 MB. That was
+       wrong: it came from reading the `??` semantics, not from measuring, and
+       `?q=low` was never affected. Corrected here.
        `Object.hasOwn` is the check that means what it says. */
     const cfg = Object.hasOwn(TIERS, tier) ? TIERS[tier] : null;
     return cfg ?? { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true, ssr: true, taa: true, volumetric: true, dpr: 1 };
