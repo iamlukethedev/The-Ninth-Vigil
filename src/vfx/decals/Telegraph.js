@@ -171,6 +171,15 @@ void main() {
      downstream compares the reconstructed scene point against. */
   vWorld = position;
   vec4 mv = modelViewMatrix * vec4( position, 1.0 );
+  /* View-space bias toward the camera, the contact shadows' fix. The patch
+     follows the analytic floor and the crypt's flagstones stand up to ~8-10 cm
+     proud of it; against the hairline polygonOffset every such slab clipped
+     the field along its own edges, so a telegraph round the hero printed as a
+     blocky slab-shaped area that re-cut itself as he moved. 0.10 m along the
+     view ray clears them, moves the patch on screen by the perspective ratio
+     only, and a shin or a barrel -- tens of centimetres nearer -- still
+     occludes it; projectionWeight() rejects the rest by world distance. */
+  mv.z += 0.10;
   gl_Position = projectionMatrix * mv;
   /* Carry the clip coordinate so the fragment can find its own screen UV by
      perspective divide. No resolution uniform, therefore exact at any render
