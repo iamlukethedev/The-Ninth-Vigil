@@ -11,7 +11,9 @@ git log -1 --format='%h %s' -- shots/        # minimap, motion blur, dynamic res
 The previous set (`3355968`) had drifted before that: fresh captures differed
 from `boss` by 85.6%, `hub` by 3.9% and `inventory` by 1.6% of pixels. The new
 set reproduces: seven frames byte-identical on a second capture, `night` within
-1-5 px at Δ ≤ 6/255.
+1-5 px at Δ ≤ 6/255. The four interiors (`boss`, `closeup`, `combat`, `dungeon`)
+were then retaken once more for the flat hero pool (0.5-11% of pixels, all of
+it the pool's darkening under the hero); each repeats exactly.
 
 The previous revision of this table said it was measured after the cascade fix
 `d2aad35`. That object is not in this repository (`git cat-file -t d2aad35` →
@@ -29,10 +31,10 @@ until the flags are at zero.
 
 | scenario | mean | sd | p01 | p99 | blk% | sat | colors | verdict |
 |---|---|---|---|---|---|---|---|---|
-| boss | 0.191 | 0.202 | 0 | 0.906 | 2.4 | 0.314 | 582 | in range |
-| closeup | 0.259 | 0.207 | 0 | 0.781 | 2.3 | 0.209 | 158 | in range |
-| combat | 0.281 | 0.211 | 0 | 0.875 | 1.1 | 0.269 | 446 | in range |
-| dungeon | 0.275 | 0.215 | 0 | 0.875 | 1.5 | 0.252 | 331 | in range |
+| boss | 0.191 | 0.201 | 0 | 0.906 | 2.4 | 0.314 | 583 | in range |
+| closeup | 0.259 | 0.207 | 0 | 0.781 | 2.3 | 0.210 | 158 | in range |
+| combat | 0.281 | 0.211 | 0 | 0.875 | 1.1 | 0.268 | 448 | in range |
+| dungeon | 0.275 | 0.215 | 0 | 0.875 | 1.5 | 0.252 | 330 | in range |
 | hub | 0.146 | 0.165 | 0 | 0.813 | 8.7 | 0.297 | 316 | in range |
 | inventory | 0.208 | 0.192 | 0 | 0.844 | 7.2 | 0.266 | 313 | in range |
 | night | 0.191 | 0.209 | 0 | 0.906 | 13.3 | 0.336 | 549 | in range |
