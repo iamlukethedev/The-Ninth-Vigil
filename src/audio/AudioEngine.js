@@ -166,7 +166,7 @@ export class AudioEngine {
       console.info(`[audio] ready — ${this.ctx.sampleRate} Hz, suspended until first gesture`);
     } catch (e) {
       this.failed = true;
-      console.error('[audio] graph build failed — running silent:', e);
+      console.error(`[audio] graph build failed — running silent: ${e?.name ?? 'Error'}: ${e?.message ?? e}`, e);
       this._teardown();
     }
   }
@@ -243,21 +243,35 @@ export class AudioEngine {
     });
 
     /* ---- ambience + music ------------------------------------------ */
-    this.ambience = new Ambience({
+    // Each bed builds on its own: a throw inside one (issue #25 saw an LFO
+    // fail at boot) costs that bed, not the SFX, UI and the other bed with it.
+    this.ambience = this._buildLayer('ambience', () => new Ambience({
       ctx, bank: this.bank, bus: this.ambBus, wet: this.revSend,
       rnd: this.engine.rand('audio:ambience'),
       play: (id, o) => this.play(id, o),
       engine: this.engine,
-    });
-    this.ambience.build();
+    }));
 
-    this.music = new Music({
+    this.music = this._buildLayer('music', () => new Music({
       ctx, bank: this.bank, bus: this.musBus, wet: this.revSend,
       rnd: this.engine.rand('audio:music'), seed: 0x5A1C7C4D,
-    });
-    this.music.build();
+    }));
 
     this._initListener();
+  }
+
+  /** Construct and build one bed; on a throw, log what threw, dispose it and return null. */
+  _buildLayer(name, make) {
+    let layer = null;
+    try {
+      layer = make();
+      layer.build();
+      return layer;
+    } catch (e) {
+      console.error(`[audio] ${name} failed to build, running without it — ${e?.name ?? 'Error'}: ${e?.message ?? e}`, e);
+      try { layer?.dispose(); } catch { /* partially built */ }
+      return null;
+    }
   }
 
   _initListener() {
@@ -877,9 +891,9 @@ export class AudioEngine {
     this.uiPool.update();
     this._heroFootsteps(dt);
     this._idleVocalisations(dt);
-    this.ambience.update(dt, this.listener.x, this.listener.y, this.listener.z);
-    this.music.update();
-    this.music.reap();
+    this.ambience?.update(dt, this.listener.x, this.listener.y, this.listener.z);
+    this.music?.update();
+    this.music?.reap();
     this._updateMusicState(dt);
     this._updateDuck(dt);
   }
