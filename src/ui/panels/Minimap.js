@@ -300,8 +300,14 @@ export class Minimap {
     const scale = (this.footprint / this.windowM) * D;
     const fx = (hx - this.origin.x) / this.footprint;
     const fz = (hz - this.origin.z) / this.footprint;
+    /* A background-position percentage is not an offset: p% places the image
+       at (container - image) * p. The hero's point on the plate sits at the
+       disc centre when the image's left edge is at (0.5 - f * k) of the disc,
+       k = image / disc, so p = (0.5 - f * k) / (1 - k). */
+    const k = scale / D;
+    const pos = (f) => (Math.abs(1 - k) < 1e-6 ? 0 : ((0.5 - f * k) / (1 - k)) * D);
     this.map.style.backgroundSize = `${scale.toFixed(2)}% ${scale.toFixed(2)}%`;
-    this.map.style.backgroundPosition = `${(50 - fx * scale).toFixed(2)}% ${(50 - fz * scale).toFixed(2)}%`;
+    this.map.style.backgroundPosition = `${pos(fx).toFixed(3)}% ${pos(fz).toFixed(3)}%`;
 
     const yaw = hero?.yaw ?? 0;
     this.arrow.style.transform = `translate(-50%,-50%) rotate(${(yaw * 180 / Math.PI).toFixed(1)}deg)`;

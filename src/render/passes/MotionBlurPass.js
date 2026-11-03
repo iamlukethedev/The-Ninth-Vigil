@@ -10,6 +10,7 @@ uniform sampler2D tDepth;
 uniform mat4  uInvViewProj;
 uniform mat4  uPrevViewProj;
 uniform float uIntensity;
+uniform float uTicks;
 uniform float uMaxRadius;
 uniform float uNear;
 uniform float uFar;
@@ -31,7 +32,7 @@ void main() {
   if ( prevClip.w <= 0.0 ) { gl_FragColor = base; return; }
   vec2 prevUv = ( prevClip.xy / prevClip.w ) * 0.5 + 0.5;
 
-  vec2 vel = ( vUv - prevUv ) * uIntensity;
+  vec2 vel = ( vUv - prevUv ) * ( uIntensity / uTicks );
   float len = length( vel );
   if ( len < 0.0006 ) { gl_FragColor = base; return; }
   if ( len > uMaxRadius ) vel *= uMaxRadius / len;
@@ -60,6 +61,13 @@ void main() {
  * with last frame's view-projection. Deterministic (both matrices come from the
  * fixed-step simulation), clamped to a few pixels, and skipped entirely for a
  * couple of frames after a camera teleport so scenario switches never smear.
+ *
+ * The velocity is per simulation TICK, not per rendered frame. Taken per frame,
+ * the smear grew with frame time: at 16 fps every render spans ~4 ticks, the
+ * follow camera's step hit the clamp on every pixel, and the whole floor
+ * streaked around a walking hero. Dividing by the ticks since the last render
+ * makes the blur the same at any frame rate. The capture harness renders once
+ * per tick, so its frames are unchanged.
  */
 export class MotionBlurPass extends QuadPass {
   constructor({ camera, depthTexture, params, taps = 7 }) {
@@ -71,6 +79,7 @@ export class MotionBlurPass extends QuadPass {
         uInvViewProj: { value: new THREE.Matrix4() },
         uPrevViewProj: { value: new THREE.Matrix4() },
         uIntensity: { value: 0.5 },
+        uTicks: { value: 1 },
         uMaxRadius: { value: 0.012 },
         uNear: { value: camera.near },
         uFar: { value: camera.far },
@@ -87,6 +96,8 @@ export class MotionBlurPass extends QuadPass {
     this._invViewProj = new THREE.Matrix4();
     this._skip = 2;
     this._primed = false;
+    this._lastTick = -1;
+    this._ticks = 1;
   }
 
   setDepthTexture(depthTexture) {
@@ -99,8 +110,12 @@ export class MotionBlurPass extends QuadPass {
     this._primed = false;
   }
 
-  /** Call once per rendered frame, before the composer runs. */
-  updateMatrices() {
+  /** Call once per rendered frame, before the composer runs, with the sim tick count. */
+  updateMatrices(tick) {
+    if (Number.isFinite(tick)) {
+      this._ticks = this._lastTick >= 0 ? Math.max(1, tick - this._lastTick) : 1;
+      this._lastTick = tick;
+    }
     const cam = this.camera;
     cam.updateMatrixWorld();
     if (this._primed) this._prevViewProj.copy(this._viewProj);
@@ -121,6 +136,7 @@ export class MotionBlurPass extends QuadPass {
     this.uniforms.uInvViewProj.value.copy(this._invViewProj);
     this.uniforms.uPrevViewProj.value.copy(this._prevViewProj);
     this.uniforms.uIntensity.value = p.motionBlur;
+    this.uniforms.uTicks.value = this._ticks;
     this.uniforms.uMaxRadius.value = p.motionBlurMax;
     this.uniforms.uNear.value = this.camera.near;
     this.uniforms.uFar.value = this.camera.far;
