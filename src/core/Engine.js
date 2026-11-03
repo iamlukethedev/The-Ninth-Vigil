@@ -56,6 +56,15 @@ export class Engine {
 
     this.quality = this._detectQuality();
     this.headless = new URLSearchParams(location.search).has('headless');
+
+    /* Dynamic resolution. The live loop scales the render pixel ratio down
+       when frames run long and back up when there is headroom; see
+       `_governResolution`. Off for the capture harness (`?shot=`, headless),
+       whose frames must not depend on how fast the machine is. */
+    this.renderScale = 1;
+    this._resIdx = 0;
+    this._resWin = { ms: 0, n: 0, changedAt: 0 };
+    this._resGovern = !this.headless && !new URLSearchParams(location.search).has('shot');
     this.paused = false;
 
     this._modules = new Map();
@@ -79,7 +88,9 @@ export class Engine {
       low:   { tier: 'low',   shadowRes: 1024, cascades: 2, ssao: false, ssr: false, taa: false, volumetric: false, dpr: Math.min(dpr, 1) },
       med:   { tier: 'med',   shadowRes: 2048, cascades: 3, ssao: true,  ssr: false, taa: true,  volumetric: true,  dpr: Math.min(dpr, 1) },
       high:  { tier: 'high',  shadowRes: 2048, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 1.5) },
-      ultra: { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 2) },
+      // ultra stops at 1.5x: a full 2x Retina buffer is 4x the pixels through
+      // SSR, GTAO and volumetrics, measured at 16 fps where 1x ran 45-68.
+      ultra: { tier: 'ultra', shadowRes: 4096, cascades: 4, ssao: true,  ssr: true,  taa: true,  volumetric: true,  dpr: Math.min(dpr, 1.5) },
     };
     /* Own-property check, NOT `TIERS[tier] ?? null`. `??` only catches
        null/undefined, so an inherited Object.prototype member survives it:
@@ -161,7 +172,7 @@ export class Engine {
     const w = this.container.clientWidth || innerWidth;
     const h = this.container.clientHeight || innerHeight;
     this.width = w; this.height = h;
-    this.renderer.setPixelRatio(this.quality.dpr);
+    this.renderer.setPixelRatio(this.quality.dpr * this.renderScale);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -217,6 +228,7 @@ export class Engine {
     let frameMs = now - this._last;
     this._last = now;
     this.profiler.frame(frameMs);
+    if (this._resGovern) this._governResolution(frameMs, now);
     if (this.paused) { this.renderFrame(); return; }
 
     // Clamp so a stall never produces a spiral of death.
@@ -229,6 +241,29 @@ export class Engine {
     }
     this.clock.alpha = this._acc / FIXED_DT;
     this.renderFrame();
+  }
+
+  /**
+   * Step the render scale over one-second windows of real frame time: down a
+   * step below ~45 fps, back up above ~75 fps once the last change is 4 s old.
+   * The hysteresis keeps it from flapping, and the window after a change is
+   * discarded so the resize itself is not counted against the new scale.
+   */
+  _governResolution(ms, now) {
+    if (ms > 250) return;                       // a stall or a background tab, not load
+    const w = this._resWin;
+    w.ms += ms; w.n++;
+    if (w.ms < 1000) return;
+    const avg = w.ms / w.n;
+    w.ms = 0; w.n = 0;
+    let idx = this._resIdx;
+    if (avg > 1000 / 45 && idx < RES_STEPS.length - 1) idx++;
+    else if (avg < 1000 / 75 && idx > 0 && now - w.changedAt > 4000) idx--;
+    if (idx === this._resIdx) return;
+    this._resIdx = idx;
+    this.renderScale = RES_STEPS[idx];
+    w.changedAt = now;
+    this._onResize();
   }
 
   /**
@@ -253,6 +288,9 @@ export class Engine {
     this.renderer.dispose();
   }
 }
+
+/** Render-scale ladder for `_governResolution`, as fractions of the tier's pixel ratio. */
+const RES_STEPS = [1, 0.85, 0.72, 0.6];
 
 function hashStr(s) {
   let h = 2166136261;
