@@ -940,6 +940,10 @@ function makeContactShadowMaterial(uTime) {
       uGain: { value: 1.0 },
       uCap: { value: CONTACT_CAP },
       uZBias: { value: CONTACT_ZBIAS },
+      /* Soft intersection against the depth prepass — see `bindDepth`. */
+      tDepth: { value: null },
+      uDepthOn: { value: 0 },
+      uCam: { value: new THREE.Vector2(0.1, 500) },
     },
     vertexShader: /* glsl */`
       attribute vec2 aLocal;
@@ -953,6 +957,8 @@ function makeContactShadowMaterial(uTime) {
       varying vec4 vB;
       varying vec4 vC;
       varying vec4 vF;
+      varying vec4 vClip;
+      varying float vViewZ;
       void main() {
         vLocal = aLocal;
         vA = aTint; vB = aEmis; vC = aTiming; vF = aFlags;
@@ -976,13 +982,20 @@ function makeContactShadowMaterial(uTime) {
          * gameplay distance and nothing at all up close.
          */
         vec4 mv = modelViewMatrix * vec4( position, 1.0 );
+        vViewZ = mv.z;                         // unbiased, for the soft test
         mv.z += uZBias;                        // camera looks down -Z
         gl_Position = projectionMatrix * mv;
+        vClip = gl_Position;
       }`,
     fragmentShader: /* glsl */`
       uniform float uTime;
       uniform float uGain;
       uniform float uCap;
+      uniform sampler2D tDepth;
+      uniform float uDepthOn;
+      uniform vec2 uCam;    // near, far
+      varying vec4 vClip;
+      varying float vViewZ;
       varying vec2 vLocal;
       varying vec4 vA;
       varying vec4 vB;
@@ -1031,6 +1044,21 @@ function makeContactShadowMaterial(uTime) {
         // the props near it were handed contact slots.
         vec2 e = abs( vLocal - 0.5 ) * 2.0;
         a *= 1.0 - smoothstep( 0.62, 1.0, length( e ) );
+
+        /* Soft intersection, the hero pool's fix for the same defect. With a
+           hard depth test, every flagstone standing proud of the patch by more
+           than uZBias clipped it along the slab's own straight edge: the
+           hero's body lobe printed as a dark rectangle bounded by slab joints,
+           re-cut every rebuild as he walked. Slabs here sit up to ~8 cm above
+           the foot height. So the test is done here instead: a surface up to
+           10 cm in front keeps the shadow (a proud slab, a boot sole), and it
+           is gone by 25 cm -- any wider and it climbed the hero's own legs. */
+        if ( uDepthOn > 0.5 ) {
+          vec2 suv = ( vClip.xy / vClip.w ) * 0.5 + 0.5;
+          float d = texture2D( tDepth, suv ).x;
+          float sceneZ = ( uCam.x * uCam.y ) / ( ( uCam.y - uCam.x ) * d - uCam.y );
+          a *= smoothstep( -0.25, -0.10, vViewZ - sceneZ );
+        }
 
         float fade = vF.y > 0.0 ? clamp( ( uTime - vF.x ) / vF.y, 0.0, 1.0 ) : 1.0;
         a = min( a * uGain * fade * fade * ( 3.0 - 2.0 * fade ), uCap );
@@ -1150,12 +1178,37 @@ class ContactShadows {
 
   dispose() { this.batch.dispose(); }
 
+  /**
+   * Hand the shader the depth prepass so it can soften its own intersection.
+   * The layer is `noGBuffer`, so that buffer holds the world without it, which
+   * is the comparison wanted. Tiers with no G-buffer keep the hard depth test.
+   */
+  bindDepth() {
+    const m = this.material;
+    const u = m?.uniforms;
+    if (!u?.tDepth) return;
+    const depth = this.engine.renderPipeline?.gbuffer?.depthTexture ?? null;
+    const cam = this.engine.camera;
+    if (depth) {
+      u.tDepth.value = depth;
+      u.uDepthOn.value = 1;
+      if (cam) u.uCam.value.set(cam.near, cam.far);
+      if (m.depthTest) { m.depthTest = false; m.needsUpdate = true; }
+    } else if (u.uDepthOn.value !== 0) {
+      u.tDepth.value = null;
+      u.uDepthOn.value = 0;
+      m.depthTest = true;
+      m.needsUpdate = true;
+    }
+  }
+
   /* ------------------------------------------------------------- per frame */
 
   update(elapsed) {
     this._budget = CONTACT_REBUILDS;
     this._seen.clear();
     this.stats.rebuilt = 0;
+    this.bindDepth();
 
     // Characters first: they always get a slot, and taking the low slots keeps
     // the per-frame upload span tight (see DecalBatch.flush).
