@@ -12,15 +12,17 @@
  */
 import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
+import { ROOT, resolveInside } from './paths.mjs';
 
 const arg = (k, d) => {
   const h = process.argv.find((a) => a.startsWith(`--${k}=`));
   return h ? h.split('=').slice(1).join('=') : d;
 };
-const ROOT = resolve(import.meta.dirname, '..');
-const inPath = resolve(ROOT, arg('in', 'shots/combat.png'));
-const outPath = resolve(ROOT, arg('out', 'shots/_debug/crop.png'));
+// Both arguments come from the caller, so both are checked: unchecked, --in=
+// would read any file on disk and inline it as a base64 data URI.
+const inPath = resolveInside(arg('in', 'shots/combat.png'), '--in=');
+const outPath = resolveInside(arg('out', 'shots/_debug/crop.png'), '--out=');
 const cx = Number(arg('x', 0.5));
 const cy = Number(arg('y', 0.5));
 const cw = Number(arg('w', 0.25));

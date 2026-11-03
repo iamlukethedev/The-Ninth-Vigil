@@ -32,6 +32,12 @@ jobs:
       # gap was invisible. This runs the guard against throwaway fixture
       # repos and asserts on the violations each one produces.
       - run: node tools/guard.test.mjs
+      # Proves the three tools that take a caller-supplied path still refuse to
+      # leave the checkout. --out="../../escape_test.png" used to write two
+      # levels above the repo without complaint; one shared helper now rejects
+      # it, and this asserts the rejection rather than the line that implements
+      # it.
+      - run: node tools/paths.test.mjs
 
   smoke:
     name: Boot + determinism
