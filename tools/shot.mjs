@@ -107,15 +107,54 @@ async function shoot(browser, scenario, outPath, w, h, frames) {
 const w = Number(args.w ?? 1920);
 const h = Number(args.h ?? 1080);
 const server = await ensureServer();
+/* ANGLE backend is selected per platform, because a hardcoded backend silently
+   degrades the capture instead of failing it.
+
+   Measured on Linux (Ubuntu, headless Chromium, NVIDIA GTX):
+     --use-angle=metal     -> ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))   SOFTWARE
+     --use-angle=vulkan    -> ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA GeForce))    hardware
+     --use-angle=gl        -> ANGLE (NVIDIA Corporation, NVIDIA GeForce GTX)     hardware
+     no --use-angle at all -> ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))   SOFTWARE
+
+   Two things follow. `metal` is macOS-only, so on Linux our old hardcoded value
+   did not error — it fell through to SwiftShader and every capture came back
+   software-rendered, which is the exact configuration the README warns hangs
+   the compositor. And headless Chromium defaults to SwiftShader unless a
+   backend is requested explicitly, so "just drop the flag" is not the fix
+   either.
+
+   NONA_ANGLE overrides (e.g. NONA_ANGLE=swiftshader to force a deterministic
+   software run). The resolved backend and the renderer Chromium actually got
+   are printed once below, so a capture never silently claims hardware it did
+   not use. */
+const ANGLE =
+  process.env.NONA_ANGLE ??
+  (process.platform === 'darwin' ? 'metal' : process.platform === 'win32' ? 'd3d11' : 'vulkan');
+
 const browser = await chromium.launch({
   args: [
-    '--use-angle=metal',
+    `--use-angle=${ANGLE}`,
+    ...(ANGLE === 'swiftshader' ? ['--enable-unsafe-swiftshader'] : []),
     '--enable-unsafe-webgpu',
     '--ignore-gpu-blocklist',
     '--enable-gpu-rasterization',
     '--hide-scrollbars',
   ],
 });
+
+{
+  const probe = await browser.newPage();
+  const renderer = await probe
+    .evaluate(() => {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      if (!gl) return 'no webgl2 context';
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      return dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    })
+    .catch((e) => `probe failed: ${e.message.split('\n')[0]}`);
+  await probe.close();
+  console.log(`angle: ${ANGLE} (${process.platform}) -> ${renderer}`);
+}
 
 const list = args.all ? Object.keys(SCENARIOS) : [String(args.scenario ?? 'combat')];
 let failed = false;
