@@ -245,6 +245,7 @@ varying vec4 vT4;   // endTime, released, seed, opacity
 #define STREAK 0.20          /* hazard streak gain                                 */
 #define SHADE  0.012         /* engraved shadow line gain (near black)             */
 #define BLEED  0.020         /* outer contact shade gain (near black)              */
+#define TG_PAD ${PAD.toFixed(3)}   /* the patch's skirt past the shape, metres (PAD)   */
 
 /* Value noise. Zero textures — the whole field still costs 0 texture units — and
  * a pure function of local position, so it is byte-deterministic across runs. */
@@ -580,13 +581,23 @@ void main() {
      rectangle sitting on the floor, which is exactly the shape that read as
      broken geometry over the boss arena's bright stone. */
   float bleedM = mix( 1.0 - inside, 1.0, bleedIn );
-  SHDW( tint * BLEED,  exp( -max( 0.0, d ) / 0.34 ) * 0.26 * impend * bleedM )
+  /* ...and it must reach zero INSIDE the patch. The exponential alone was still
+     at 0.06 coverage where the skirt ends, PAD past the shape, so the shade
+     stopped on the patch's own straight sides. Under the grade's contrast that
+     read as a dark square printed round the hero by every warning aimed at him,
+     re-cut each time one landed. The window closes before the skirt edge, and the
+     corners lie farther out still, so nothing is left for the quad to clip. */
+  float bleedEdge = 1.0 - smoothstep( TG_PAD * 0.45, TG_PAD * 0.92, d );
+  SHDW( tint * BLEED,  exp( -max( 0.0, d ) / 0.34 ) * 0.26 * impend * bleedM * bleedEdge )
   SHDW( tint * WASH,   body * ( 0.16 + 0.15 * swept ) * impend * danger * fillM * radRamp )
   SHDW( tint * STREAK, hatch * 0.14 * danger )
   SHDW( tint * SHADE,  groove * 0.62 )
   LGHT( hotN * L_FRONT * frontM, front * 0.66 * frontM, 0.30 )
   LGHT( hotN * L_RIM * ( 0.86 + 0.14 * prog ) * pulse * rimGain, rim * rimCov, 0.26 )
-  LGHT( hotN * L_RIM * 1.20, flash * ( 0.30 + 0.60 * rim ) * mix( max( body, rim ), 1.0, bleedIn ), 0.32 )
+  /* The release flash covers the shape and its rim, never the patch. It used
+     mix( max( body, rim ), 1.0, bleedIn ), and bleedIn is 1 for every closed
+     shape, so a landing circle or ring flashed its whole square quad. */
+  LGHT( hotN * L_RIM * 1.20, flash * ( 0.30 + 0.60 * rim ) * max( body, rim ), 0.32 )
   #undef SHDW
   #undef LGHT
 
