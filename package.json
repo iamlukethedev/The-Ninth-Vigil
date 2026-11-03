@@ -23,7 +23,7 @@
   "keywords": ["threejs", "arpg", "webgl", "procedural-generation"],
   "license": "MIT",
   "dependencies": {
-    "three": "^0.185.1"
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "playwright": "^1.64.1",
