@@ -430,42 +430,54 @@ export class LightPool {
      *
      * So a challenger does not get a shadow slot by being marginally better. It
      * has to beat the weakest incumbent by `SHADOW_EVICT_MARGIN`, and that
-     * incumbent has to have held the slot for `SHADOW_MIN_TENURE` seconds. The
-     * plain tier keeps the cheap ranking — swapping an unshadowed slot only
-     * cross-fades an intensity, it does not restructure the frame.
+     * incumbent has to have held the slot for `SHADOW_MIN_TENURE` seconds.
+     *
+     * The plain tier gets the same veto. Swapping an unshadowed slot "only"
+     * cross-fades an intensity, but that fade is the torch's whole pool of
+     * light on the floor going out and coming back. The crypt has 18-21 live
+     * candidates for 14 plain slots, and on the bare 1.16 incumbency bonus the
+     * ones at the boundary traded places on every step of a walk -- measured:
+     * 9 swaps in 7.5 s, one slot flipping between two torches 4 times in 70 ms,
+     * each flip restarting the fade. Patches of floor around the hero dimmed
+     * and relit as it moved, which read as the floor itself shifting.
      */
-    const holdsShadow = (p) => !!p._slot?.shadowed;
+    const holdsTier = (p, shadowed) => !!p._slot && p._slot.shadowed === shadowed;
 
-    // Rank first, exactly as before, then hand the incumbents their veto.
+    /* Rank first, then hand the incumbents of [from, to) their veto. */
+    const veto = (want, from, to, shadowed, eligible) => {
+      for (let i = from; i < to; i++) {
+        const inc = this.slots[i].owner;
+        if (!inc || inc._score <= 0 || !eligible(inc)) continue;
+        if (want.includes(inc)) continue;
+        if (want.length < to - from) { want.push(inc); continue; }
+
+        // Displace the weakest challenger, never another incumbent.
+        let wIdx = -1;
+        for (let j = 0; j < want.length; j++) {
+          if (holdsTier(want[j], shadowed)) continue;
+          if (wIdx < 0 || want[j]._score < want[wIdx]._score) wIdx = j;
+        }
+        if (wIdx < 0) continue;
+
+        // Tenure has to be unconditional for its first seconds, not merely a
+        // stronger margin. Gate it on age alone and the protection can never
+        // switch on: eviction resets the age, so an incumbent that is being
+        // swapped every few frames never reaches the threshold that would have
+        // stopped the swapping. A fresh incumbent is therefore untouchable, and
+        // only once it is past `SHADOW_MIN_TENURE` does it fall back to needing
+        // `SHADOW_EVICT_MARGIN`.
+        const locked = inc._slotAge < SHADOW_MIN_TENURE;
+        if (locked || want[wIdx]._score <= inc._score * SHADOW_EVICT_MARGIN) {
+          want[wIdx] = inc;
+        }
+      }
+    };
+
     const wantShadow = [];
     for (let i = 0; i < cand.length && wantShadow.length < this.shadowSlots; i++) {
       if (cand[i].allowShadow) wantShadow.push(cand[i]);
     }
-    for (let i = 0; i < this.shadowSlots; i++) {
-      const inc = this.slots[i].owner;
-      if (!inc || inc._score <= 0 || !inc.allowShadow) continue;
-      if (wantShadow.includes(inc)) continue;
-
-      // Displace the weakest challenger, never another incumbent.
-      let wIdx = -1;
-      for (let j = 0; j < wantShadow.length; j++) {
-        if (holdsShadow(wantShadow[j])) continue;
-        if (wIdx < 0 || wantShadow[j]._score < wantShadow[wIdx]._score) wIdx = j;
-      }
-      if (wIdx < 0) continue;
-
-      // Tenure has to be unconditional for its first seconds, not merely a
-      // stronger margin. Gate it on age alone and the protection can never
-      // switch on: eviction resets the age, so an incumbent that is being
-      // swapped every few frames never reaches the threshold that would have
-      // stopped the swapping. A fresh incumbent is therefore untouchable, and
-      // only once it is past `SHADOW_MIN_TENURE` does it fall back to needing
-      // `SHADOW_EVICT_MARGIN`.
-      const locked = inc._slotAge < SHADOW_MIN_TENURE;
-      if (locked || wantShadow[wIdx]._score <= inc._score * SHADOW_EVICT_MARGIN) {
-        wantShadow[wIdx] = inc;
-      }
-    }
+    veto(wantShadow, 0, this.shadowSlots, true, (p) => p.allowShadow);
 
     // Plain tier takes the best of what is left.
     const wantPlain = [];
@@ -474,6 +486,7 @@ export class LightPool {
       const p = cand[i];
       if (!wantShadow.includes(p)) wantPlain.push(p);
     }
+    veto(wantPlain, this.shadowSlots, this.size, false, (p) => !wantShadow.includes(p));
 
     this._assign(0, this.shadowSlots, wantShadow);
     this._assign(this.shadowSlots, this.size, wantPlain);
