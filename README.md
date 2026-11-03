@@ -282,7 +282,9 @@ Determinism is mandatory, and it is not for netcode — it is what makes the vis
 
 That last property is the whole point. If frames drift between runs, you cannot attribute a pixel
 change to a code change, and every visual fix becomes unfalsifiable. Because captures are stable,
-you can `md5` two of them and know for certain whether your change did anything.
+you can `md5` two of them and know for certain whether your change did anything. A match is proof;
+on some Linux GPU stacks a mismatch can be a few bytes of rasteriser noise, so check it with
+`tools/diff.mjs` before calling it a change (see `CONTRIBUTING.md`).
 
 ## The verification loop
 

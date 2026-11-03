@@ -167,6 +167,16 @@ someone else's machine; the number is informative, not a regression. That is
 also why CI runs `tools/diff.test.mjs` against synthetic fixtures rather than
 diffing the committed baselines.
 
+**Equal hashes prove "unchanged"; unequal hashes prove nothing yet.** Two
+captures on the same machine are byte-identical on the GPU paths measured so far
+(macOS Metal, Windows D3D11), but a Linux ANGLE/Vulkan box has shown a 19-byte
+run-to-run delta with the simulation hash unchanged (#26). So an `md5` match is a
+valid pass, and a mismatch is a question for `tools/diff.mjs`, which reports how
+much moved and where. `tools/shot.mjs` refuses a frame from a run that lost its
+WebGL context and retries it once (`--retries=0` to fail at once): a recovered
+context renders a different image, measured at 86% of pixels changed, so that
+frame says nothing about the art.
+
 ### Verify on the live path, not just the harness
 
 `tools/shot.mjs` loads `?shot=X`, so `Terrain.init()` reads the query parameter
