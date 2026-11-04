@@ -30,15 +30,61 @@ varying vec4 vDEmis;
 varying vec4 vDTiming;
 varying vec4 vDFlags;
 varying vec2 vDLocal;
+uniform float uSBias;
+varying vec4 vSClip;
+varying vec3 vSView;
 `;
 
 const DECL_F = /* glsl */`
 uniform float uTime;
+uniform sampler2D uSDepth;
+uniform sampler2D uSNormal;
+uniform float uSDepthOn;
+uniform vec2 uSCam;
+varying vec4 vSClip;
+varying vec3 vSView;
 varying vec4 vDTint;
 varying vec4 vDEmis;
 varying vec4 vDTiming;
 varying vec4 vDFlags;
 varying vec2 vDLocal;
+`;
+
+/**
+ * Depth-only bias toward the camera, so the hardware depth test lets a stain onto
+ * flagstones standing proud of the analytic floor it was built on. That floor is
+ * a smooth interpolation, and the crypt's slabs sit up to 0.25 m above or below
+ * it; at 1.6 cm of lift every taller slab hid its share of the stain, so a frost
+ * trail or a blood splash under the hero was cut into pieces the exact shape of
+ * the slabs, re-cut at every step. Only depth moves: x, y and w keep the vertex's
+ * own projection, so the stain does not slide on screen.
+ */
+const BIAS_V = /* glsl */`
+  vSView = mvPosition.xyz;
+  vSClip = gl_Position;
+  if ( uSBias > 0.0 ) {
+    vec4 sB = projectionMatrix * vec4( mvPosition.xy, mvPosition.z + uSBias, 1.0 );
+    gl_Position.z = sB.z / sB.w * gl_Position.w;
+  }
+`;
+
+/**
+ * What the bias lets through that is not floor. Read the G-buffer at this pixel:
+ * an up-facing surface — a slab top, a rubble cap — counts as ground up to 0.6 m
+ * nearer than the stain, a sideways one (a shin, a crate's flank) only 5 cm, which
+ * is what the depth test gave it before. So the stain still never climbs a leg.
+ */
+const PROJ_F = /* glsl */`
+  if ( uSDepthOn > 0.5 ) {
+    vec2 sUv = ( vSClip.xy / vSClip.w ) * 0.5 + 0.5;
+    float sD = texture2D( uSDepth, sUv ).x;
+    float sZ = ( uSCam.x * uSCam.y ) / ( ( uSCam.y - uSCam.x ) * sD - uSCam.y );
+    float sNear = sZ - vSView.z;   // > 0 where the scene is nearer than the stain
+    vec3 sN = texture2D( uSNormal, sUv ).xyz * 2.0 - 1.0;
+    float sUp = ( sN * mat3( viewMatrix ) ).y;
+    float sTol = mix( 0.05, 0.60, smoothstep( 0.55, 0.85, sUp ) );
+    dAlpha *= 1.0 - smoothstep( sTol, sTol * 1.6, sNear );
+  }
 `;
 
 /** age / dry / grow / fade, all derived from the birth stamp. */
@@ -97,9 +143,18 @@ export function makeStainMaterial(engine, atlas) {
 
   const uTime = { value: 0 };
   mat.userData.uTime = uTime;
+  const proj = {
+    uSDepth: { value: null },
+    uSNormal: { value: null },
+    uSDepthOn: { value: 0 },
+    uSCam: { value: new THREE.Vector2(0.1, 500) },
+    uSBias: { value: 0 },
+  };
+  mat.userData.proj = proj;
 
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uTime;
+    Object.assign(shader.uniforms, proj);
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${DECL_V}`)
@@ -110,12 +165,13 @@ export function makeStainMaterial(engine, atlas) {
         vDTiming = aTiming;
         vDFlags = aFlags;
         vDLocal = aLocal;
-      `);
+      `)
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${BIAS_V}`);
 
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${DECL_F}`)
       .replace('#include <clipping_planes_fragment>',
-        `#include <clipping_planes_fragment>\n${AGE_BLOCK}`)
+        `#include <clipping_planes_fragment>\n${AGE_BLOCK}\n${PROJ_F}`)
 
       /* ---- coverage: growth threshold + lifetime fade ---- */
       .replace('#include <map_fragment>', /* glsl */`
@@ -264,4 +320,35 @@ export function makeStainMaterial(engine, atlas) {
   try { engine.get('sky')?.applyFog?.(mat); } catch { /* optional */ }
 
   return mat;
+}
+
+/** Depth bias used when the G-buffer can turn away what is not floor. */
+const STAIN_BIAS = 0.30;
+
+/**
+ * Hand the stain material this frame's G-buffer. Without one (tier `low`, or a
+ * frame nothing asked for the prepass) the bias and the test both switch off and
+ * the stain falls back to the plain depth test it always had.
+ * @param {THREE.Material} mat
+ * @param {import('../../core/Engine.js').Engine} engine
+ */
+export function bindStainDepth(mat, engine) {
+  const u = mat?.userData?.proj;
+  if (!u) return;
+  const gb = engine.renderPipeline?.gbuffer;
+  const depth = gb?.depthTexture ?? null;
+  const normal = gb?.normalTexture ?? null;
+  const cam = engine.camera;
+  if (depth && normal && cam) {
+    u.uSDepth.value = depth;
+    u.uSNormal.value = normal;
+    u.uSDepthOn.value = 1;
+    u.uSCam.value.set(cam.near, cam.far);
+    u.uSBias.value = STAIN_BIAS;
+  } else {
+    u.uSDepth.value = null;
+    u.uSNormal.value = null;
+    u.uSDepthOn.value = 0;
+    u.uSBias.value = 0;
+  }
 }
