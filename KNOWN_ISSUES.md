@@ -23,7 +23,9 @@ shadows and telegraphs stopped being clipped along proud flagstones (0.1-2.0%
 of pixels); each repeats exactly. `boss`, `dungeon` and `night` were retaken when
 a telegraph's outer shade and release flash stopped filling its square patch
 (2.0%, 0.0006% and 0.4% of pixels; `boss` had the square printed on its floor);
-each repeats exactly.
+each repeats exactly. The same three were retaken again when telegraphs stopped
+being holed by flagstones standing more than 0.10 m proud (0.6%, 0.15% and 0.17%
+of pixels); each repeats exactly.
 
 The previous revision of this table said it was measured after the cascade fix
 `d2aad35`. That object is not in this repository (`git cat-file -t d2aad35` →
@@ -44,10 +46,10 @@ until the flags are at zero.
 | boss | 0.190 | 0.199 | 0 | 0.906 | 2.3 | 0.313 | 589 | in range |
 | closeup | 0.258 | 0.207 | 0 | 0.781 | 2.3 | 0.210 | 158 | in range |
 | combat | 0.285 | 0.213 | 0 | 0.875 | 1.1 | 0.271 | 455 | in range |
-| dungeon | 0.276 | 0.214 | 0 | 0.875 | 1.3 | 0.250 | 331 | in range |
+| dungeon | 0.276 | 0.214 | 0 | 0.875 | 1.3 | 0.250 | 330 | in range |
 | hub | 0.146 | 0.165 | 0 | 0.813 | 8.7 | 0.297 | 316 | in range |
 | inventory | 0.209 | 0.192 | 0 | 0.844 | 7.1 | 0.265 | 313 | in range |
-| night | 0.192 | 0.209 | 0 | 0.906 | 13.0 | 0.336 | 551 | in range |
+| night | 0.192 | 0.209 | 0 | 0.906 | 13.0 | 0.336 | 552 | in range |
 | overworld | 0.266 | 0.202 | 0 | **0.750** | 3.0 | 0.219 | 368 | in range — p99 is 0.030 over the 0.72 floor |
 
 `sheet.mjs` warns when `p99 < 0.72`, so `overworld` clears the highlight floor by

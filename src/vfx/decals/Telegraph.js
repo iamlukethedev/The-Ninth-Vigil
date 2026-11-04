@@ -117,6 +117,15 @@ const DANGER = { light: 0.86, medium: 1.0, heavy: 1.18, aoe: 1.06 };
 const PROJ_THICK = 0.55;
 
 /**
+ * View-space bias (metres toward the camera) that lets the depth test pass the
+ * field onto flagstones proud of the analytic floor: deep enough for the crypt's
+ * tallest slabs when the G-buffer's normals can turn away legs and crate flanks
+ * inside that range, and the old shallow value when they cannot.
+ */
+const VIEW_BIAS_SLABS = 0.36;
+const VIEW_BIAS_FLAT = 0.10;
+
+/**
  * Hues. A telegraph is a DANGER READ, so its colour has to carry information:
  * the element that is about to land, or the rarity of the thing casting it.
  * Everything here is one saturated accent per family — never a rainbow — and the
@@ -163,6 +172,7 @@ varying vec4 vT1;
 varying vec4 vT2;
 varying vec4 vT3;
 varying vec4 vT4;
+uniform float uViewBias;
 void main() {
   vLocal = aLocal;
   vT1 = aT1; vT2 = aT2; vT3 = aT3; vT4 = aT4;
@@ -171,16 +181,24 @@ void main() {
      downstream compares the reconstructed scene point against. */
   vWorld = position;
   vec4 mv = modelViewMatrix * vec4( position, 1.0 );
-  /* View-space bias toward the camera, the contact shadows' fix. The patch
-     follows the analytic floor and the crypt's flagstones stand up to ~8-10 cm
-     proud of it; against the hairline polygonOffset every such slab clipped
-     the field along its own edges, so a telegraph round the hero printed as a
-     blocky slab-shaped area that re-cut itself as he moved. 0.10 m along the
-     view ray clears them, moves the patch on screen by the perspective ratio
-     only, and a shin or a barrel -- tens of centimetres nearer -- still
-     occludes it; projectionWeight() rejects the rest by world distance. */
-  mv.z += 0.10;
-  gl_Position = projectionMatrix * mv;
+  /* View-space bias toward the camera, so the hardware depth test lets the
+     field onto flagstones standing proud of the analytic floor it follows.
+     The crypt's slabs sit up to a third of a metre off it; the old fixed
+     0.10 m cleared only the shallowest, and every taller slab cut a hole the
+     exact shape of the slab out of the warning, re-cut at every step the hero
+     took. With a G-buffer the bias is 0.36 m (see _bindDepth), and anything
+     inside that range that is not floor — a shin, a crate's flank — is turned
+     away by the normal test in projectionWeight(). Without one there is no
+     such test, so the bias stays at the old 0.10 m. Either way the depth test
+     still clips characters exactly at full resolution.
+     Only DEPTH is biased: the clip position keeps its own x, y and w and takes
+     the biased point's NDC depth, so the field does not slide on screen — a
+     plain view-space shift moved a lane's edges by up to 4 px at the boss
+     camera. */
+  vec4 clip = projectionMatrix * mv;
+  vec4 biased = projectionMatrix * vec4( mv.xy, mv.z + uViewBias, 1.0 );
+  clip.z = biased.z / biased.w * clip.w;
+  gl_Position = clip;
   /* Carry the clip coordinate so the fragment can find its own screen UV by
      perspective divide. No resolution uniform, therefore exact at any render
      scale and correct even when the G-buffer is a different size. */
@@ -204,11 +222,16 @@ uniform float uExpNorm;
                 NDC point straight to the world point the scene has there.
    uDepthOn     0 when the tier has no G-buffer or nothing rendered it this
                 frame; the field then degrades instead of disappearing.
-   uThick       metres of surface disagreement still accepted as "same floor". */
+   uThick       metres of surface disagreement still accepted as "same floor".
+   uNormal      the G-buffer's view-space normals (MeshNormalMaterial packing),
+                so floor can be told apart from a leg standing on it.
+   uNormalOn    0 when there is no normal buffer to read. */
 uniform sampler2D uDepth;
 uniform mat4 uClipToWorld;
 uniform float uDepthOn;
 uniform float uThick;
+uniform sampler2D uNormal;
+uniform float uNormalOn;
 varying vec2 vLocal;
 varying vec3 vWorld;
 varying vec4 vClip;
@@ -333,7 +356,19 @@ float projectionWeight() {
   float dv = abs( sceneW.y - vWorld.y );
   float dh = length( sceneW.xz - vWorld.xz );
   float gap = max( dv, dh * 0.60 );
-  return 1.0 - smoothstep( uThick, uThick * 2.4, gap );
+  /* How much disagreement counts as "the same floor" depends on which way the
+     surface faces. A slab top up to a third of a metre proud of the patch is
+     floor and gets the full uThick. A surface facing sideways — a shin, a
+     crate's flank — gets only a few centimetres, which is what the depth test
+     gave it before the view bias grew to clear the slabs: the field still never
+     climbs a leg. Slab risers fall in between and take a soft edge. */
+  float tol = uThick;
+  if ( uNormalOn > 0.5 ) {
+    vec3 nv = texture2D( uNormal, suv ).xyz * 2.0 - 1.0;
+    float up = ( nv * mat3( viewMatrix ) ).y;   // view -> world: transpose of the rotation
+    tol = mix( 0.08, uThick, smoothstep( 0.55, 0.85, up ) );
+  }
+  return 1.0 - smoothstep( tol, tol * 2.4, gap );
 }
 
 void main() {
@@ -694,6 +729,9 @@ export class TelegraphField {
     this.uClipToWorld = { value: new THREE.Matrix4() };
     this.uDepthOn = { value: 0 };
     this.uThick = { value: PROJ_THICK };
+    this.uNormal = { value: null };
+    this.uNormalOn = { value: 0 };
+    this.uViewBias = { value: VIEW_BIAS_FLAT };
     this._clipToWorld = new THREE.Matrix4();
     this._depthWarned = false;
     this.material = new THREE.ShaderMaterial({
@@ -704,6 +742,9 @@ export class TelegraphField {
         uClipToWorld: this.uClipToWorld,
         uDepthOn: this.uDepthOn,
         uThick: this.uThick,
+        uNormal: this.uNormal,
+        uNormalOn: this.uNormalOn,
+        uViewBias: this.uViewBias,
       },
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -1013,14 +1054,17 @@ export class TelegraphField {
    */
   _bindDepth() {
     const cam = this.engine?.camera;
-    let tex = null;
+    let tex = null, nrm = null;
     try {
       const rp = this.engine?.renderPipeline ?? this.engine?.get?.('render');
       if (rp && !rp.__dead && rp.gbuffer) {
         // The prepass only runs when one of its consumers wants it; a stale or
         // cleared buffer would reject every fragment in the field.
         const live = typeof rp._needsGBuffer === 'function' ? rp._needsGBuffer() !== false : true;
-        if (live) tex = rp.gbuffer.depthTexture ?? null;
+        if (live) {
+          tex = rp.gbuffer.depthTexture ?? null;
+          nrm = rp.gbuffer.normalTexture ?? null;
+        }
       }
     } catch (e) {
       if (!this._depthWarned) {
@@ -1032,6 +1076,9 @@ export class TelegraphField {
     if (!tex || !cam) {
       this.uDepth.value = null;
       this.uDepthOn.value = 0;
+      this.uNormal.value = null;
+      this.uNormalOn.value = 0;
+      this.uViewBias.value = VIEW_BIAS_FLAT;
       return;
     }
     /* NDC -> world in one matrix: inverse projection, then camera world. Three
@@ -1041,6 +1088,10 @@ export class TelegraphField {
     this.uClipToWorld.value.copy(this._clipToWorld);
     this.uDepth.value = tex;
     this.uDepthOn.value = 1;
+    this.uNormal.value = nrm;
+    this.uNormalOn.value = nrm ? 1 : 0;
+    /* The deep bias is only safe with the normal test behind it. */
+    this.uViewBias.value = nrm ? VIEW_BIAS_SLABS : VIEW_BIAS_FLAT;
   }
 
   /** Retire faded slots and push the clock. */
