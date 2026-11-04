@@ -599,15 +599,17 @@ void main(){
 const FOG_VERT = /* glsl */`
 ${COMMON}
 attribute vec4 aSlab;    // xyz world centre (CPU placed on the heightfield), w size
-attribute vec4 aSlab2;   // alpha, noise scale, rotation, phase
+attribute vec4 aSlab2;   // alpha, noise scale, rotation, height above the floor (m)
 varying vec2  vQ;
 varying vec3  vWorld;
 varying float vAlpha;
 varying float vNoise;
 varying float vDist;
+varying float vGap;
 
 void main(){
   float c = cos(aSlab2.z), s = sin(aSlab2.z);
+  vGap = aSlab2.w;
   vec2 q = position.xy * aSlab.w;
   q = mat2(c, -s, s, c) * q;
   vec3 world = aSlab.xyz + vec3(q.x, 0.0, q.y);
@@ -631,11 +633,14 @@ uniform float uOpacity;
 uniform float uContrast;
 uniform float uLightMul;
 uniform vec2  uScroll;
+uniform sampler2D uNormal;
+uniform float uFloorOn;
 varying vec2  vQ;
 varying vec3  vWorld;
 varying float vAlpha;
 varying float vNoise;
 varying float vDist;
+varying float vGap;
 
 void main(){
   /* domain-warped fbm: one low-frequency fetch warps a higher one, which is
@@ -649,7 +654,33 @@ void main(){
 
   float radial = 1.0 - smoothstep(0.42, 1.0, length(vQ));
   float soft = softFade(vDist);
-  /* thin the bank out at grazing distance so it never reads as a hard sheet */
+  /* Over the FLOOR, thin the bank by the card's height above the smooth floor,
+     one number per card, instead of by the depth gap to whatever lies behind each
+     pixel. The crypt's flagstones stand up to a third of a metre above or below
+     that floor, and with the depth gap faded over 1.7 m every slab took its own
+     fog density, so the bank printed the slab grid in steps of light and dark
+     that moved with the banks around the hero. Only a surface that faces up AND
+     sits within slab relief of the smooth floor takes the floor gap; anything
+     else — a wall, a leg, a rubble top, a column cap — keeps the depth fade. */
+  if (uFloorOn > 0.5 && uSoftOn > 0.5) {
+    vec2 fuv = gl_FragCoord.xy / uResolution;
+    float fz = texture2D(uDepth, fuv).x;
+    if (fz < 0.999999) {
+      float fvz = (uNearFar.x * uNearFar.y) / ((uNearFar.y - uNearFar.x) * fz - uNearFar.y);
+      float depthGap = -fvz - vDist;                     // what softFade measures
+      /* The same gap for a flat floor at the smooth height: height over the drop
+         of the view ray gives the distance along it, and the card's own
+         view-depth-to-distance ratio turns that into view depth. */
+      vec3 ray = vWorld - cameraPosition;
+      float len = max(length(ray), 1e-3);
+      float drop = max(abs(ray.y) / len, 0.05);
+      float floorGap = vGap / drop * (vDist / len);
+      vec3 fn = texture2D(uNormal, fuv).xyz * 2.0 - 1.0;
+      float up = smoothstep(0.55, 0.85, (fn * mat3(viewMatrix)).y);
+      float onFloor = up * (1.0 - smoothstep(0.35, 0.60, abs(depthGap - floorGap)));
+      soft = mix(soft, clamp(floorGap * uSoftK, 0.0, 1.0), onFloor);
+    }
+  }
   float depth = 1.0 - smoothstep(58.0, 105.0, vDist);
   float a = d * radial * vAlpha * uOpacity * soft * depth;
   if (a <= 0.0015) discard;
@@ -1107,14 +1138,16 @@ export class Weather {
   }
 
   _probeDepth() {
-    let tex = null;
+    let tex = null, nrm = null;
     try {
       const rp = this.engine.get?.('render');
-      if (rp && !rp.__dead) tex = rp.gbuffer?.depthTexture ?? null;
+      if (rp && !rp.__dead) { tex = rp.gbuffer?.depthTexture ?? null; nrm = rp.gbuffer?.normalTexture ?? null; }
       if (!tex && this.engine.renderPipeline && !this.engine.renderPipeline.__dead) {
         tex = this.engine.renderPipeline.gbuffer?.depthTexture ?? null;
+        nrm = this.engine.renderPipeline.gbuffer?.normalTexture ?? null;
       }
-    } catch { tex = null; }
+    } catch { tex = null; nrm = null; }
+    this._bindFogFloor(tex && tex.isTexture ? nrm : null);
     if (tex && tex.isTexture) {
       if (this._depthTex !== tex) {
         this._depthTex = tex;
@@ -1127,6 +1160,21 @@ export class Weather {
       this._softOn = 0;
     }
     this.U.uSoftOn.value = this._softOn;
+  }
+
+  /**
+   * Hand the fog its floor test (see FOG_FRAG). With the G-buffer's normals the
+   * test does the conforming, so the hardware depth test is dropped: on it, every
+   * slab standing above a low card cut the bank along the slab's own edges.
+   * Without normals the bank keeps the plain depth test and depth fade.
+   */
+  _bindFogFloor(nrm) {
+    const mat = this.systems?.fog?.mat;
+    if (!mat) return;
+    const on = !!(nrm && nrm.isTexture);
+    mat.uniforms.uNormal.value = on ? nrm : this._dummyDepth;
+    mat.uniforms.uFloorOn.value = on ? 1 : 0;
+    if (mat.depthTest === on) { mat.depthTest = !on; mat.needsUpdate = true; }
   }
 
   _syncResolution() {
@@ -1683,6 +1731,8 @@ export class Weather {
         uContrast: { value: 1.5 },
         uLightMul: { value: 1.15 },
         uScroll: { value: new THREE.Vector2() },
+        uNormal: { value: this._dummyDepth },
+        uFloorOn: { value: 0 },
       },
     });
     sys.slab = this._instAttr(sys, 'aSlab', 4);
@@ -1739,12 +1789,13 @@ export class Weather {
       const gy = this._groundAt(x, z);
       // breathe the height a little so the bank is never a static slice
       const bob = Math.sin(elapsed * 0.21 + d.phase * 6.283) * 0.12;
-      slab.setXYZW(i, x, gy + d.h + bob, z, d.size);
+      const y = gy + d.h + bob;
+      slab.setXYZW(i, x, y, z, d.size);
       slab2.setXYZW(i,
         d.alpha * Math.exp(-d.h * 0.85),          // fog thins with height
         d.noise,
         d.rot + elapsed * d.spin,
-        d.phase);
+        y - this._floorAt(x, z));                 // height above the visible floor (see FOG_FRAG)
     }
     slab.needsUpdate = true;
     slab2.needsUpdate = true;
@@ -1782,6 +1833,21 @@ export class Weather {
     sys.mesh.count = n;
     sys.mesh.visible = n > 0 && lv > 0.004;
     sys.mat.uniforms.uOpacity.value = opacity * Math.min(1, lv * 3.2);
+  }
+
+  /**
+   * The floor a fog card is seen against: interior flagstones when a dungeon is
+   * up, else the ground. The card itself stays where `_groundAt` lays it, so the
+   * banks keep their placement; this only measures how high above the visible
+   * floor each one floats, for the floor test in FOG_FRAG.
+   */
+  _floorAt(x, z) {
+    const dg = this.engine.get?.('dungeon');
+    if (dg && !dg.__dead && dg.active && typeof dg.floorHeightAt === 'function') {
+      const y = dg.floorHeightAt(x, z);
+      if (Number.isFinite(y)) return y;
+    }
+    return this._groundAt(x, z);
   }
 
   _groundAt(x, z) {

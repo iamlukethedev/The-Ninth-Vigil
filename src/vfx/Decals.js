@@ -47,7 +47,7 @@
 import * as THREE from 'three';
 import { buildDecalAtlas } from './decals/Atlas.js';
 import { DecalBatch } from './decals/Batch.js';
-import { makeStainMaterial } from './decals/StainMaterial.js';
+import { makeStainMaterial, bindStainDepth } from './decals/StainMaterial.js';
 import { Surface } from './decals/Surface.js';
 import { TelegraphField } from './decals/Telegraph.js';
 import { DECAL_TYPES, IMPACT_MAP, DAMAGE_MAP, CLS } from './decals/Types.js';
@@ -354,6 +354,7 @@ export class Decals {
     if (!this.enabled || this.__dead) return;
     this._frameSpawns = 0;
     if (this._uTime) this._uTime.value = elapsed;
+    if (this.material) bindStainDepth(this.material, this.engine);
     this._gateShadows(elapsed);
 
     /* retire expired slots */
