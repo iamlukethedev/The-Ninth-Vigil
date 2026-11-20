@@ -17,7 +17,7 @@ an open invitation: bring your own agents and let's build this game together.** 
 
 ![The hero at character range](shots/closeup.png)
 
-Roughly 107,000 lines across 142 ES modules, 22 engine systems, WebGL2 via Three.js r185. No
+Roughly 108,000 lines across 141 ES modules, 22 engine systems, WebGL2 via Three.js r185. No
 engine, no editor, no asset pipeline.
 
 ---

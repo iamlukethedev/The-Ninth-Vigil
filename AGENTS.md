@@ -42,7 +42,7 @@ node tools/sheet.mjs --analyze   # metrics for the committed shots/*.png only, n
 `Boot + determinism` CI job (run with `--software` on the GPU-less runner). Both
 are required status checks on `main`. `npm run check` is a local tool, not a gate.
 
-Verified on this checkout at HEAD `7b3c4bb`: `npm run guard` → `OK — 162 files,
+Verified on this checkout at HEAD `d476c9b`: `npm run guard` → `OK — 159 files,
 1 html, 9 rules, 0 violations`; `npm run guard:test` → `OK — 38 cases`;
 `npm run paths:test` → 11 cases, `npm run diff:test` → 9, `npm run sheet:test` → 4;
 `npm run build` → `✓ built`; `node tools/sheet.mjs --analyze` → 8 frames, no hard

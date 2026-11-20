@@ -50,10 +50,10 @@ maintainer should confirm both switches are on. If they are off, no automated
 security PR will ever be opened, and the previous wording of this file was simply
 false.
 
-Current drift, measured on 2026-10-24 with `npm view <package> version` against
+Current drift, measured on 2026-11-19 with `npm view <package> version` against
 `package.json` and a clean `npm audit` (0 vulnerabilities): `three` 0.185.1
-against 0.186.1, `vite` 8.1.6 declared against 8.3.5, `playwright` 1.62.0 against
-1.64.1. `three` is the runtime and the one worth care — a minor bump can move
+declared against 0.187.0, `vite` 8.3.5 declared against 8.3.8, `playwright` 1.64.1
+against 1.65.1. `three` is the runtime and the one worth care — a minor bump can move
 shader behaviour, which is why it arrives as its own PR and is checked against the
 captures (`node tools/shot.mjs --all && node tools/sheet.mjs --analyze`) rather
 than merged blind.
