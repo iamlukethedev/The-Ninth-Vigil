@@ -5,8 +5,8 @@ Everything below the line is a self-contained brief. It assumes zero prior conte
 ---
 
 You are continuing work on **THE NINTH VIGIL**, a Diablo 4–class isometric action RPG built in
-Three.js r185. It is a real, working, feature-complete game: 107,888 lines across 142 files
-(`wc -l` over `src/**/*.js` at HEAD `1f566b2`),
+Three.js r185. It is a real, working, feature-complete game: 108,294 lines across 141 files
+(`find src -name '*.js' | xargs wc -l` at HEAD `d476c9b`),
 22 engine modules, running at 60+ fps.
 
 **Repository:** https://github.com/iamlukethedev/The-Ninth-Vigil
@@ -51,12 +51,12 @@ line explains itself, it stops working.
 
 ---
 
-## ▶ START HERE — state as of 2026-10-24, HEAD `1f566b2`
+## ▶ START HERE — state as of 2026-11-19, HEAD `d476c9b`
 
 ```bash
-git log -1 --format='%H %ad'   # 1f566b2e53585ed55592fceb064caa6d0e4669be Tue Oct 20 21:43:04 2026 -0700
+git log -1 --format='%H %ad'   # d476c9ba4ac39cee16c7391aa9c9bcc76acf7aa8 Wed Nov 4 16:35:15 2026 +1100
 git status --short             # (no output — working tree clean)
-git rev-list --count HEAD      # 28
+git rev-list --count HEAD      # 46
 ```
 
 Nothing is uncommitted, and nothing in this file asks you to commit anything.
@@ -72,6 +72,12 @@ click-to-move`, whose `src/` diffstat is **exactly** the twelve files:
 `12 files changed, 1770 insertions(+), 189 deletions(-)` — the same `+1770 -189`
 this block quoted as uncommitted. This paragraph is that block's tombstone; there
 is no tree to recover.
+
+**And what the 2026-10-24 revision of this section claimed, and why it drifted.**
+That block was correct when written: `1f566b2` really does measure 142 files,
+107,888 lines and 28 commits. It then went stale under the eighteen commits that
+landed after it — the same drift class as #13, fixed once in #31 and drifted again
+because nothing re-runs these numbers. The block above is the re-measurement.
 
 **What is actually current:**
 
